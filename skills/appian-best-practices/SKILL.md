@@ -18,7 +18,14 @@ not assume it or invent it.
 
 ## When to Use
 
-The most expensive mistake in a quality guide is applying it in full to everything. Calibrate:
+Use this skill when creating, changing, reviewing, or debugging Appian objects — record types, data
+models, relationships, sync, custom fields, SAIL interfaces, expression rules, process models,
+integrations, sites, security, performance, or test cases — whether through an MCP server or directly in
+Appian Designer. It applies before issuing any write operation against an Appian environment, and before
+declaring an object finished.
+
+The most expensive mistake in a quality guide is applying it in full to everything. Once it applies,
+calibrate how much of it applies:
 
 | The change… | Procedure |
 |---|---|
