@@ -127,7 +127,7 @@ direct (compare and deploy), programmatic (deployment APIs, for CI/CD) and manua
 
 ✅ **Review the package with object comparison before promoting.** Compares version to version and
 surfaces missing precedents.
-- Source: <https://docs.appian.com/suite/help/latest/compare-deployment-packages.html> · <https://docs.appian.com/suite/help/latest/continuous-improvements-to-your-application.html>
+- Source: <https://docs.appian.com/suite/help/latest/prepare-deployment.html#comparing-across-environments> · <https://docs.appian.com/suite/help/latest/continuous-improvements-to-your-application.html>
 
 ### Programmatic deployment — Deployment REST API (CI/CD)
 
@@ -501,7 +501,7 @@ it into Jenkins.
 - **Plug-in Disclaimer (test before production)** — <https://docs.appian.com/suite/help/latest/plugindisclaimer.html>
 - **Deployment Automation (Appian MAX / Community)** — <https://community.appian.com/success/w/guide/3328/deployment-automation>
 - **Prepare Deployment Packages** — <https://docs.appian.com/suite/help/latest/prepare-deployment-packages.html>
-- **Compare Deployment Packages** — <https://docs.appian.com/suite/help/latest/compare-deployment-packages.html>
+- **Prepare the Deployment — Comparing across environments** — <https://docs.appian.com/suite/help/latest/prepare-deployment.html#comparing-across-environments>
 - **Post-Deployment Process** — <https://docs.appian.com/suite/help/latest/post-deployment-process.html>
 - **Continuous Integration in Appian** — <https://docs.appian.com/suite/help/latest/continuous-improvements-to-your-application.html>
 - **DevOps in Appian** — <https://docs.appian.com/suite/help/latest/devops-with-appian.html>
@@ -520,4 +520,4 @@ it into Jenkins.
 - **Data Fabric** — <https://docs.appian.com/suite/help/latest/data-fabric.html>
 - **Use Data Fabric in Existing Apps** — <https://docs.appian.com/suite/help/latest/use-synced-record-types-in-existing-apps.html>
 - **The Appian Delivery Methodology (Community)** — <https://community.appian.com/success/w/guide/2973/the-appian-delivery-methodology>
-- **The Appian Playbook — Expression Rule Test Cases (Community)** — <https://community.appian.com/w/the-appian-playbook/1563/creating-expression-rule-test-cases>
+- **The Appian Playbook — Appian Testing Essentials (Community)** — <https://community.appian.com/success/w/playbook/3474/appian-testing-essentials>

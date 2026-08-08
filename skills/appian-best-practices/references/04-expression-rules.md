@@ -48,7 +48,7 @@ Source: [Expression Rule Testing — Generate test cases with AI (Tips)](https:/
 Source: [Appian Design Guidance — Missing keyword syntax](https://docs.appian.com/suite/help/latest/appian-recommendations.html#expression-design-guidance)
 
 **❌ Don't use `Array` when the value is single, or vice versa.** The input's Array flag must reflect the real cardinality; name it in the plural if it's a list (solution convention).
-Source: [Expression Rules — Properties](https://docs.appian.com/suite/help/latest/Expression_Rules.html) · plural convention in [Connected Underwriting — Naming conventions (Variables and Rule Inputs)](https://docs.appian.com/suite/help/latest/cu/connected-underwriting-architecture-overview.html) *(verify: the CU solution doc mandates the plural; the general standard doesn't explicitly require it)*
+Source: [Expression Rules — Properties](https://docs.appian.com/suite/help/latest/Expression_Rules.html) · naming a list input in the plural is **field experience**: Appian's general naming standard does not require it.
 
 ---
 
@@ -125,7 +125,7 @@ Source: [How to Handle Null Values in Appian — Why are nulls an issue / Castin
 ## 6. Separating query from presentation
 
 **✅ Separate query logic from presentation logic.** You can query record type data to render interfaces, drive logic in rules, or route processes; extract queries into dedicated query rules (`QR`/`QE` convention) and keep interfaces focused on presenting.
-Source: [Record Type Query Performance Best Practices](https://docs.appian.com/suite/help/latest/query-best-practices.html) · query prefix convention in [Connected Underwriting — Naming conventions (Querying)](https://docs.appian.com/suite/help/latest/cu/connected-underwriting-architecture-overview.html) *(verify: the QR/QE prefix is CU solution doctrine, not part of the general naming standard)*
+Source: [Record Type Query Performance Best Practices](https://docs.appian.com/suite/help/latest/query-best-practices.html) · the `QR`/`QE` prefix is **field experience**: a team convention, not part of Appian's general naming standard. Separating the query is the documented practice; the prefix is only one way to make it visible.
 
 **✅ Query in the parent interface/rule and pass the result to the child via a rule input.** Query into a `local!` at the top and pass it with `data: ri!...` to the child rule.
 *Why:* besides ordering responsibilities, this is **mandatory** for offline: an offline sync only downloads the parent interface's data; querying inside the child errors out in Appian Mobile.
@@ -255,4 +255,3 @@ Source: [Functions and Side Effects — Smart services](https://docs.appian.com/
 - Reusing Interfaces (Reusability) — https://docs.appian.com/suite/help/latest/using_interfaces_in_appian.html
 - Parts of an Expression (Comments) — https://docs.appian.com/suite/help/latest/parts-of-an-expression.html
 - Expression Editor (Toolbar actions / Design guidance) — https://docs.appian.com/suite/help/latest/expression-editor.html
-- Connected Underwriting — Architecture Overview (solution naming conventions, marked "verify") — https://docs.appian.com/suite/help/latest/cu/connected-underwriting-architecture-overview.html

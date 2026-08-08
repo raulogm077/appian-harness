@@ -102,7 +102,7 @@ Source: [Analyzing Process Model Performance](https://docs.appian.com/suite/help
 Source: [KB-2011 How to address high memory usage in Appian Cloud](https://community.appian.com/support/w/kb/1574/kb-2011-how-to-address-high-memory-usage-in-appian-cloud-environments)
 
 ✅ **Put a timer on processes users rarely complete.** Without one, those instances live in memory forever. An `Intermediate Event - Timer` that closes the process after a deadline prevents accumulation.
-Source: [KB-2011 High memory usage](https://community.appian.com/support/w/kb/1574/kb-2011-how-/to-address-high-memory-usage-in-appian-cloud-environments)
+Source: [KB-2011 High memory usage](https://community.appian.com/support/w/kb/1574/kb-2011-how-to-address-high-memory-usage-in-appian-cloud-environments)
 
 ✅ **Keep process variables few and small.** Appian recommends **≤ 100 process variables** per model (more complicates maintenance and drives up memory consumption). Each version of a large PV is saved in the history and grows over time. Convert PVs into *activity class parameters* where applicable, or split into subprocesses.
 Source: [Appian Design Guidance — Too many process variables](https://docs.appian.com/suite/help/latest/appian-recommendations.html)
