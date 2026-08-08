@@ -23,16 +23,29 @@ For each applicable gate, record a result:
 
 - **PASS** — checked, with evidence (UUID, validator output, test result, screenshot).
 - **FAIL** — blocks closure. Work is not marked "done" with a FAIL.
-- **N/A** — does not apply, **with a concrete justification** ("N/A: the object does not expose data"). A bare "N/A" does not count.
+- **N/A** — the gate does not apply to this object at all: the condition it protects against isn't
+  present here (e.g., a field-level security gate on an object that carries no fields with protected
+  data). Requires **a concrete justification about the object** ("N/A: the object does not expose
+  data") — **never** a justification about the process, the schedule or the time available. A bare
+  "N/A" does not count.
+
+A gate that **does** apply but that nobody checked is not N/A — it's `NOT MEASURED`, defined below.
+Conflating the two is the exact escape hatch this document exists to close: "N/A: I didn't get to
+it" is not a legitimate outcome under any name.
 
 Leave the evidence wherever the project tracks progress (its status file, the ticket or the PR). A
 FAIL or an omitted gate without justification blocks closing the work.
 
 ## Three outcomes, not two
 
+These three outcomes cover a gate that **applies** to the object under review. `N/A`, above, is not
+a fourth outcome tacked onto this list — it's the decision that a gate never came into play for this
+object at all, made *before* the three outcomes below become relevant.
+
 - **PASS** — checked, with evidence.
 - **FAIL** — blocks closure.
-- **NOT MEASURED** — no evidence covers this gate. This is not a pass.
+- **NOT MEASURED** — the gate applies, and no evidence covers it — including a gate you simply didn't
+  check. This is not a pass, and it is never recorded as N/A.
 
 `NOT MEASURED` has two classes:
 
