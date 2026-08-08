@@ -47,16 +47,16 @@ wrong direction.
 
 ## Skills
 
-None of the six skills below are shipped yet. This version of the plugin ships
-the scaffold and the skill validator; each row's status flips to `shipped`
-with a one-word edit once that skill's `SKILL.md` lands.
+Four of the six skills below are shipped; `appian-verify` and `appian-review`
+are still to come. Each row's status flips to `shipped` with a one-word edit
+once that skill's `SKILL.md` lands.
 
 | Skill | Phase | What it does | Status |
 |---|---|---|---|
-| `appian-specify` | SPECIFY | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. | planned |
-| `appian-plan` | PLAN | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria. | planned |
-| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Manually invoked. | planned |
-| `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. | planned |
+| `appian-specify` | SPECIFY | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. | shipped |
+| `appian-plan` | PLAN | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria. | shipped |
+| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Manually invoked. | shipped |
+| `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. | shipped |
 | `appian-verify` | VERIFY | Produces the per-gate report with evidence, in its own context. | planned |
 | `appian-review` | REVIEW | Independent review from a clean context, graduated by risk. | planned |
 
