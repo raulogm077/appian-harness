@@ -20,6 +20,12 @@ It produces two artifacts:
 2. **An operational state** — which task is active right now, which tasks are next,
    and what's blocking progress.
 
+A naming note, since the word "state" does double duty here: when this skill means
+the lifecycle of a business entity, it uses the specification's full section name,
+"States and transitions," never a bare "state." Everywhere else in this skill,
+"state" means the operational state file defined above — the current task, what's
+next, and blockers — not entity lifecycle states.
+
 Where those two artifacts live is configuration for the project this skill runs in —
 this skill asks where they belong, it never assumes a filename or a directory. What
 it does mandate is the *shape* of the content: slices instead of layers, a real
@@ -58,6 +64,13 @@ A plan built layer-by-layer looks organized — it groups similar work together 
 is the wrong shape anyway: nothing is checkable until every layer is finished, so the
 first thing anyone can actually verify is the whole system at once.
 
+Not every piece of behaviour is data-shaped. When a specification's *States and
+transitions* section defines an entity's lifecycle, the matching slice is
+process-shaped instead: **record type → state model → process model → action →
+test case**. Both are slices, not layers — each one scopes and verifies one
+coherent piece of behaviour end to end, whether that behaviour is queried and
+displayed or driven through an entity's lifecycle.
+
 ## The dependency order Appian imposes
 
 A generic planner orders work by convenience: biggest risk first, easiest first,
@@ -73,8 +86,11 @@ written:
    interface that reads record data can't be authored against fields that don't
    exist yet.
 3. **Constants and rules before the interfaces that call them.** An interface that
-   references a rule or constant that doesn't exist yet either fails to save or
-   fails at run time — the reference can't resolve to nothing and quietly work.
+   references a rule or constant that doesn't exist yet either fails to save, or
+   fails once that reference is actually evaluated at run time — an unresolvable
+   reference can't resolve to nothing and quietly work (field experience: this
+   doesn't conflict with item 5 below — a reference inside a loop body over an
+   empty list is never evaluated in the first place, so it stays silent instead).
 4. **The objects before the security that protects them.** Record-level and
    field-level security are configured on top of an existing record type and
    existing fields; there is nothing to secure until the object is there.
@@ -85,6 +101,11 @@ written:
    or empty. A broken loop body passes every test run against empty tables; the
    defect only surfaces once rows exist to iterate over.
    Source: [a!forEach() Function — Using the items parameter](https://docs.appian.com/suite/help/latest/fnc_looping_a_foreach.html#usage-considerations)
+6. **Entity lifecycle states and transitions, and the record type, before the
+   process model.** A process model that drives an entity through its lifecycle
+   enacts transitions the specification's *States and transitions* section already
+   settled, and writes each change into that entity's record type; there is
+   nothing to enact and nowhere to persist it until both exist (field experience).
 
 A plan that lists tasks without this order can look complete and still not be
 buildable in the sequence it's written.
@@ -163,6 +184,9 @@ for context.
   plan because "the interface already works without it."
 - A list, grid, or repeating-layout task marked ready to close without a dependency
   on the test-data task that populates the tables it reads.
+- An entity lifecycle state that reached the plan with no defined transition in or
+  out. `appian-specify` already flags this at the specification stage; accepting
+  it into the plan without a second check just defers the same gap to build.
 
 ## Verification
 
