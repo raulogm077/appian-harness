@@ -27,6 +27,12 @@ the section omitted. Where the specification should be saved (a file, a ticket, 
 existing document) is a decision for the project this skill is running in, not something this skill
 assumes.
 
+**The interview asks these in a different order than the artifact presents them**, and that is
+deliberate: the procedure below asks about *Volume and growth* before *Authorization matrix*, because
+volume is a question the requester can answer straight away while authorization is much easier to
+answer once the entities and their lifecycle are already on the table. Write the artifact in the fixed
+order regardless of the order the answers arrived in.
+
 ## When to Use
 
 - Starting a new Appian application, module, or feature and no written specification exists yet.
@@ -51,6 +57,10 @@ in the requester's head, gaps included.
 For each question below, say why it matters *in Appian specifically*, not only what information is
 wanted. The person answering usually has a business answer ready; they do not usually know which of
 their answers determines a data-model decision until it is pointed out.
+
+The numbering here is the order to *ask* in, which is not the order the artifact is *written* in —
+questions 4 and 5 are swapped relative to the six fixed sections. Ask in this order; file the answers
+under the section names.
 
 ### 1. Actors
 
