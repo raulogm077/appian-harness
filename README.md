@@ -47,12 +47,16 @@ wrong direction.
 
 ## Skills
 
+None of the six skills below are shipped yet. This version of the plugin ships
+the scaffold and the skill validator; each row's status flips to `shipped`
+with a one-word edit once that skill's `SKILL.md` lands.
+
 | Skill | Phase | What it does | Status |
 |---|---|---|---|
-| `appian-specify` | SPECIFY | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. | shipped |
-| `appian-plan` | PLAN | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria. | shipped |
-| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Manually invoked. | shipped |
-| `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. | shipped |
+| `appian-specify` | SPECIFY | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. | planned |
+| `appian-plan` | PLAN | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria. | planned |
+| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Manually invoked. | planned |
+| `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. | planned |
 | `appian-verify` | VERIFY | Produces the per-gate report with evidence, in its own context. | planned |
 | `appian-review` | REVIEW | Independent review from a clean context, graduated by risk. | planned |
 
@@ -79,10 +83,10 @@ see. Cheapest first.
 
 **N2 is the level most harnesses are missing.** A rendered-interface test does
 not return an image, but it returns the component tree **already evaluated with
-resolved data** — heading tags, labels, row headers, empty-grid messages, and
-colours that came out of the database. Those colours do not appear in the source
-at all, so no linter over the source will ever see them. That is the gap a
-1.6:1 status chip walks through.
+resolved data** (field experience) — heading tags, labels, row headers,
+empty-grid messages, and colours that came out of the database. Those colours
+do not appear in the source at all, so no linter over the source will ever see
+them. That is the gap a 1.6:1 status chip walks through.
 
 Two operating notes for N2, both learned the hard way and offered as field
 experience rather than documentation: the default response size cap truncates a
@@ -129,26 +133,33 @@ harness:
   below N5 has seen the interface. Component choice, visual hierarchy and
   whether it reads on a phone are decided by looking at it.
 - **It does not verify connection routing in process models.** The API exposes
-  node coordinates but not waypoints, so the layout checks tell you where every
-  node sits — not where any arrow goes.
+  node coordinates but not waypoints (field experience), so the layout checks
+  tell you where every node sits — not where any arrow goes.
 - **It does not read Design Guidance.** Those warnings are not exposed
-  programmatically. If they matter to you, they are a deferred criterion with a
-  human owner, not a gate the harness can close.
-- **It does not check node dimensions.** Width and height are not exposed, so
-  the separation thresholds are a proxy for "these do not overlap", not a proof.
+  programmatically (field experience). If they matter to you, they are a
+  deferred criterion with a human owner, not a gate the harness can close.
+- **It does not check node dimensions.** Width and height are not exposed
+  (field experience), so the separation thresholds are a proxy for "these do
+  not overlap", not a proof.
 - **It does not certify security from a design environment.** Record-level and
-  field-level restrictions are not applied to a designer, so testing there
-  produces a false positive. That check requires a real user per role.
+  field-level restrictions are not applied to a designer (field experience),
+  so testing there produces a false positive. That check requires a real user
+  per role.
 
 A criterion the harness cannot measure is reported as `NOT MEASURED`, with an
 owner and a closing condition. It is never quietly upgraded to `PASS`.
 
 ## Sources
 
-Every claim about Appian platform behaviour is cited to the official
-documentation at `docs.appian.com/suite/help/latest/…`, using the `latest` alias
-so links do not expire. Claims that come from field experience rather than
-documentation are marked as such, so you can tell the difference.
+The citation policy applies to the plugin's reference documents — the domain
+references under `appian-best-practices` — not to this README. There, every
+claim about Appian platform behaviour must be cited to the official
+documentation at `docs.appian.com/suite/help/latest/…` (using the `latest`
+alias so links do not expire) or explicitly marked as field experience.
+
+This README is a summary, not a reference document, and carries no citations
+of its own. Platform-behaviour claims that come from field use are marked
+`(field experience)` inline.
 
 ## License
 
