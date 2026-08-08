@@ -100,6 +100,7 @@ tuning question to revisit once something feels slow — expected volume and que
 whether a record type should be sync-enabled against Appian's own data store or left query-time
 against its source, and that choice is made when the record type is modeled, not adjusted afterward
 without rebuilding it.
+Source: [Choose a Data Source](https://docs.appian.com/suite/help/latest/configure-record-data-source.html) · [Use synced record types (best practice)](https://docs.appian.com/suite/help/latest/build-best-data-fabric.html#use-synced-record-types)
 
 ### 5. Authorization Matrix
 
@@ -112,8 +113,8 @@ cell is not a "no," it is an unanswered question.
 
 ### 6. Out of Scope
 
-> The specification is not complete without an explicit **Out of scope** section.
-> Half of all misalignment is silent disagreement about what is *not* being built.
+The specification is not complete without an explicit **Out of scope** section.
+Half of all misalignment is silent disagreement about what is *not* being built.
 
 Ask directly: "What might someone reasonably assume is included here that actually isn't?" A generic
 "nothing else" is not an answer — push for the specific adjacent things a reasonable person might
@@ -136,7 +137,7 @@ each one that was considered and excluded, not just the ones nobody thought of.
 | Thought | Why it's wrong |
 |---|---|
 | "We can define security later, once the screens exist." | Field-level and record-level security decide which fields a listing may even display, filter, or sort by for a given role. Deciding it after the screens are built means rebuilding the screens, not configuring a layer on top of them. |
-| "The volume is small, we don't need to think about this yet." | Sync-enabled versus query-time is a modeling decision made when the record type is created. Changing it later is not a settings toggle — it is rebuilding the record type and everything that queries it. |
+| "The volume is small, we don't need to think about this yet." | Sync-enabled versus query-time is a modeling decision made when the record type is created. Changing it later is not a settings toggle — it is rebuilding the record type and everything that queries it. Source: [Choose a Data Source](https://docs.appian.com/suite/help/latest/configure-record-data-source.html) · [Use synced record types (best practice)](https://docs.appian.com/suite/help/latest/build-best-data-fabric.html#use-synced-record-types) |
 | "It's obviously one entity, we don't need to ask." | "Obviously one entity" is exactly the assumption that turns out wrong once two attributes need independent histories, independent security, or independent volume — by then it's a migration, not a rename. |
 | "The actors are just 'the user' and 'the manager,' that's clear enough." | Real systems almost always have more distinct actors than the first two named — a read-only auditor, an approver who isn't the line manager, an external party, a scheduled process acting without a human. Each one changes the authorization matrix. |
 | "We'll figure out the states as we build." | A state discovered mid-build forces rework on every interface's available actions and every process model branch that already assumed a smaller set of states. |
