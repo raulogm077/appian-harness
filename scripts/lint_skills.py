@@ -17,8 +17,15 @@ REQUIRED_SECTIONS = [
 
 # A description must say WHEN the skill fires, not only what it is.
 TRIGGER = re.compile(r"\buse (this )?when\b|\buse (before|after|during)\b", re.I)
-# "Do not use when..." describes an exclusion, not a trigger.
-TRIGGER_NEGATED = re.compile(r"\b(do not|don't|never|avoid)\s+use\b", re.I)
+# "Do not use when...", "Not for use when...", etc. describe an exclusion,
+# not a trigger. The negation word can be a few words away from "use" ("Not
+# for use when...") rather than directly adjacent to it ("Do not use
+# when..."), so this matches a negation word followed, within the same
+# sentence, by "use" — but a sentence-ending punctuation mark between them
+# breaks the match, so a negation earlier in the description that isn't
+# about the trigger clause ("Not applicable to legacy skills. Use when...")
+# is left alone.
+TRIGGER_NEGATED = re.compile(r"\b(do not|don't|never|avoid|not)\b[^.!?]{0,30}\buse\b", re.I)
 
 # name -> documented reason
 SECTION_EXEMPT = {
@@ -77,6 +84,7 @@ def lint_skill(path):
 
 
 def main(root):
+    checked = 0
     failed = 0
     skills_dir = os.path.join(root, "skills")
     if not os.path.isdir(skills_dir):
@@ -86,6 +94,7 @@ def main(root):
         path = os.path.join(skills_dir, entry, "SKILL.md")
         if not os.path.isfile(path):
             continue
+        checked += 1
         errs = lint_skill(path)
         for e in errs:
             print("ERROR %s: %s" % (path, e))
@@ -93,10 +102,17 @@ def main(root):
             failed += 1
         else:
             print("OK    %s" % path)
+    # Zero skills checked is NOT a pass: "All skills passed" would be
+    # trivially true of nothing. This harness exists to keep "verified" from
+    # being confused with "not measured", so say NOT MEASURED explicitly and
+    # fail the run.
+    if checked == 0:
+        print("\nNOT MEASURED: skills/ exists but contains no SKILL.md files; 0 skills were validated.")
+        return 1
     if failed:
         print("\n%d skill(s) failed." % failed)
         return 1
-    print("\nAll skills passed.")
+    print("\n%d skill(s) passed." % checked)
     return 0
 
 

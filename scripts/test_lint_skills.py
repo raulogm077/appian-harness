@@ -1,5 +1,6 @@
-import os, tempfile, unittest
-from lint_skills import lint_skill
+import io, os, tempfile, unittest
+from contextlib import redirect_stdout
+from lint_skills import lint_skill, main
 
 VALID_BODY = """
 ## Overview
@@ -66,6 +67,57 @@ class TestLintSkill(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             p = write(t, "using-appian-harness", "Use when starting work on an Appian project.", body)
             self.assertEqual(lint_skill(p), [])
+
+    def test_negated_trigger_not_for_use_phrasing_fails(self):
+        # "Not for use when..." puts a word between the negation and "use",
+        # so it must be caught the same way "Do not use when..." is.
+        with tempfile.TemporaryDirectory() as t:
+            p = write(t, "appian-build", "Not for use when the file is a draft.")
+            self.assertTrue(any("trigger" in e for e in lint_skill(p)))
+
+    def test_incidental_negation_after_trigger_still_passes(self):
+        # The negation here modifies the trigger's condition, not the trigger
+        # phrase itself, and it comes after "use when" — must not be flagged.
+        with tempfile.TemporaryDirectory() as t:
+            p = write(t, "appian-build", "Use when the record type is not synced.")
+            self.assertEqual(lint_skill(p), [])
+
+    def test_negation_in_separate_sentence_still_passes(self):
+        # A negation earlier in the description, but in its own sentence
+        # (separated by a period) from the real trigger, must not be flagged.
+        with tempfile.TemporaryDirectory() as t:
+            p = write(t, "appian-build", "Not applicable to legacy skills. Use when onboarding a new client.")
+            self.assertEqual(lint_skill(p), [])
+
+    def test_negation_in_exclamatory_sentence_still_passes(self):
+        # Same as above, but the sentence boundary is "!" rather than ".".
+        with tempfile.TemporaryDirectory() as t:
+            p = write(t, "appian-build", "Not for drafts! Use when publishing.")
+            self.assertEqual(lint_skill(p), [])
+
+
+class TestMainSkillCount(unittest.TestCase):
+    def test_empty_skills_dir_is_not_measured_not_pass(self):
+        # skills/ exists but has no SKILL.md files: zero validated must not
+        # be reported as a pass.
+        with tempfile.TemporaryDirectory() as t:
+            os.makedirs(os.path.join(t, "skills"))
+            out = io.StringIO()
+            with redirect_stdout(out):
+                rc = main(t)
+            self.assertNotEqual(rc, 0)
+            self.assertIn("NOT MEASURED", out.getvalue())
+            self.assertNotIn("All skills passed", out.getvalue())
+
+    def test_passing_skills_report_count_not_blanket_claim(self):
+        with tempfile.TemporaryDirectory() as t:
+            write(os.path.join(t, "skills"), "appian-build", "Use when building an Appian object.")
+            out = io.StringIO()
+            with redirect_stdout(out):
+                rc = main(t)
+            self.assertEqual(rc, 0)
+            self.assertIn("1 skill(s) passed.", out.getvalue())
+            self.assertNotIn("All skills passed", out.getvalue())
 
 if __name__ == "__main__":
     unittest.main()
