@@ -4,7 +4,8 @@ A quality harness for building Appian applications with coding agents.
 
 An agent with write access to an Appian environment can produce a great deal of
 work that validates cleanly and is still wrong. `validateExpression` proves the
-platform accepts an expression. A green test case proves a path did not throw —
+platform accepts an expression (field experience). A green test case proves a
+path did not throw —
 not that the path was ever exercised. Neither says anything about whether the
 right component was chosen, whether the screen has a heading, or whether a colour
 resolved from the database is readable against its background.
@@ -102,23 +103,38 @@ Add the plugin to a marketplace your Claude Code installation trusts, then:
 /plugin install appian-harness
 ```
 
-To try it from a local checkout, add the directory as a local marketplace and
-install from it. The skills carry no runtime dependencies; the skill validator
-under `scripts/` needs only Python 3 and the standard library.
+To try it from a local checkout, this repository is its own marketplace — the
+manifest at `.claude-plugin/marketplace.json` lists the plugin with `"source":
+"./"`. Point Claude Code at the checkout, then install:
+
+```
+/plugin marketplace add /path/to/appian-harness
+/plugin install appian-harness@appian-harness-local
+```
+
+The skills carry no runtime dependencies; the skill validator under `scripts/`
+needs only Python 3 and the standard library.
 
 ## What the plugin asks of your project
 
 The plugin is deliberately free of any assumption about your repository layout.
-It asks for five pieces of configuration, and if you do not supply them it will
-ask you rather than guess:
+It asks for configuration rather than guessing — but only three of the five
+pieces below are asked for by the skills that ship today. The other two are the
+configuration surface of `appian-verify`, which is still to come; they are
+listed because they are real and worth planning for, not because anything in
+this plugin reads them yet.
 
-| Configuration | Why it is needed |
-|---|---|
-| **Where the specification lives** | `appian-plan` reads it; `appian-build` resolves acceptance criteria against it. |
-| **Where the plan and the operational state live** | Two files, not one. A plan is approved and stable; state changes every task. Keeping them together makes both untrustworthy. |
-| **What command runs the regression suite** | The evidence of non-regression after any change that touches data or objects. |
-| **Which identifier exercises the empty path** | An id that is guaranteed *not* to exist, so empty states are tested on purpose rather than by accident. |
-| **Which naming convention is frozen** | Object prefixes and names the agent must not invent. |
+| Configuration | Asked for by | Why it is needed |
+|---|---|---|
+| **Where the specification lives** | shipped | `appian-plan` reads it; `appian-build` resolves acceptance criteria against it. |
+| **Where the plan and the operational state live** | shipped | Two files, not one. A plan is approved and stable; state changes every task. Keeping them together makes both untrustworthy. |
+| **Which naming convention is frozen** | shipped | Object prefixes and names the agent must not invent. |
+| **What command runs the regression suite** | with `appian-verify` | The evidence of non-regression after any change that touches data or objects. |
+| **Which identifier exercises the empty path** | with `appian-verify` | An id that is guaranteed *not* to exist, so empty states are tested on purpose rather than by accident. |
+
+A sixth location — where a task's evidence gets recorded — is asked for per task
+rather than once per project: `appian-plan` writes it into each task as
+`evidenceFile`, and `appian-build` refuses to start without it.
 
 Everything specific to one application — the requirements document, real object
 identifiers, test fixtures, the environment — stays in your project. None of it
@@ -155,7 +171,18 @@ The citation policy applies to the plugin's reference documents — the domain
 references under `appian-best-practices` — not to this README. There, every
 claim about Appian platform behaviour must be cited to the official
 documentation at `docs.appian.com/suite/help/latest/…` (using the `latest`
-alias so links do not expire) or explicitly marked as field experience.
+alias so links do not expire) or explicitly marked as field experience. A claim
+never carries a URL that was not checked: either it resolves, or the claim is
+marked instead.
+
+There is a third label, used only where it applies. The reliability and
+operations reference carries claims marked **`[engineering]`**: general
+distributed-systems doctrine — idempotency, optimistic locking, backoff,
+reconciliation — applied to Appian. These have no `docs.appian.com` page
+because they are not platform-specific, and marking them that way keeps them
+from being mistaken for platform behaviour Appian documents and guarantees.
+The rule they share with the other two labels is the same: no claim goes
+unlabelled, and no label is a URL nobody verified.
 
 This README is a summary, not a reference document, and carries no citations
 of its own. Platform-behaviour claims that come from field use are marked

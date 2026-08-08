@@ -18,9 +18,9 @@ chain multiple tasks together. One invocation, one task, one stop.
 Because writes here cannot be undone by editing a local file, this skill produces
 and consumes **the task contract**: the explicit boundary of what one task is
 allowed to touch, what proves it is done, and what evidence has to exist before it
-is handed off. A verification step, a review step, and a scope-enforcement
-mechanism all read this contract instead of re-deriving it, so it has to be
-written down, not held in the executor's head.
+is handed off. The contract is written down rather than held in the executor's
+head so that whatever picks the task up next — a verification step, a reviewer, a
+person — reads it instead of re-deriving it from the work that was done.
 
 ## When to Use
 
@@ -71,10 +71,12 @@ and operational state live, ask rather than guess a path.
   get recorded, so the next step in the pipeline reads a record instead of
   re-deriving one.
 
-A verification step, a review step, and a scope-enforcement hook all consume this
-same contract. If any of the four parts is missing before step 3 begins, that is
-itself a reason to stop: building against an incomplete contract just moves the
-missing decision to later, where it is harder to catch.
+The contract is written in these four names deliberately: it is meant to be read
+by a verification step, a review step, and — the intent, not something that ships
+today — a scope-enforcement hook, none of which should have to re-derive it. If
+any of the four parts is missing before step 3 begins, that is itself a reason to
+stop: building against an incomplete contract just moves the missing decision to
+later, where it is harder to catch.
 
 ## Stop before anything irreversible
 

@@ -1,0 +1,20 @@
+{
+  "name": "appian-harness-local",
+  "description": "Local marketplace for the appian-harness plugin, so a checkout of this repository can be installed directly.",
+  "owner": {
+    "name": "Raul Gomez Moya"
+  },
+  "plugins": [
+    {
+      "name": "appian-harness",
+      "description": "A quality harness for building Appian applications with coding agents: lifecycle skills, quality gates, and a verification pyramid that separates building from certifying.",
+      "version": "0.1.0",
+      "source": "./",
+      "author": {
+        "name": "Raul Gomez Moya"
+      },
+      "license": "MIT",
+      "keywords": ["appian", "quality-gates", "verification", "low-code", "sail"]
+    }
+  ]
+}
