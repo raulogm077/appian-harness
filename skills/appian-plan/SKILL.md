@@ -32,9 +32,11 @@ it does mandate is the *shape* of the content: slices instead of layers, a real
 dependency order, and one acceptance criterion per task, written before that task
 starts.
 
-A downstream build step reads one task at a time from these artifacts, so a task that
-can't be understood in isolation — no scope, no criterion, no place in the order —
-can't be built safely either.
+A downstream build step reads one task at a time from these artifacts and refuses to
+start against an incomplete contract, so a task that can't be understood in isolation
+— no scope, no criterion, no gates, nowhere to record what it produced — can't be
+built safely either. *What a task needs*, below, names the four parts that step
+expects.
 
 ## When to Use
 
@@ -136,24 +138,40 @@ anyone choosing it.
 
 ## What a task needs
 
-Every task in the plan carries, at minimum:
+Every task in the plan carries, at minimum, the four parts of the **task contract**
+the build step consumes:
 
-- **A scope** — which objects it creates or changes, and how many object types.
+- **`allowedObjects`** — the exhaustive list of objects this task may create or
+  change. Anything else, however related it looks, is out of scope for that task.
   A task that spans a record type, an interface, and a security configuration in one
   entry can't be reviewed or rejected as a unit; split it along the slice boundary.
-- **A place in the dependency order** — which earlier tasks must close first,
-  following the platform order above.
-- **An acceptance criterion**, written before any of the task's objects exist —
-  see *Common Rationalizations* below for why the order matters.
-- **The gates it must pass** before it counts as closed — whatever verification the
-  project requires. For anything touching record-level or field-level security, that
-  gate has to include logging in as a user of each affected role: the design-time
-  preview does not apply that security, so it cannot be the evidence a task is done.
+- **`acceptanceCriteria`** — an observable statement that proves the task is done,
+  written before any of the task's objects exist. Not "the interface was created,"
+  but something a reviewer can check without trusting the builder's word for it —
+  see *Common Rationalizations* below for why writing it first matters.
+- **`requiredGates`** — the checks that must produce a result, one way or another,
+  before the task can be handed off. Whatever verification the project requires.
+  For anything touching record-level or field-level security, that gate has to
+  include logging in as a user of each affected role: the design-time preview does
+  not apply that security, so it cannot be the evidence a task is done.
   Source: [Field-level security in Appian Designer](https://docs.appian.com/suite/help/latest/field-level-security.html#main_content)
+- **`evidenceFile`** — where this task's real identifiers and gate results get
+  recorded, so the steps after build read a record instead of re-deriving one.
+  Like the plan and the state, **where it lives is project configuration**: ask
+  where evidence belongs rather than defaulting to a path.
 
-Both questions — what this task may touch, and what "done" means for it — should be
-answerable by reading the task on its own, without pulling in the rest of the plan
-for context.
+Use those four names literally. The build step looks for exactly them, and a task
+that describes the same four things in its own words still has to be translated by
+whoever picks it up — which is the point at which one of them quietly goes missing.
+
+Separately, and not part of the contract, every task needs **a place in the
+dependency order**: which earlier tasks must close first, following the platform
+order above. That one is a planning concern — it governs the sequence tasks are
+written in, not what a builder is handed for any single task.
+
+Both questions the contract answers — what this task may touch, and what "done"
+means for it — should be answerable by reading the task on its own, without pulling
+in the rest of the plan for context.
 
 ## Common Rationalizations
 
@@ -171,6 +189,9 @@ for context.
 
 - A task with no acceptance criterion of its own — it can't be reviewed
   independently.
+- A task with no `evidenceFile` — the build step has nowhere to record the real
+  identifiers it created, so the next step re-derives them from the environment and
+  the plan quietly becomes the only record of what was supposed to happen.
 - A task that touches three or more object types at once (for example, a record
   type, an interface, and a process model in a single entry).
 - A plan with no dependency order — tasks are listed, not sequenced against what
@@ -192,8 +213,13 @@ for context.
 
 Before treating a plan as ready to build against, confirm:
 
+- [ ] Every task carries all four contract parts under those names —
+      `allowedObjects`, `acceptanceCriteria`, `requiredGates`, `evidenceFile` — not
+      three of them, and not the same ideas under different names.
 - [ ] Every task has an acceptance criterion, written in the plan itself — not
       deferred to when the task starts.
+- [ ] Every task names where its evidence gets recorded, and that location is
+      recorded as project configuration rather than assumed.
 - [ ] Tasks are ordered by dependency, following the platform order above (data
       source → record type → query → rule/constant → interface → security →
       verified with test data), not by convenience or by object type.
