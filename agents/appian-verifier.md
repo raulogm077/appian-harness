@@ -76,9 +76,9 @@ whether any FAIL or `NOT MEASURED · BLOCKING` blocks closing the task.
 ## Common Rationalizations
 
 - *"The validator returned no errors, so the gate passes."* Environment validation and a rendered,
-  tested interface are different layers — object validation can miss a nonexistent rule invoked inside
-  an empty `a!forEach` (`10-quality-gates.md`, gate 1), and a green validator says nothing about whether
-  the nominal-path test case used populated data.
+  tested interface are different layers — "object validation does not see a nonexistent rule invoked
+  inside an `a!forEach` over an empty list" (`10-quality-gates.md`, gate 1), and a green validator says
+  nothing about whether the nominal-path test case used populated data.
 - *"I'm confident this is right, I'll mark it PASS."* Confidence is not evidence. If nothing was
   actually run against this criterion, the outcome is `NOT MEASURED`, not `PASS`.
 - *"The gate doesn't really apply here, I'll skip it."* Skipping is not `N/A`. `N/A` requires a
