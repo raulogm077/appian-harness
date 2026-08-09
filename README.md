@@ -453,6 +453,8 @@ on one object.
 | `scripts/` | Six modules: `validate_verdict.py`, `lint_skills.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `parallel_safety.py`, `check_readme_claims.py` |
 | `commands/` | One command: `/appian-init`, which adopts the harness into a project |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
+| `CHANGELOG.md` | What each release changed for a project that upgrades and edits nothing. Read it before upgrading: a gate that *stops* firing announces nothing, so that is the only place it is announced |
+| `.github/workflows/` | The checks, on Linux and Windows × Python 3.9 and 3.13 |
 
 The Python carries its own tests — 132 for `scripts/`, 167 for `hooks/`, standard
 library only:
@@ -535,9 +537,13 @@ and then stable while state changes every task, and a file that is both is
 trusted as neither. It cuts the work into vertical slices — record type → query
 rule → interface → test case — ordered by the dependencies Appian actually
 imposes, and gives each task four named parts: `allowedObjects`,
-`acceptanceCriteria`, `requiredGates`, `evidenceFile`. Still nothing automated,
-but this is where the later prompts are decided: `TASK-3` listing seven objects
-is a task that will stop at every write.
+`acceptanceCriteria`, `requiredGates`, `evidenceFile`. Two more are optional and
+both are decided here rather than at build time, by someone who is not about to
+be inconvenienced by them: `risk`, which sets how many verdicts close the task,
+and `requiresHumanConfirmation`, which stops an unattended run and hands the
+task to a person. Still nothing automated, but this is where the later prompts
+are decided: `TASK-3` listing seven objects is a task that will stop at every
+write.
 
 **3. `appian-build TASK-3`** — invoked by name, or reached by `appian-run`
 inside an authorized run. It is the one skill with irreversible side effects,
@@ -919,6 +925,10 @@ Two ways to move it:
 
 The first is the one to build a habit around; the second is for when you are
 iterating on the plugin itself and versioning every experiment is absurd.
+
+**Before you move it, read [`CHANGELOG.md`](CHANGELOG.md).** An upgrade can make
+a gate stop firing, and that is the one kind of change nothing reports at
+runtime — a gate that starts firing tells you itself. `0.2.0` has two of them.
 
 ### The installed copy carries files that are not in git
 
