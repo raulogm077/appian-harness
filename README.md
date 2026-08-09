@@ -374,9 +374,19 @@ python3 scripts/n2_interface_tree.py TREE_JSON [--empty-path]
 python3 scripts/n3_process_layout.py LAYOUT_JSON
 ```
 
-Each prints one line per finding and exits non-zero when it finds any, the same
-shape `validate_verdict.py` uses, so a clean run is distinguishable from a run
-that never happened. `appian-verify` names them and says what each catches and
+Each prints one line per finding and exits **0** clean, **1** findings, **2**
+usage, **3** `NOT MEASURED`, so a clean run is distinguishable from a run that
+never happened. That last code is what makes the sentence true, and it had to be
+earned: both checkers used to answer `OK` and exit 0 when they did not
+understand their input, so an unrecognised screen looked exactly like a checked
+one. **N2** answers 3 when a tree holds no component of a type it judges — run
+it with no arguments to see that vocabulary, which is built from the constant
+the checks apply rather than restated beside it — and it names the types it saw
+but does not judge even on a run that did measure something, so a partial gap is
+visible instead of assumed empty. **N3** answers 3 when a layout names no nodes.
+`lint_skills.py` uses the same code for its own zero-skills case, which is where
+this plugin first argued that nothing checked is not a pass.
+`appian-verify` names them and says what each catches and
 what it cannot — but **no hook runs them for you**. They are checkers a verify
 step invokes, not checks the harness performs on your behalf, and describing
 them any other way would be the overclaim this plugin exists to argue against.
@@ -439,7 +449,9 @@ was deleted, which is what closing a task looks like to the gate.
 real heading and rejecting both a fabricated anchor and a nonexistent reference
 file. `n2_interface_tree.py` and `n3_process_layout.py` were run from the
 command line over sample inputs, each returning findings with exit 1, a usage
-message with exit 2, and 0 on a clean input. The two
+message with exit 2, 0 on a clean input, and **3 on an input neither of them
+understands** — a component tree of unrecognised types for N2, a layout naming
+no nodes for N3. Both of those returned 0 until 2026-08-09. The two
 `/plugin` commands themselves are **unverified**: they are Claude Code commands
 rather than shell commands, and installing a plugin only means anything after a
 restart, so nobody has run them for this repository.

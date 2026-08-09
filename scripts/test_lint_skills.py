@@ -163,7 +163,10 @@ class TestMainSkillCount(unittest.TestCase):
             out = io.StringIO()
             with redirect_stdout(out):
                 rc = main(t)
-            self.assertNotEqual(rc, 0)
+            # 3 is the plugin's NOT MEASURED exit across every checker, kept
+            # distinct from 1 (real findings) so "nothing was checked" and
+            # "something was checked and failed" stop being one signal.
+            self.assertEqual(rc, 3)
             self.assertIn("NOT MEASURED", out.getvalue())
             self.assertNotIn("All skills passed", out.getvalue())
 

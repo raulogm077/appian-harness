@@ -11,6 +11,13 @@ import sys
 MIN_DX = 150
 MIN_DY = 100
 
+# Same value and same meaning as n2_interface_tree.EXIT_NOT_MEASURED and
+# lint_skills: nothing was checked, which is neither a pass nor a finding.
+# N2's vacuous pass has a narrower form here -- a layout naming no nodes had
+# nothing to compare and reported OK, indistinguishable from a process model
+# that was checked and found clean.
+EXIT_NOT_MEASURED = 3
+
 # The check ids jump from C3 to C5, and that gap is deliberate rather than an
 # omission to be filled later. C4 was to be a lane check -- "the nominal path
 # sits on one y, branches get their own" -- and nodes plus edges do not carry
@@ -89,7 +96,8 @@ LAYOUT_JSON  a file holding one process model's node coordinates and its
              (field experience) -- so a clean run is not a clean diagram.
 
 Exit codes match the plugin's other checkers: 0 clean, 1 findings (or an input
-that cannot be read), 2 usage."""
+that cannot be read), 2 usage, 3 NOT MEASURED -- nothing was checked, which a
+layout naming no nodes is."""
 
 
 def _shape_errors(data):
@@ -132,6 +140,15 @@ def main(argv):
     if shape_error:
         print("ERROR %s: %s" % (path, shape_error))
         return 1
+
+    if not data["nodes"]:
+        # Nodes are what get measured. A layout naming none of them -- with
+        # or without edges -- compared nothing, and reporting that as clean
+        # is the vacuous pass this plugin argues against everywhere else.
+        print("NOT MEASURED %s: the layout names no nodes, so no separation, direction or "
+              "connectivity check ran. This is not a clean layout; it is an unchecked one."
+              % path)
+        return EXIT_NOT_MEASURED
 
     findings = check_layout(data["nodes"], data["edges"])
     for f in findings:

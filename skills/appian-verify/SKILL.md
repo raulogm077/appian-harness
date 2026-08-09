@@ -117,8 +117,13 @@ python scripts/n2_interface_tree.py TREE_JSON [--empty-path]
 python scripts/n3_process_layout.py LAYOUT_JSON
 ```
 
-Both print one line per finding and exit non-zero when they find any, so a `NOT MEASURED` here is
-distinguishable from a clean run rather than being assumed.
+Both print one line per finding and exit **0 clean, 1 findings, 2 usage, 3 NOT MEASURED**, so a
+`NOT MEASURED` here is distinguishable from a clean run rather than being assumed. Exit 3 is the one
+worth knowing about: it means the checker did not understand what it was handed — a component tree
+made of types N2 does not judge, or a layout naming no nodes — and it is **not** a pass. Both used to
+answer `OK` in that case, which is the vacuous pass this plugin argues against everywhere else. Run
+`n2_interface_tree.py` with no arguments to see the component types it judges; a tree outside that
+vocabulary needs a person, not a green tick.
 
 - **N2 — `n2_interface_tree.py`**, over the **evaluated** component tree a rendered-interface test
   returns. What it catches that nothing else can: colours that resolved out of the database and

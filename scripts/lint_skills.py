@@ -7,6 +7,10 @@ import os, re, sys
 
 MAX_DESCRIPTION = 1024
 
+# Shared with n2_interface_tree and n3_process_layout: nothing was checked,
+# which is neither a pass (0) nor a finding (1).
+EXIT_NOT_MEASURED = 3
+
 REQUIRED_SECTIONS = [
     "## Overview",
     "## When to Use",
@@ -153,10 +157,12 @@ def main(root):
     # Zero skills checked is NOT a pass: "All skills passed" would be
     # trivially true of nothing. This harness exists to keep "verified" from
     # being confused with "not measured", so say NOT MEASURED explicitly and
-    # fail the run.
+    # fail the run -- with exit 3, which every checker in this plugin now
+    # uses for that condition, kept distinct from 1 so "nothing was checked"
+    # and "something was checked and failed" stop being one signal.
     if checked == 0:
         print("\nNOT MEASURED: skills/ exists but contains no SKILL.md files; 0 skills were validated.")
-        return 1
+        return EXIT_NOT_MEASURED
     if failed:
         print("\n%d skill(s) failed." % failed)
         return 1

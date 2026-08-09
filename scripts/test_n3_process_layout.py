@@ -88,5 +88,44 @@ class TestCLI(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("ERROR", out)
 
+
+class TestEmptyLayoutIsNotAPass(unittest.TestCase):
+    """N2's vacuous pass in its narrower N3 form: a layout naming no nodes
+    had nothing to check and said OK, exit 0 -- indistinguishable from a
+    process model that was checked and found clean."""
+
+    def run_main(self, args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(["n3_process_layout.py"] + args)
+        return code, out.getvalue(), err.getvalue()
+
+    def layout_file(self, root, nodes, edges):
+        p = os.path.join(root, "layout.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump({"nodes": nodes, "edges": edges}, f)
+        return p
+
+    def test_an_empty_node_set_is_not_measured(self):
+        with tempfile.TemporaryDirectory() as t:
+            code, out, _ = self.run_main([self.layout_file(t, {}, [])])
+            self.assertEqual(code, 3)
+            self.assertIn("NOT MEASURED", out)
+            self.assertNotIn("OK ", out)
+
+    def test_edges_without_nodes_are_still_not_measured(self):
+        # Nodes are what get measured. Edges naming nodes that are not
+        # there measure nothing.
+        with tempfile.TemporaryDirectory() as t:
+            code, out, _ = self.run_main([self.layout_file(t, {}, [["a", "b"]])])
+            self.assertEqual(code, 3)
+            self.assertIn("NOT MEASURED", out)
+
+    def test_a_layout_with_nodes_is_still_measured(self):
+        with tempfile.TemporaryDirectory() as t:
+            code, out, _ = self.run_main([self.layout_file(t, GOOD, EDGES)])
+            self.assertEqual(code, 0)
+            self.assertNotIn("NOT MEASURED", out)
+
 if __name__ == "__main__":
     unittest.main()
