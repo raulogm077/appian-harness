@@ -15,17 +15,28 @@ REQUIRED_SECTIONS = [
     "## Verification",
 ]
 
-# A description must say WHEN the skill fires, not only what it is.
-TRIGGER = re.compile(r"\buse (this )?when\b|\buse (before|after|during)\b", re.I)
-# "Do not use when...", "Not for use when...", etc. describe an exclusion,
-# not a trigger. The negation word can be a few words away from "use" ("Not
-# for use when...") rather than directly adjacent to it ("Do not use
-# when..."), so this matches a negation word followed, within the same
-# sentence, by "use" — but a sentence-ending punctuation mark between them
-# breaks the match, so a negation earlier in the description that isn't
-# about the trigger clause ("Not applicable to legacy skills. Use when...")
-# is left alone.
-TRIGGER_NEGATED = re.compile(r"\b(do not|don't|never|avoid|not)\b[^.!?]{0,30}\buse\b", re.I)
+# A description must say WHEN the skill fires, not only what it is. Both the
+# imperative house style ("Use when...") and the third-person form
+# `plugin-dev:skill-development` prescribes ("This skill should be used
+# when...") count: rejecting the latter would refuse a skill written exactly
+# as the official guidance recommends. `plugin-dev:skill-reviewer` found the
+# phrasing choice itself does not affect triggering quality — only the
+# specificity of the stated conditions does — so both forms are accepted on
+# equal footing rather than one being treated as a fallback.
+TRIGGER = re.compile(
+    r"\buse (this )?when\b|\buse (before|after|during)\b"
+    r"|\bused when\b|\bused (before|after|during)\b",
+    re.I,
+)
+# "Do not use when...", "Not for use when...", "should not be used when...",
+# etc. describe an exclusion, not a trigger. The negation word can be a few
+# words away from "use"/"used" ("Not for use when...") rather than directly
+# adjacent to it ("Do not use when..."), so this matches a negation word
+# followed, within the same sentence, by "use" or "used" — but a
+# sentence-ending punctuation mark between them breaks the match, so a
+# negation earlier in the description that isn't about the trigger clause
+# ("Not applicable to legacy skills. Use when...") is left alone.
+TRIGGER_NEGATED = re.compile(r"\b(do not|don't|never|avoid|not)\b[^.!?]{0,30}\bused?\b", re.I)
 
 # name -> documented reason
 SECTION_EXEMPT = {

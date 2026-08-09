@@ -65,6 +65,16 @@ integrations, ALM and testing, sites and navigation, quality gates, reliability
 and operations. The `SKILL.md` is the index: only the reference the change
 touches gets opened.
 
+**Description phrasing.** The six `SKILL.md` files here write their trigger
+clause in the imperative ("Use when...", "Use after..."), not the third person
+`plugin-dev:skill-development` recommends ("This skill should be used
+when..."). That is a deliberate house style, kept consistent across every
+skill in this plugin, not an oversight: `plugin-dev:skill-reviewer` found the
+grammatical person does not itself affect whether a description triggers —
+what does is the specificity of the conditions it states. `scripts/lint_skills.py`
+accepts both forms, so a contributor who follows the official third-person
+guidance is not rejected for it.
+
 ## Agents
 
 The skills orchestrate; three agents do the judging, each in its own context so

@@ -1,6 +1,8 @@
 ---
 name: appian-verifier
 description: Produces the per-gate verification report for one completed Appian task, with the evidence that produced each result. Use after a task is built and before it is reviewed or closed.
+model: inherit
+color: green
 skills: [appian-best-practices]
 tools: Read, Grep, Glob, Bash
 ---

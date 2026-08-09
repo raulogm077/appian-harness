@@ -95,6 +95,29 @@ class TestLintSkill(unittest.TestCase):
             p = write(t, "appian-build", "Not for drafts! Use when publishing.")
             self.assertEqual(lint_skill(p), [])
 
+    def test_third_person_should_be_used_when_passes(self):
+        # plugin-dev:skill-development prescribes this exact third-person
+        # form. A contributor following the official guidance must not have
+        # their skill rejected by this linter.
+        with tempfile.TemporaryDirectory() as t:
+            p = write(t, "appian-build",
+                      "This skill should be used when building an Appian object.")
+            self.assertEqual(lint_skill(p), [])
+
+    def test_third_person_should_be_used_before_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = write(t, "appian-build",
+                      "This skill should be used before a task is closed.")
+            self.assertEqual(lint_skill(p), [])
+
+    def test_third_person_negated_trigger_does_not_count(self):
+        # The negated form of the third-person phrasing must be rejected the
+        # same way "Do not use when..." is, for symmetry.
+        with tempfile.TemporaryDirectory() as t:
+            p = write(t, "appian-build",
+                      "This skill should not be used when the change is cosmetic.")
+            self.assertTrue(any("trigger" in e for e in lint_skill(p)))
+
 
 class TestMainSkillCount(unittest.TestCase):
     def test_empty_skills_dir_is_not_measured_not_pass(self):

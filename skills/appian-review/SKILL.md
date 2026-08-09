@@ -80,8 +80,9 @@ was asked.
 ## Review theatre
 
 If across two or more cycles the reviewer raised substantive findings and
-**none** were classified as actionable, you are validating, not doubting.
-That is an auditable property of the review process itself — check it.
+**none** were classified as actionable, the process is validating, not
+doubting. That is an auditable property of the review process itself —
+check it.
 
 An agent that agrees with every finding it is shown is not a cheap reviewer; it
 is an uninformative one. Two clean cycles in a row can mean the change really

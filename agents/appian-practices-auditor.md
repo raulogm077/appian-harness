@@ -1,6 +1,8 @@
 ---
 name: appian-practices-auditor
 description: Audits one phase of Appian work against official best practices and writes a verdict that cites the reference sections it applied. Use when a design is ready to build, when an object has just been implemented, when a change needs an independent review, or when test evidence must be checked against the gate it claims to close.
+model: inherit
+color: yellow
 skills: [appian-best-practices]
 tools: Read, Grep, Glob, Bash
 ---

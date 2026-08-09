@@ -1,6 +1,8 @@
 ---
 name: appian-reviewer
 description: Reviews one Appian change from a clean context, receiving the artifact and the contract but never the builder's conclusion. Use when a change creates an object, writes data, exposes information, changes authorization, queries at volume, or touches a screen a user sees.
+model: inherit
+color: red
 skills: [appian-best-practices]
 tools: Read, Grep, Glob
 ---

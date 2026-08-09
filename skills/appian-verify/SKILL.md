@@ -1,6 +1,6 @@
 ---
 name: appian-verify
-description: Verifies one built Appian task gate by gate and records the evidence, dispatching the practices auditor for the implementation and quality phases. Use after appian-build finishes a task and before the task is reviewed or closed.
+description: Verifies one built Appian task gate by gate and records the evidence. Use after appian-build finishes a task and before it is reviewed or closed — when asked to "verify this task", "run the gates", "check the evidence", or "is this task done". Not mid-build, and not a substitute for appian-review's independent design judgement.
 ---
 
 ## Overview
