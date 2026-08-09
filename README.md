@@ -193,11 +193,17 @@ message with exit 2, 0 on a clean input, and **3 on an input neither of them
 understands** — a component tree of unrecognised types for N2, a layout naming
 no nodes for N3. Both of those returned 0 until 2026-08-09.
 
-The three installation steps are **not verified by running them**: `/plugin
-marketplace add` and `/plugin install` are Claude Code commands rather than
-shell commands, so nobody here can execute them, and the sequence above is
-written from the current Claude Code documentation on adding marketplaces and
-installing plugins. What is no longer hypothetical is the failure mode. This
+The three installation steps are **not verified as slash commands**: `/plugin
+marketplace add` and `/plugin install` run inside Claude Code, so nobody here
+can type them from a shell. Their CLI equivalents were run, which is a weaker
+claim rather than the same one: on 2026-08-09 `claude plugin marketplace add
+raulogm077/appian-harness` and `claude plugin install
+appian-harness@appian-harness --scope user` were executed in that order against
+this repository, the marketplace registered with a `github` source, and the
+installed copy under `~/.claude/plugins/cache` compared file by file against
+`git ls-files` — identical, 38 files, nothing extra. What that leaves untested
+is the slash-command surface itself, the scope prompt step 2 opens, and the
+restart in step 3. What is no longer hypothetical is the failure mode. This
 section used to open with a bare `/plugin install appian-harness`; the first
 person to follow it copied that first code block, and it answered `Plugin
 "appian-harness" not found in any marketplace` (field experience). Hence the
@@ -710,6 +716,13 @@ Two ways out, and the first is the one to prefer:
 Either way the repair is to fix the source and install again — installing
 replaces the cached copy, so there is nothing to go and delete inside
 `~/.claude/plugins/cache`.
+
+Comparing an installed copy with `git ls-files` turns up one file that no
+source produced: `.in_use/<pid>`, which Claude Code writes to mark the copy as
+in use. That one belongs there. A `__pycache__` entry appearing after the hooks
+have run does not, and no longer happens — `run_hook.sh` exports
+`PYTHONDONTWRITEBYTECODE`, because bytecode written next to the source is
+exactly what makes the copy stop being comparable.
 
 ### The hooks do nothing
 

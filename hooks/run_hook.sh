@@ -30,6 +30,15 @@
 
 set -u
 
+# The interpreter is about to import harness_hooks.py -- and, through the
+# closure gate, validate_verdict.py -- from inside the installed plugin.
+# Python caches bytecode next to the source, so a plugin that starts out
+# identical to its repository grows __pycache__ directories the first time a
+# hook fires. Nothing breaks, but the copy stops being comparable with
+# `git ls-files`, which is how anyone checks what they are actually running.
+PYTHONDONTWRITEBYTECODE=1
+export PYTHONDONTWRITEBYTECODE
+
 PLUGIN_ROOT=${1:-}
 SUBCOMMAND=${2:-}
 SCRIPT="$PLUGIN_ROOT/hooks/harness_hooks.py"
