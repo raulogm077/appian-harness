@@ -107,6 +107,47 @@ if [ -f "$PROJECT_ROOT/.claude/appian-harness.json" ]; then
     CONFIGURED=1
 fi
 
+# Whether Claude Code marked this as the repeat Stop attempt. Builtins only,
+# and that is the whole point of the function.
+#
+# It used to be `payload=$(cat)` piped through `tr -d '[:space:]'` into
+# `grep -q`, and all three of those are external commands. Everything below
+# this line runs only when the environment is already too broken to start a
+# Python 3 -- and a PATH stripped bare is missing `cat` and `grep` exactly as
+# readily as it is missing `python3`. The pipeline then failed, the test read
+# false, and "block once, then approve loudly" became block forever: the
+# deadlock the comment in the closure-gate branch says must not happen, in
+# the one branch written to prevent it.
+#
+# Linux CI caught it and this machine never could. Git for Windows ships
+# coreutils in the same directory as sh.exe, so on Windows the shell being
+# findable at all means `cat` and `grep` are findable too -- the starved test
+# there is not as starved as it reads.
+#
+# `read` is a builtin; the `|| [ -n "$_line" ]` keeps a last line with no
+# newline after it. The whitespace collapse is what `tr -d` was doing:
+# word-split on IFS, re-join with an empty IFS, so `"stop_hook_active":true`
+# and `"stop_hook_active": true` compare equal -- nothing obliges Claude Code
+# to pick one spelling. `set --` inside a function touches only the
+# function's own positional parameters.
+is_repeat_stop() {
+    _payload=''
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _payload="$_payload$_line"
+    done
+    set -f
+    # shellcheck disable=SC2086
+    set -- $_payload
+    IFS=''
+    _payload="$*"
+    unset IFS
+    set +f
+    case "$_payload" in
+        *'"stop_hook_active":true'*) return 0 ;;
+    esac
+    return 1
+}
+
 case "$SUBCOMMAND" in
     session-start)
         # The requirements check is the one hook whose whole purpose is to
@@ -138,8 +179,7 @@ case "$SUBCOMMAND" in
             # then approve loudly. The systemMessage is the whole record in
             # this mode -- writing the deferred-debt entry would need the
             # config parsed, which is precisely what is unavailable.
-            payload=$(cat)
-            if printf '%s' "$payload" | tr -d '[:space:]' | grep -q '"stop_hook_active":true'; then
+            if is_repeat_stop; then
                 printf '%s\n' "{\"decision\":\"approve\",\"systemMessage\":\"$NOTE This task is closing UNMEASURED: no verdict was checked. Install a Python 3 interpreter and re-run the audits before trusting this task as verified.\"}"
             else
                 printf '%s\n' "{\"decision\":\"block\",\"reason\":\"$NOTE The closure gate could not check the practices-implementation, practices-review and practices-qa verdicts, so this task must not be treated as verified. Install a Python 3 interpreter on PATH as python3, python or py -3.\"}"

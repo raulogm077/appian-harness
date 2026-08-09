@@ -122,6 +122,13 @@ on one if you call it trivial, and needs four if you call it high.
   is documented, and could not see `maxAllowedObjects`, which reaches the config
   through a helper. It was documented by luck while the checker reported
   agreement.
+- The launcher's no-interpreter branch decided "is this the repeat Stop?" with
+  `cat`, `tr` and `grep` — three external commands, in the one branch that runs
+  only when the environment is too broken to start Python. On a stripped PATH
+  they are missing as readily as `python3` is, so the test read false and
+  *block once, then approve* became block forever. It now uses shell builtins
+  only. Found by CI on Linux; a Windows-only run could not have found it,
+  because Git for Windows ships those commands in the same directory as `sh`.
 
 ## 0.1.1 — 2026-08-09
 
