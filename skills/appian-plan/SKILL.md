@@ -132,9 +132,11 @@ Keep them separate:
 
 The state is written for a person, and it is not the build step's active task
 file: that one is a machine-readable record of the single task in flight right
-now, written by the build step when it takes a task and removed when it stops.
-Both name the current task while a build is running; they are still two
-artifacts, and this skill writes only the first.
+now, written by the build step when it takes a task and removed by the review
+step when the task closes — not when the build stops, which is a handoff into
+verification rather than the end of anything. Both name the current task while
+a task is in flight; they are still two artifacts, and this skill writes only
+the first.
 
 **Where they live is project configuration, not something this skill decides.** Ask
 the project — or whoever is driving it — where the plan and the state file belong

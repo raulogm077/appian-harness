@@ -65,7 +65,8 @@ side effects the user did not necessarily ask for in that exact moment.
 4. Implement, using `appian-best-practices` for the domains the change touches.
 5. Local verification.
 6. Record what was created or changed, with real identifiers.
-7. **STOP.** Do not continue to the next task.
+7. **STOP.** Do not continue to the next task, and leave the active task file
+   in place — the task is still in flight until it is verified and reviewed.
 
 ## The Task Contract
 
@@ -170,10 +171,21 @@ written the way the write call will actually name each object — the gate reads
 the target out of the tool's own arguments and compares strings, so an entry
 that describes an object instead of naming it never matches.
 
-**When step 7 stops, clear that file — delete it.** A stale active task is
-worse than no active task: the next write is measured against the previous
-task's contract, and allowed or questioned on grounds that have nothing to do
-with it, while everything still looks like it is working.
+**When step 7 stops, leave that file exactly where it is.** This skill stopping
+does not mean the task is finished — it stops *so that* verification and review
+can run, and the closure gate approves any stop with no task in flight, so
+deleting the file here silently switches that gate off for the entire nominal
+flow. The task stays in flight across `appian-verify` and `appian-review`, and
+**`appian-review` deletes it when the task actually closes.** That skill is the
+last phase before close and the only one positioned to know the task is over;
+see *The active task file is cleared at close, by `appian-review`* there.
+
+A stale active task is still worse than no active task — the next write gets
+measured against the previous task's contract, and is allowed or questioned on
+grounds that have nothing to do with it, while everything still looks like it
+is working. What prevents that is `appian-review` clearing the file at close,
+not this skill clearing it early. If step 1 takes a task while the file still
+names an older one, overwrite it: exactly one task is in flight at a time.
 
 Absence is not a lockout, and three cases differ:
 
@@ -189,10 +201,28 @@ This file is not the plan's operational state, and the two must not grow into
 each other. The operational state is written for a person: which task is
 active, what is next, what is blocked. The active task file is the
 machine-readable statement of which single task is in flight right now, written
-by this skill when it takes one and removed when it stops. They name the same
-task while a build is running, and that is fine — they are still different
-artifacts, rewritten by different steps at different moments, and the one the
-gates open cannot carry a queue.
+by this skill when it takes one and removed by `appian-review` when the task
+closes. They name the same task while a build is running, and that is fine —
+they are still different artifacts, rewritten by different steps at different
+moments, and the one the gates open cannot carry a queue.
+
+## Expect the STOP in step 7 to be blocked
+
+The closure gate runs on `Stop` and asks for three verdicts —
+`practices-implementation`, `practices-review` and `practices-qa`. None of them
+exist yet when this skill finishes, because none of them can: they are produced
+by `appian-verify` and `appian-review`, which run after this. So the ordinary,
+correct outcome of a clean build is a blocked stop naming those three.
+
+That block is not a failure and nothing has broken. It is the handoff, stated
+by the harness rather than left to memory: the task is genuinely unverified at
+that moment, and the gate is saying which phase runs next. Read the reason it
+prints, hand the task to `appian-verify`, and let review close it.
+
+What that block must not turn into is a reason to delete the active task file
+so the stop goes through. That trades a message for a silently unguarded task —
+the gate would then approve, having checked nothing, and the three phases it
+exists to enforce would go unmeasured with no record that they did.
 
 ## Stop before anything irreversible
 
@@ -243,6 +273,15 @@ first unverified result. If you cannot determine the state, stop and ask.
 - *"I know which task I'm on, writing it to a file is bookkeeping."* The gates
   cannot read what this skill knows; they read the active task file. Skipping it
   does not make the build faster, it makes every single write ask.
+- *"The gate blocked my stop, so something is broken."* Nothing is broken. The
+  block is the handoff: the task is built and not yet verified, which is exactly
+  what it says. The way past it is `appian-verify` and then `appian-review`, not
+  a change to the active task file.
+- *"I'm done, so I'll tidy up the active task file on my way out."* Deleting it
+  here is not tidying, it is disabling the closure gate for this task — with no
+  task in flight the gate approves without checking anything, and the three
+  post-write verdicts stop being required by anything at all. The file is
+  cleared at close, by `appian-review`, and closing is not this skill's moment.
 
 ## Red Flags
 
@@ -250,7 +289,9 @@ first unverified result. If you cannot determine the state, stop and ask.
 - Issuing the first write with no `phase=design` verdict for this task, or with
   one whose outcome the gate does not accept.
 - Taking a task without writing the active task file, or leaving it pointing at
-  a task that already stopped.
+  a task that already closed.
+- Deleting the active task file at STOP, or to get past a blocked stop. It is
+  cleared at close, by `appian-review`, and this skill stopping is not a close.
 - Recreating an object that preflight already found PRESENT.
 - Retrying a write after an error or timeout without first reading back whether
   it persisted.
@@ -271,8 +312,8 @@ Before handing this task off:
   `PASS`, or `NOT_MEASURED` with `notMeasuredClass` `DEFERRED` and both an
   `owner` and a `closingCondition` — anything else stopped the build.
 - The active task file was written when this task was taken, carries this task's
-  `id` and its `allowedObjects` under exactly those names, and was deleted at
-  STOP rather than left behind.
+  `id` and its `allowedObjects` under exactly those names, and is still in place
+  at STOP — it is `appian-review` that removes it, at close.
 - Nothing outside `allowedObjects` was created, modified, or deleted.
 - Every gate in `requiredGates` has a recorded result — PASS, FAIL, or NOT
   MEASURED with a reason — not silence and not an assumed PASS.

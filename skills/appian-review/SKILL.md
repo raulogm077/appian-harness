@@ -48,6 +48,48 @@ and everything under it is the plugin's fixed shape. That is the file the
 plugin's closure gate opens when it asks whether this change was reviewed, so
 a review recorded only in `evidenceFile` closes nothing.
 
+## The active task file is cleared at close, by this skill
+
+`appian-build` writes the active task file — `activeTaskFile` in
+`.claude/appian-harness.json`, `tasks/current.json` when that file names none —
+when it takes a task, and deliberately leaves it in place when it stops. A task
+is not finished because the building stopped; it stops so that verification and
+review can happen. The file therefore stays in flight through `appian-verify`
+and through this skill, and **this skill deletes it as the last act of the
+task**, because review is the last phase before close and nothing after it would
+have a reason to look.
+
+That ordering is the whole point, so it is worth stating as a sequence rather
+than a rule: the verdicts are written first, and the deletion comes last. It is
+the recorded act of closing, not a cleanup step that could be done early.
+Deleting the file before `practices-review.json` exists produces a task that
+looks closed to the closure gate — with nothing in flight it approves without
+checking anything — while the review it was waiting on never happened.
+
+Two paths reach that deletion, and both end the same way:
+
+- **The change entered review.** Both agents ran with `phase=review`, the
+  auditor's verdict is at `<evidenceDir>/<task>/practices-review.json`, and
+  every finding is recorded with its classification. Then delete the file.
+- **The change was exempt.** The entry threshold below was evaluated by someone
+  outside the build step — never by whoever made the change — and the exemption,
+  with who made the call and against which four conditions, is written into the
+  task's evidence. Then delete the file.
+
+Evaluating the entry threshold is itself this phase's work, so this skill is
+invoked once per task even when the answer turns out to be "exempt". A task that
+nobody routed here has not been found exempt; it has been left unexamined, and
+its active task file is still sitting in flight.
+
+One consequence of the exempt path is worth knowing before it surprises you: the
+closure gate has no way to see an exemption. It asks for a valid, passing
+`practices-review.json` and nothing else, so a stop taken while an exempt task is
+still in flight blocks, and a repeated stop records `NOT_MEASURED` / `BLOCKING`
+debt naming `practices-review` — accurate about the absence, misleading about the
+reason. Delete the active task file once the exemption is recorded and the stop
+passes cleanly; the gate is quiet because the task is closed, which is the truth
+of it.
+
 ## When to Use
 
 Review **enters** when a change:
@@ -101,6 +143,8 @@ of the *process*, not of any single review.
 | "The last review of a change like this one passed clean, so this one will too." | Each change gets its own review against its own contract. Resemblance to a prior clean review is not evidence — it is the same shortcut that produces review theatre if repeated across cycles. |
 | "The finding wasn't marked actionable, so nothing needs to change here." | True only if the classification was made by someone with standing to make it, for a real reason. A pattern of findings that never land as actionable is the signal this skill exists to catch, not a track record to lean on. |
 | "Both reviewers came back clean, so the change is solid." | The two agents audit different things — the contract and the doctrine — not the same thing twice. Agreement between them says nothing about what neither one is scoped to check. |
+| "I'll clear the active task file first so the session can stop, then review." | That inverts the only ordering that makes the file mean anything. With nothing in flight the closure gate approves a stop without checking a single verdict, so the review it was waiting on becomes optional at exactly the moment it was about to happen. Verdicts first, deletion last. |
+| "This change is exempt, so there is nothing for me to do here." | The exemption *is* the work: evaluated by someone outside the build step, checked against all four conditions, written into the task's evidence, and then the active task file cleared. A task nobody routed here has not been found exempt — it is unexamined, and still in flight. |
 
 ## Red Flags
 
@@ -119,6 +163,13 @@ of the *process*, not of any single review.
   task's evidence.
 - A change that touches data, permissions, or an on-screen component treated as
   if it met the exemption threshold without being checked against it.
+- The active task file deleted before the `phase=review` verdict exists, or
+  before an exemption has been recorded. That deletion is the act of closing;
+  taken early it hands the closure gate a session with nothing in flight, which
+  it approves without checking anything.
+- The active task file still in place after this skill has finished. The task is
+  closed and the file now measures the *next* task's writes against this task's
+  contract, while everything still looks like it is working.
 
 ## Verification
 
@@ -142,3 +193,7 @@ Before treating a change as reviewed:
 - [ ] The last two or more review cycles were checked for the review-theatre
       pattern — substantive findings raised but none classified actionable —
       and if present, it was flagged rather than passed through.
+- [ ] The active task file was deleted, and deleted **last** — after the
+      `phase=review` verdict existed, or on the exempt path after the exemption
+      was recorded by someone outside the build step. Not before either, and not
+      left behind.
