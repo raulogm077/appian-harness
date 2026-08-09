@@ -62,7 +62,7 @@ wrong direction.
 | `scripts/` | Four modules: `validate_verdict.py`, `lint_skills.py`, `n2_interface_tree.py`, `n3_process_layout.py` |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
 
-The Python carries its own tests — 43 for `scripts/`, 16 for `hooks/`, standard
+The Python carries its own tests — 53 for `scripts/`, 16 for `hooks/`, standard
 library only:
 
 ```
@@ -157,9 +157,12 @@ side effects. In order, it:
   retry blind, read back whether it persisted;
 - records the identifiers the environment actually returned into the task's
   `evidenceFile`;
-- **deletes the active task file, and stops.** One task, one stop. A stale
-  active task is worse than none — it measures the next write against the
-  previous contract while everything still looks like it is working.
+- **stops, and leaves the active task file exactly where it is.** One task, one
+  stop — but stopping is a handoff into verification, not the end of the task,
+  so the task stays in flight and `appian-review` clears the file at close. The
+  ordinary consequence is that this stop is *blocked* by the closure gate,
+  naming the three verdicts that do not exist yet. That is the harness stating
+  the handoff rather than leaving it to memory.
 
 **4. `appian-verify`** — a fresh invocation, because the builder is the worst
 judge of its own work. It dispatches the auditor with `phase=implementation`
@@ -181,7 +184,10 @@ domain doctrine. Neither reads the other's output before forming its own, and
 neither is handed anything the builder wrote about why the change should pass.
 The auditor's verdict goes to `evidence/TASK-3/practices-review.json`; the
 findings go to `evidenceFile`. A review recorded only in `evidenceFile` closes
-nothing, because that is not the file the gate opens.
+nothing, because that is not the file the gate opens. Then — **last, after the
+verdict exists** — it deletes the active task file. That deletion is the
+recorded act of closing the task, which is why it belongs to the phase that
+runs last and not to the builder that stopped first.
 
 **6. CLOSE** — no skill; the **closure gate** on `Stop`. While the active task
 file names a task in flight, a stop cannot pass without valid, passing
@@ -191,12 +197,21 @@ instead of deadlocking, and writes the omission to
 `evidence/deferred-debt.jsonl` as `NOT_MEASURED` / `BLOCKING` — recorded, not
 waived.
 
-One consequence of that sequencing is worth knowing before you rely on it:
-`appian-build` deletes the active task file when it stops, and the closure gate
-approves whenever no task is in flight. So the three-verdict check bites on a
-session that stops with a task still open — not on the verify and review
-sessions that follow a clean build. Where that boundary belongs is an open
-design question in this plugin, not a settled answer.
+The sequencing is what makes that gate reach anything, so it is worth stating
+outright: **a task is in flight from the moment `appian-build` takes it until
+`appian-review` deletes the file, and the closure gate approves any stop with
+nothing in flight.** Every stop in between — the builder's own, and any stop
+during verification or review — meets the three-verdict check. Until
+2026-08-09 `appian-build` deleted that file when it stopped, which left nothing
+in flight and made this gate approve, unchecked, in exactly the flow everyone
+uses; the check only ever bit on a session that happened to stop with a task
+still open.
+
+The visible cost of the fix is that a clean build now ends in a blocked stop.
+That block is correct — the task really is unverified at that moment — and its
+wording names the next phase rather than only what is missing. The wrong way
+past it is deleting the active task file, which does not satisfy the gate but
+retires it.
 
 ## The gates
 
@@ -213,7 +228,8 @@ central parts of it hold whether or not the agent agrees:
   deadlocking, and records the omission as `NOT MEASURED · BLOCKING` debt,
   because a guardrail that cannot be satisfied gets switched off and then
   protects nothing. With no task in flight it approves without checking
-  anything — see the note at the end of the walkthrough.
+  anything — which is why the file survives the builder's stop and is cleared
+  only at close; see the note at the end of the walkthrough.
 - **write log** and **failure notice** — the harness records what was written,
   and tells an agent not to retry a failed write blind.
 
@@ -316,11 +332,20 @@ project's test cases and regression command; N5 and N6 are people. N2 and N3 are
 the only levels this repository implements as code — `scripts/n2_interface_tree.py`
 (`check_tree(tree, empty_path=False)`, over an evaluated component tree) and
 `scripts/n3_process_layout.py` (`check_layout(nodes, edges)`, over node
-coordinates). Both are importable modules with unit tests and **no command-line
-entry point, and nothing in this plugin dispatches them**: no skill, no agent and
-no hook calls either one today. They are checkers a verify step can call, not
-checks the harness runs on your behalf, and describing them any other way would
-be the overclaim this plugin exists to argue against.
+coordinates). Both are importable modules with unit tests **and a command-line
+entry point**:
+
+```
+python3 scripts/n2_interface_tree.py TREE_JSON [--empty-path]
+python3 scripts/n3_process_layout.py LAYOUT_JSON
+```
+
+Each prints one line per finding and exits non-zero when it finds any, the same
+shape `validate_verdict.py` uses, so a clean run is distinguishable from a run
+that never happened. `appian-verify` names them and says what each catches and
+what it cannot — but **no hook runs them for you**. They are checkers a verify
+step invokes, not checks the harness performs on your behalf, and describing
+them any other way would be the overclaim this plugin exists to argue against.
 
 ## Installing
 
@@ -369,9 +394,18 @@ they answered correctly in six cases, including the whole chain ending in
 active task; ask for an object outside `allowedObjects`; **allow** with an
 active task, the object in scope and a valid passing `practices-design.json`;
 block on a stop with a task in flight and no verdicts; and
-approve-with-recorded-debt on the repeat stop. `validate_verdict.py` was run the
-same way, accepting a citation resolved from a real heading and rejecting both
-a fabricated anchor and a nonexistent reference file. The two
+approve-with-recorded-debt on the repeat stop. The closure chain was then run
+again end to end against a scratch project, in the order a real task meets it:
+block with the task in flight and nothing produced; **approve** once
+`practices-implementation`, `practices-review` and `practices-qa` were present,
+valid and passing; approve-with-debt on a repeat stop with them removed, with
+the `deferred-debt.jsonl` line read back; and approve once the active task file
+was deleted, which is what closing a task looks like to the gate.
+`validate_verdict.py` was run the same way, accepting a citation resolved from a
+real heading and rejecting both a fabricated anchor and a nonexistent reference
+file. `n2_interface_tree.py` and `n3_process_layout.py` were run from the
+command line over sample inputs, each returning findings with exit 1, a usage
+message with exit 2, and 0 on a clean input. The two
 `/plugin` commands themselves are **unverified**: they are Claude Code commands
 rather than shell commands, and installing a plugin only means anything after a
 restart, so nobody has run them for this repository.
@@ -548,12 +582,25 @@ and the one people hit first is a missing `phase=design` verdict at
 produces it — nothing else in the lifecycle does, and `appian-verify` scopes
 `design` out on purpose.
 
-### The closure gate blocks and the verdicts cannot be produced
+### The closure gate blocked my stop
 
-Stop again. The gate blocks the first attempt and approves the repeat, writing
-the omission to `<evidenceDir>/deferred-debt.jsonl` as `NOT_MEASURED` /
-`BLOCKING`. It is recorded, not waived — the point is that the session cannot
-deadlock, not that the work is now verified.
+First check which stop this is. If `appian-build` just finished, the block is
+the expected one and the answer is not a workaround: the task is built and not
+yet verified, and the reason names the phase that produces each missing
+verdict. Run `appian-verify`, then `appian-review`. The block goes away because
+the task closed, which is the point.
+
+What does **not** work is deleting the active task file to get the stop
+through. The gate approves any stop with nothing in flight, so that does not
+satisfy it — it switches it off for the rest of the task.
+
+### The closure gate blocks and the verdicts genuinely cannot be produced
+
+Different case: the auditor is unavailable, or a step depends on a person who
+is not there. Stop again. The gate blocks the first attempt and approves the
+repeat, writing the omission to `<evidenceDir>/deferred-debt.jsonl` as
+`NOT_MEASURED` / `BLOCKING`. It is recorded, not waived — the point is that the
+session cannot deadlock, not that the work is now verified.
 
 ## What this plugin does not do
 
@@ -577,7 +624,9 @@ harness:
   so testing there produces a false positive. That check requires a real user
   per role.
 - **It does not run the N2 and N3 checkers for you.** They exist, they are
-  tested, and nothing dispatches them — see the note under the pyramid.
+  tested, and they have command-line entry points that `appian-verify` names —
+  but no hook invokes them, so a task where nobody ran them has no N2 or N3
+  result, not a passing one. See the note under the pyramid.
 - **It does not run your regression suite.** The command is something a project
   records so the person following the process can find it; no code here reads
   it or executes it.
@@ -599,9 +648,18 @@ Three things about the plugin itself, on the same terms:
   installing [Git for Windows](https://git-scm.com/download/win). This is the
   one failure mode the fail-closed design cannot cover, because the code that
   would fail closed never starts.
-- **The closure gate's reach is narrower than it first reads.** It checks the
-  three verdicts only while a task is in flight; see the note at the end of the
-  walkthrough.
+- **The closure gate checks nothing once a task is closed.** Its reach is
+  exactly the window in which a task is in flight — from `appian-build` taking
+  it to `appian-review` deleting the active task file. Stops outside that
+  window approve without opening a verdict, by design, and a task whose file was
+  cleared early is indistinguishable from one that closed properly. See the note
+  at the end of the walkthrough.
+- **The gate cannot see a review exemption.** `appian-review` is graduated by
+  risk and some changes legitimately do not enter it, but the gate asks for a
+  valid `practices-review.json` and knows nothing about exemptions. Closing an
+  exempt task is therefore recording the exemption and deleting the active task
+  file; stopping before that blocks, and a repeat stop writes debt naming
+  `practices-review` — accurate that it is absent, misleading about why.
 
 A criterion the harness cannot measure is reported as `NOT MEASURED`, with an
 owner and a closing condition. It is never quietly upgraded to `PASS`.
