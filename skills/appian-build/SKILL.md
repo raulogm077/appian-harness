@@ -72,11 +72,29 @@ and operational state live, ask rather than guess a path.
   re-deriving one.
 
 The contract is written in these four names deliberately: it is meant to be read
-by a verification step, a review step, and — the intent, not something that ships
-today — a scope-enforcement hook, none of which should have to re-derive it. If
-any of the four parts is missing before step 3 begins, that is itself a reason to
-stop: building against an incomplete contract just moves the missing decision to
-later, where it is harder to catch.
+by a verification step, a review step, and a scope-enforcement hook, none of
+which should have to re-derive it. If any of the four parts is missing before
+step 3 begins, that is itself a reason to stop: building against an incomplete
+contract just moves the missing decision to later, where it is harder to catch.
+
+## The scope gate measures the contract, not the write
+
+A `PreToolUse` hook checks every write against the active task's `allowedObjects`
+before it reaches the environment. When that list is longer than the project's
+configured budget, the gate asks instead of letting the write through.
+
+That prompt is not the hook being obstructive. It is measuring the same thing
+`appian-plan`'s *One task, one object* names: a task whose `allowedObjects` needs
+that many entries to describe was sized wrong before this skill ever started.
+Answering "yes, proceed" past the prompt does not fix that — it just carries the
+oversized contract into the build.
+
+The gate logs every question it asks — task, tool and reason — and the write log
+records what actually got written afterward. Read together, they turn "do we
+usually say yes to this prompt" into something measurable instead of a guess. If
+the answer usually is yes, that is not evidence the gate is too strict; it is
+evidence the contract needs to be split smaller at plan time, not approved around
+at build time.
 
 ## Stop before anything irreversible
 

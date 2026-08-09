@@ -136,6 +136,19 @@ before writing either one. Don't default to a specific filename or directory: a
 convenient default silently becomes the convention the next project inherits without
 anyone choosing it.
 
+## One task, one object
+
+An MCP server answers a small, precise request far better than an ambitious one
+(field experience). Size tasks accordingly:
+
+**A task is one principal object and its direct dependencies.** If you need the
+word "and" to describe what it does, it is two tasks.
+
+This is not a style preference. A task that touches four objects fails in the
+middle, leaves three of them in an unknown state, and the recovery costs more
+than the split would have. It also makes the task unreviewable: a reviewer
+cannot reject a quarter of it.
+
 ## What a task needs
 
 Every task in the plan carries, at minimum, the four parts of the **task contract**
