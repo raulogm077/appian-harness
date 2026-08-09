@@ -58,7 +58,7 @@ wrong direction.
 | `skills/` | Six skills: five lifecycle phases plus the cross-cutting doctrine |
 | `skills/appian-best-practices/references/` | Eleven domain references, numbered `01`–`11`. Every verdict cites into these |
 | `agents/` | Three judging agents: `appian-practices-auditor`, `appian-reviewer`, `appian-verifier` |
-| `hooks/` | One `hooks.json` declaring four hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
+| `hooks/` | One `hooks.json` declaring five hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
 | `scripts/` | Four modules: `validate_verdict.py`, `lint_skills.py`, `n2_interface_tree.py`, `n3_process_layout.py` |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
 
@@ -215,8 +215,17 @@ retires it.
 
 ## The gates
 
-Everything above is doctrine an agent can decide to skip. Four hooks make the
-central parts of it hold whether or not the agent agrees:
+Everything above is doctrine an agent can decide to skip. Five hooks make
+skipping it **visible and awkward**, and make the cheapest forgery fail — they
+cannot make forgery impossible for an agent that can write files. That
+distinction is the honest version of what this section used to claim, and it is
+worth stating before the list rather than after it: every input the gates read
+is a plain file in your project, and the agent being gated can write all of
+them. What the hooks remove is the *cheap* way past — the missing verdict, the
+fabricated citation, the audit of one task copied over another's, the
+unexplained deferral. What they cannot remove is an agent that sits down and
+authors a coherent lie. The last line of defence there is a person reading the
+citations, which is why the citations must resolve.
 
 - **scope gate** (before any Appian write) — is there an approved active task,
   is this object inside its `allowedObjects`, is the task atomic, and is there a
@@ -232,6 +241,17 @@ central parts of it hold whether or not the agent agrees:
   only at close; see the note at the end of the walkthrough.
 - **write log** and **failure notice** — the harness records what was written,
   and tells an agent not to retry a failed write blind.
+- **evidence-write log** (after any `Write` or `Edit`) — records edits aimed at
+  the three files the gates themselves read: the evidence tree,
+  `.claude/appian-harness.json`, and the active task file. It **logs and does
+  not gate**, deliberately. The auditor legitimately writes verdicts and
+  `appian-build` legitimately writes the active task file, and a hook cannot
+  tell which agent is holding the pen — `PostToolUse` carries the tool and its
+  arguments, never the identity of the subagent that called it. Gating would
+  therefore question the harness's own correct operation on every task, which
+  is the friction that gets a harness switched off; logging costs nothing and
+  turns "did somebody write their own passing verdict?" from unanswerable into
+  a line in `<evidenceDir>/evidence-writes.jsonl`.
 
 The write gate never answers *deny* — the strongest thing it says is *ask* — and
 when the closure gate blocks for missing verdicts it blocks once, approving a
@@ -290,13 +310,27 @@ checked mechanically and everything else is convention.
 
 **Shape is not outcome, and the gates check both.** `validate_verdict.py`
 deliberately says nothing about whether a verdict passed — it answers "is this a
-well-formed audit whose citations resolve?" and stops. The gates add the outcome
-check on top: a phase satisfies a gate only on `PASS`, or on `NOT_MEASURED` with
-`notMeasuredClass: DEFERRED`, which the validator already requires to carry an
-`owner` and a `closingCondition`. `FAIL` never satisfies — a gate that accepts a
-`FAIL` is not a gate. `NOT_MEASURED` / `BLOCKING` never satisfies either: that
-class means the harness could have measured this and did not, which is a process
-failure rather than a limitation.
+well-formed audit of *this* task and *this* phase, whose citations resolve?" and
+stops. The gates add the outcome check on top: a phase satisfies a gate only on
+`PASS`, or on `NOT_MEASURED` with `notMeasuredClass: DEFERRED`, which the
+validator requires to carry an `owner`, a `closingCondition` and a
+`deferredCriterion` naming one entry off the plugin's closed deferrable list.
+`FAIL` never satisfies — a gate that accepts a `FAIL` is not a gate.
+`NOT_MEASURED` / `BLOCKING` never satisfies either: that class means the harness
+could have measured this and did not, which is a process failure rather than a
+limitation.
+
+**A verdict is a claim about particular work, and it is checked as one.** Both
+gates assemble the path they open from a task id and a phase, and both pass
+those two strings to the validator, which rejects a document naming different
+ones. Without that, `phase` was only ever checked against a list of four legal
+values — so a single audit reading `{"task": "TASK-999", "phase": "qa"}` opened
+all four gates once it was copied into all four filenames, and four copies of
+one audit were indistinguishable from four independent ones. The deferrable
+list is checked the same way: it lives in code as `DEFERRABLE_CRITERIA`, a
+deferral must name which entry it invokes, and the entry it names has to be on
+the list. The reference document lists the same ids and a test fails if the two
+copies ever disagree.
 
 ## The verification pyramid
 
@@ -483,11 +517,14 @@ which reads as evidence to a person and as an absence to the gate.
 | `<evidenceDir>/<task>/gates.md` | `appian-verify`, consolidating the per-gate report with both its verdicts | a person, or the review step. **No gate reads it** — it sits beside the verdicts so the task's evidence is one account rather than a directory to reassemble |
 | `<evidenceDir>/operations.jsonl` | the write log | a person, afterwards |
 | `<evidenceDir>/gate-decisions.jsonl` | the scope gate, every time it asks | a person, afterwards |
-| `<evidenceDir>/deferred-debt.jsonl` | the closure gate, when forced to approve unverified work | a person, afterwards |
+| `<evidenceDir>/deferred-debt.jsonl` | the closure gate when forced to approve unverified work (`BLOCKING`), and either gate when an accepted deferral opens it (`DEFERRED`) | a person, afterwards |
+| `<evidenceDir>/evidence-writes.jsonl` | the evidence-write log, on any `Write` or `Edit` aimed at a file the gates read | a person, afterwards |
 
-The three logs are append-only and nothing in the plugin reads them back. They
-exist so that "how often did this gate stop something, and did anyone answer
-yes?" is a question with an answer.
+The four logs are append-only and nothing in the plugin reads them back, with
+one exception: the deferred-debt register is re-read before appending, so one
+deferral does not become one line per write attempt. They exist so that "how
+often did this gate stop something, and did anyone answer yes?" — and "who
+wrote this verdict?" — are questions with answers.
 
 ## Troubleshooting
 
@@ -594,6 +631,26 @@ What does **not** work is deleting the active task file to get the stop
 through. The gate approves any stop with nothing in flight, so that does not
 satisfy it — it switches it off for the rest of the task.
 
+### Everything went quiet and no gate has fired since
+
+Check whether `.claude/appian-harness.json` still exists. **Removing that file
+switches the whole harness off**, silently and completely: its presence is the
+activation switch, so without it every hook allows, approves or no-ops exactly
+as it does in a project that never adopted the plugin. Nothing announces the
+change, and a session in which the gates simply stopped having opinions looks
+identical to a session in which everything passed.
+
+That is the cheapest bypass in the plugin, cheaper than the active task file —
+deleting the task file disables one gate for one task, deleting the config
+disables all five hooks for good — and it is not a defect that can be fixed
+from inside, because a plugin that got in the way of projects which have not
+adopted it would be worse. What exists instead is a record: an `Edit` or
+`Write` aimed at that file is logged to `<evidenceDir>/evidence-writes.jsonl`
+with `"target": "harness-config"` before it takes effect, so the moment it was
+switched off is recoverable afterwards even though nothing stopped it. A
+deletion by `rm` through the shell leaves no such line — the hook watches file
+writes, not the whole filesystem.
+
 ### The closure gate blocks and the verdicts genuinely cannot be produced
 
 Different case: the auditor is unavailable, or a step depends on a person who
@@ -630,6 +687,18 @@ harness:
 - **It does not run your regression suite.** The command is something a project
   records so the person following the process can find it; no code here reads
   it or executes it.
+
+- **It cannot make forgery impossible.** Every input the gates read — the
+  evidence tree, the harness config, the active task file — is a plain file in
+  your project, and the agent the gates constrain can write all of them with
+  `Write` or `Edit`. The hooks close the cheap routes: a missing verdict, a
+  citation that does not resolve, one audit filed under another task's or
+  another phase's name, a deferral with nothing named behind it. An agent that
+  deliberately authors a coherent false verdict still gets past them, and the
+  only thing standing there is a person reading the citations. What the plugin
+  adds is that the attempt is recorded rather than invisible — see the
+  evidence-write log — and that skipping the work outright is awkward enough to
+  be worth not doing.
 
 Three things about the plugin itself, on the same terms:
 

@@ -110,6 +110,18 @@ case "$SUBCOMMAND" in
             printf '%s\n' "{\"systemMessage\":\"$NOTE This write was NOT recorded in operations.jsonl: the write log is incomplete.\"}"
         fi
         ;;
+    log-evidence-write)
+        # Without an interpreter this cannot tell whether the file written
+        # was one the gates read, so it cannot stay quiet either: an
+        # unrecorded edit to a verdict is exactly what this hook exists to
+        # make visible. It says so and lets the write stand -- this observes
+        # rather than gates, degraded or not.
+        if [ "$CONFIGURED" -eq 0 ]; then
+            printf '%s\n' '{}'
+        else
+            printf '%s\n' "{\"systemMessage\":\"$NOTE If this edit touched the evidence directory, the harness config or the active task file, it was NOT recorded in evidence-writes.jsonl.\"}"
+        fi
+        ;;
     failure-notice)
         if [ "$CONFIGURED" -eq 0 ]; then
             printf '%s\n' '{}'

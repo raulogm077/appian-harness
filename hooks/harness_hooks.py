@@ -21,6 +21,11 @@ as passing. These hooks are where that stops being advice:
 - log_write (PostToolUse): appends task, tool, object and result to
   operations.jsonl. The harness records it, not the agent -- an agent asked
   to log its own writes forgets exactly when it matters.
+- log_evidence_write (PostToolUse on file writes): records edits aimed at
+  the three files the gates themselves read -- the evidence tree, the
+  harness config, the active task file. Every one of them is writable by
+  the agent the gates constrain, so this exists to make that visible. It
+  logs rather than gates, for the reason argued in its own docstring.
 - failure_notice (PostToolUseFailure): tells the agent not to retry blindly.
 
 Four rules, non-negotiable:
@@ -350,6 +355,68 @@ def log_write(payload, config):
     return {}
 
 
+def _evidence_write_target(config, file_path):
+    """Names which of the gates' three inputs this path is, or None.
+
+    The inputs are the evidence tree (every verdict both gates read), the
+    harness config (whose mere presence is the activation switch) and the
+    active task file (the contract the scope gate measures against). All
+    three are plain files in the project, and the agent the gates constrain
+    can write all three.
+    """
+    if not isinstance(file_path, str) or not file_path:
+        return None
+    root = config.get("projectRoot") or "."
+    target = os.path.normcase(os.path.abspath(os.path.join(root, file_path)))
+
+    for key, label in (("configPath", "harness-config"), ("activeTaskFile", "active-task")):
+        known = config.get(key)
+        if known and os.path.normcase(os.path.abspath(known)) == target:
+            return label
+
+    evidence = config.get("evidenceDir")
+    if evidence:
+        evidence = os.path.normcase(os.path.abspath(evidence))
+        if target == evidence or target.startswith(evidence + os.sep):
+            return "evidence"
+    return None
+
+
+def log_evidence_write(payload, config):
+    """PostToolUse on file writes: records edits to what the gates read.
+
+    **Logged, not gated, and the choice is deliberate.** Gating was the
+    other option and it is the wrong trade here for one reason: the auditor
+    *legitimately* writes verdicts into this directory, appian-build
+    legitimately writes the active task file, and a hook cannot tell which
+    agent is holding the pen -- PostToolUse carries the tool and its
+    arguments, not the identity of the subagent that called it. So gating
+    would question the harness's own correct operation on every task, which
+    is the friction that gets a harness switched off, and once it is off it
+    protects nothing. Logging costs nothing, questions nothing, and turns
+    "did somebody write their own passing verdict?" from unanswerable into
+    a line in a file.
+
+    Be clear about what this is worth: it does not prevent forgery. An agent
+    with write access can still author a verdict, and after the task/phase
+    check that verdict must at least be internally coherent -- but it can be
+    written. What changes is that doing so is no longer invisible.
+    """
+    target = _evidence_write_target(config, (payload.get("tool_input") or {}).get("file_path"))
+    if target is None:
+        return {}
+    active_task = config.get("activeTask") or {}
+    _append_jsonl(os.path.join(config.get("evidenceDir", DEFAULT_EVIDENCE_DIR),
+                                "evidence-writes.jsonl"),
+                  {"timestamp": _now(),
+                   "task": active_task.get("id"),
+                   "tool": payload.get("tool_name"),
+                   "target": target,
+                   "path": (payload.get("tool_input") or {}).get("file_path"),
+                   "result": _write_result(payload)})
+    return {}
+
+
 def _now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -504,6 +571,11 @@ def _build_config(project_root):
         "evidenceDir": evidence_dir,
         "activeTask": active_task,
         "maxAllowedObjects": project_config.get("maxAllowedObjects", DEFAULT_MAX_ALLOWED_OBJECTS),
+        # The three paths the gates read, kept so log_evidence_write can
+        # recognise a write aimed at one of them.
+        "projectRoot": project_root,
+        "configPath": config_path,
+        "activeTaskFile": active_task_file,
     }
     return config, True, None
 
@@ -565,6 +637,17 @@ def cmd_log_write():
     return 0
 
 
+def cmd_log_evidence_write():
+    payload, parse_err = _read_stdin_json()
+    config, active, err = _build_config(payload.get("cwd") or ".")
+    if not active or err or parse_err:
+        _emit({})
+        return 0
+    log_evidence_write(payload, config)
+    _emit({})
+    return 0
+
+
 def cmd_failure_notice():
     payload, _parse_err = _read_stdin_json()
     _config, active, _err = _build_config(payload.get("cwd") or ".")
@@ -580,6 +663,7 @@ COMMANDS = {
     "scope-gate": cmd_scope_gate,
     "closure-gate": cmd_closure_gate,
     "log-write": cmd_log_write,
+    "log-evidence-write": cmd_log_evidence_write,
     "failure-notice": cmd_failure_notice,
 }
 

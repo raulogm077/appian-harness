@@ -1,6 +1,7 @@
 import json, os, sys, tempfile, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
-from harness_hooks import scope_gate, closure_gate, failure_notice, log_write
+from harness_hooks import (scope_gate, closure_gate, failure_notice, log_write,
+                           log_evidence_write)
 from validate_verdict import DEFERRABLE_CRITERIA
 
 # The one shape of NOT_MEASURED that opens a gate: sanctioned, owned, with a
@@ -16,7 +17,10 @@ DEFERRAL = {
 
 def cfg(root, **over):
     c = {"pluginRoot": root, "evidenceDir": os.path.join(root, "evidence"),
-         "activeTask": None, "maxAllowedObjects": 3}
+         "activeTask": None, "maxAllowedObjects": 3,
+         "projectRoot": root,
+         "configPath": os.path.join(root, ".claude", "appian-harness.json"),
+         "activeTaskFile": os.path.join(root, "tasks", "current.json")}
     c.update(over)
     return c
 
@@ -420,6 +424,76 @@ class TestWriteLog(unittest.TestCase):
                 "tool_name": "mcp__appian-dev__updateInterface",
                 "tool_input": {"name": "A"},
                 "tool_response": {"uuid": "_a-0000", "success": True}}), "ok")
+
+
+class TestEvidenceWritesAreVisible(unittest.TestCase):
+    """Every input the gates read is writable by the agent they constrain,
+    and until now `Write` and `Edit` were neither gated nor logged -- so an
+    agent could author its own passing verdict and leave no trace of having
+    done it. This does not stop that (see log_evidence_write's comment on
+    why gating is the wrong trade); it makes it visible."""
+
+    def _log(self, config):
+        path = os.path.join(config["evidenceDir"], "evidence-writes.jsonl")
+        if not os.path.isfile(path):
+            return []
+        with open(path, encoding="utf-8") as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    def _write(self, config, file_path, tool="Write"):
+        log_evidence_write({"tool_name": tool, "tool_input": {"file_path": file_path},
+                            "tool_response": {"success": True}}, config)
+
+    def test_a_verdict_written_by_hand_is_recorded(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = cfg(t, activeTask={"id": "T-1", "allowedObjects": ["A"]})
+            self._write(c, os.path.join(c["evidenceDir"], "T-1", "practices-design.json"))
+            entries = self._log(c)
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0]["target"], "evidence")
+            self.assertEqual(entries[0]["task"], "T-1")
+            self.assertEqual(entries[0]["tool"], "Write")
+
+    def test_an_edit_of_the_harness_config_is_recorded(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = cfg(t)
+            self._write(c, c["configPath"], tool="Edit")
+            self.assertEqual([e["target"] for e in self._log(c)], ["harness-config"])
+
+    def test_a_write_to_the_active_task_file_is_recorded(self):
+        # The third input the gates read, and the one appian-build writes
+        # legitimately every task -- which is exactly why it is logged
+        # rather than questioned.
+        with tempfile.TemporaryDirectory() as t:
+            c = cfg(t)
+            self._write(c, c["activeTaskFile"])
+            self.assertEqual([e["target"] for e in self._log(c)], ["active-task"])
+
+    def test_an_unrelated_write_is_not_recorded(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = cfg(t)
+            self._write(c, os.path.join(t, "src", "something.py"))
+            self.assertEqual(self._log(c), [])
+
+    def test_a_relative_path_is_resolved_against_the_project_root(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = cfg(t)
+            self._write(c, os.path.join("evidence", "T-1", "practices-qa.json"))
+            self.assertEqual([e["target"] for e in self._log(c)], ["evidence"])
+
+    def test_the_hook_returns_no_decision(self):
+        # PostToolUse, and deliberately so: this observes, it does not gate.
+        with tempfile.TemporaryDirectory() as t:
+            c = cfg(t)
+            out = log_evidence_write({"tool_name": "Write",
+                                      "tool_input": {"file_path": c["configPath"]}}, c)
+            self.assertEqual(out, {})
+
+    def test_a_call_with_no_file_path_is_ignored_rather_than_crashing(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = cfg(t)
+            self.assertEqual(log_evidence_write({"tool_name": "Write", "tool_input": {}}, c), {})
+            self.assertEqual(self._log(c), [])
 
 
 class TestFailureNotice(unittest.TestCase):
