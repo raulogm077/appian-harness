@@ -166,6 +166,14 @@ the build step consumes:
   change. Anything else, however related it looks, is out of scope for that task.
   A task that spans a record type, an interface, and a security configuration in one
   entry can't be reviewed or rejected as a unit; split it along the slice boundary.
+  **Each entry may be a name or a UUID**, and the scope gate lets a write through
+  when *any* identifier in the call matches an entry. Write the names here — at
+  plan time that is all there is, because a UUID does not exist until the object
+  does. The UUIDs get added during the build, once preflight has read the real
+  identifiers back from the environment; without them, the calls that update an
+  object that already exists carry a uuid and often no name at all, and every one
+  of them stops to ask. What never matches is an entry that *describes* an object
+  instead of identifying it: the gate compares strings, not meanings.
 - **`acceptanceCriteria`** — an observable statement that proves the task is done,
   written before any of the task's objects exist. Not "the interface was created,"
   but something a reviewer can check without trusting the builder's word for it —
