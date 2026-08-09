@@ -51,346 +51,6 @@ wrong direction.
 **CLOSE is not a skill.** The first five phases each have one; CLOSE is what the
 `Stop` hook does. There is no `appian-close` to look for.
 
-## What is in the box
-
-| Path | What is there |
-|---|---|
-| `skills/` | Six skills: five lifecycle phases plus the cross-cutting doctrine |
-| `skills/appian-best-practices/references/` | Eleven domain references, numbered `01`–`11`. Every verdict cites into these |
-| `agents/` | Three judging agents: `appian-practices-auditor`, `appian-reviewer`, `appian-verifier` |
-| `hooks/` | One `hooks.json` declaring five hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
-| `scripts/` | Four modules: `validate_verdict.py`, `lint_skills.py`, `n2_interface_tree.py`, `n3_process_layout.py` |
-| `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
-
-The Python carries its own tests — 84 for `scripts/`, 40 for `hooks/`, standard
-library only:
-
-```
-python3 -m unittest discover -s scripts
-python3 -m unittest discover -s hooks
-python3 scripts/lint_skills.py
-```
-
-## Skills
-
-| Skill | Phase | What it does |
-|---|---|---|
-| `appian-specify` | SPECIFY | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. |
-| `appian-plan` | PLAN | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria. |
-| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Manually invoked. |
-| `appian-verify` | VERIFY | Produces the per-gate report with evidence, in its own context. |
-| `appian-review` | REVIEW | Independent review from a clean context, graduated by risk. |
-| `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. |
-
-`appian-best-practices` carries eleven domain references — data model and record
-types, SAIL interfaces, process models, expression rules, performance, security,
-integrations, ALM and testing, sites and navigation, quality gates, reliability
-and operations. The `SKILL.md` is the index: only the reference the change
-touches gets opened.
-
-**Description phrasing.** The six `SKILL.md` files here write their trigger
-clause in the imperative ("Use when...", "Use after..."), not the third person
-`plugin-dev:skill-development` recommends ("This skill should be used
-when..."). That is a deliberate house style, kept consistent across every
-skill in this plugin, not an oversight: `plugin-dev:skill-reviewer` found the
-grammatical person does not itself affect whether a description triggers —
-what does is the specificity of the conditions it states. `scripts/lint_skills.py`
-accepts both forms, so a contributor who follows the official third-person
-guidance is not rejected for it.
-
-## Agents
-
-The skills orchestrate; three agents do the judging, each in its own context so
-that no judgement is formed by whoever produced the work.
-
-| Agent | What it judges |
-|---|---|
-| `appian-practices-auditor` | One phase — `design`, `implementation`, `review` or `qa` — against the domain references, writing a verdict that cites the sections it applied. |
-| `appian-verifier` | Whether the evidence on hand covers each gate the task's contract requires, naming the evidence behind every `PASS`. |
-| `appian-reviewer` | Whether the change holds up against its contract, from the artifact alone — it is never handed the builder's conclusion. |
-
-## How it is used, end to end
-
-One small task, all the way through. Say the request is *"users need to see the
-requests that are still open"*, and the plan has already turned that into
-`TASK-3: list open requests`. Paths below use the defaults; which of them are
-configurable, and how, is *What the plugin asks of your project*.
-
-**1. `appian-specify`** — asks one question at a time and writes a
-specification: actors, entities and relationships, states and transitions, an
-authorization matrix, expected volume, and an explicit *out of scope*. Nothing
-automated checks this and nothing should; it is read by a person, and no Appian
-object exists yet for a gate to have an opinion about.
-
-**2. `appian-plan`** — reads that specification and writes **two** files: the
-plan, and the operational state. Two rather than one because a plan is approved
-and then stable while state changes every task, and a file that is both is
-trusted as neither. It cuts the work into vertical slices — record type → query
-rule → interface → test case — ordered by the dependencies Appian actually
-imposes, and gives each task four named parts: `allowedObjects`,
-`acceptanceCriteria`, `requiredGates`, `evidenceFile`. Still nothing automated,
-but this is where the later prompts are decided: `TASK-3` listing seven objects
-is a task that will stop at every write.
-
-**3. `appian-build TASK-3`** — invoked by name and only by name; it carries
-`disable-model-invocation: true` because it is the one skill with irreversible
-side effects. In order, it:
-
-- writes the active task file, `tasks/current.json`, as
-  `{"id": "TASK-3", "allowedObjects": ["APP_openRequests", "..."]}` — spelled
-  with those two keys, because the hooks look for those names and nothing near
-  them;
-- **preflights**: reads the real environment and classifies every object in
-  scope as ABSENT, PRESENT AND CONFORMING, PRESENT BUT INCOMPLETE, or
-  CONFLICTING. The remote state wins over any local document. All reads, so no
-  gate fires;
-- dispatches `appian-practices-auditor` with `phase=design` — *before the first
-  write, while changing the answer is still free* — which writes
-  `evidence/TASK-3/practices-design.json`;
-- **then writes.** This is where the **scope gate** fires, on `PreToolUse`: is
-  there an active task, is this object in its `allowedObjects`, is the task
-  within the atomicity budget, and is that design verdict present, structurally
-  valid and passing? It accumulates every failure rather than reporting the
-  first, and the strongest thing it says is *ask*;
-- every write is appended to `evidence/operations.jsonl` by the **write log** on
-  `PostToolUse`, and a write that errors triggers the **failure notice**: do not
-  retry blind, read back whether it persisted;
-- records the identifiers the environment actually returned into the task's
-  `evidenceFile`;
-- **stops, and leaves the active task file exactly where it is.** One task, one
-  stop — but stopping is a handoff into verification, not the end of the task,
-  so the task stays in flight and `appian-review` clears the file at close. The
-  ordinary consequence is that this stop is *blocked* by the closure gate,
-  naming the three verdicts that do not exist yet. That is the harness stating
-  the handoff rather than leaving it to memory.
-
-**4. `appian-verify`** — a fresh invocation, because the builder is the worst
-judge of its own work. It dispatches the auditor with `phase=implementation`
-(→ `evidence/TASK-3/practices-implementation.json`), renders the screen
-**twice** — once against a populated dataset, once against the identifier the
-project guarantees does not exist — and only then dispatches `phase=qa`
-(→ `practices-qa.json`). Both renders are required and neither substitutes for
-the other: a loop over an empty list never evaluates its body, so a broken
-screen passes every test case it has until a row exists (field experience).
-Then `appian-verifier` emits a result for every gate in `requiredGates`, naming
-the evidence behind each `PASS`, and the whole thing is consolidated into
-`evidence/TASK-3/gates.md` so the next reader opens one account instead of
-reassembling three.
-
-**5. `appian-review`** — graduated by risk, so it does not run in full on
-everything. What enters review gets two agents, both with `phase=review`:
-`appian-reviewer` against the task contract, `appian-practices-auditor` against
-domain doctrine. Neither reads the other's output before forming its own, and
-neither is handed anything the builder wrote about why the change should pass.
-The auditor's verdict goes to `evidence/TASK-3/practices-review.json`; the
-findings go to `evidenceFile`. A review recorded only in `evidenceFile` closes
-nothing, because that is not the file the gate opens. Then — **last, after the
-verdict exists** — it deletes the active task file. That deletion is the
-recorded act of closing the task, which is why it belongs to the phase that
-runs last and not to the builder that stopped first.
-
-**6. CLOSE** — no skill; the **closure gate** on `Stop`. While the active task
-file names a task in flight, a stop cannot pass without valid, passing
-`practices-implementation`, `practices-review` and `practices-qa`. It names
-exactly which are missing, invalid or failing. On a repeated stop it approves
-instead of deadlocking, and writes the omission to
-`evidence/deferred-debt.jsonl` as `NOT_MEASURED` / `BLOCKING` — recorded, not
-waived.
-
-The sequencing is what makes that gate reach anything, so it is worth stating
-outright: **a task is in flight from the moment `appian-build` takes it until
-`appian-review` deletes the file, and the closure gate approves any stop with
-nothing in flight.** Every stop in between — the builder's own, and any stop
-during verification or review — meets the three-verdict check. Until
-2026-08-09 `appian-build` deleted that file when it stopped, which left nothing
-in flight and made this gate approve, unchecked, in exactly the flow everyone
-uses; the check only ever bit on a session that happened to stop with a task
-still open.
-
-The visible cost of the fix is that a clean build now ends in a blocked stop.
-That block is correct — the task really is unverified at that moment — and its
-wording names the next phase rather than only what is missing. The wrong way
-past it is deleting the active task file, which does not satisfy the gate but
-retires it.
-
-## The gates
-
-Everything above is doctrine an agent can decide to skip. Five hooks make
-skipping it **visible and awkward**, and make the cheapest forgery fail — they
-cannot make forgery impossible for an agent that can write files. That
-distinction is the honest version of what this section used to claim, and it is
-worth stating before the list rather than after it: every input the gates read
-is a plain file in your project, and the agent being gated can write all of
-them. What the hooks remove is the *cheap* way past — the missing verdict, the
-fabricated citation, the audit of one task copied over another's, the
-unexplained deferral. What they cannot remove is an agent that sits down and
-authors a coherent lie. The last line of defence there is a person reading the
-citations, which is why the citations must resolve.
-
-- **scope gate** (before any Appian write) — is there an approved active task,
-  is this object inside its `allowedObjects`, is the task atomic, and is there a
-  *passing* `design` audit for it? Not merely present: structurally valid, with
-  citations that resolve, and an outcome of `PASS` or a sanctioned deferral.
-- **closure gate** (on stop) — while the active task file names a task in
-  flight, a stop does not pass without valid, passing `implementation`,
-  `review` and `qa` verdicts. On a repeated stop it approves rather than
-  deadlocking, and records the omission as `NOT MEASURED · BLOCKING` debt,
-  because a guardrail that cannot be satisfied gets switched off and then
-  protects nothing. With no task in flight it approves without checking
-  anything — which is why the file survives the builder's stop and is cleared
-  only at close; see the note at the end of the walkthrough.
-- **write log** and **failure notice** — the harness records what was written,
-  and tells an agent not to retry a failed write blind.
-- **evidence-write log** (after any `Write` or `Edit`) — records edits aimed at
-  the three files the gates themselves read: the evidence tree,
-  `.claude/appian-harness.json`, and the active task file. It **logs and does
-  not gate**, deliberately. The auditor legitimately writes verdicts and
-  `appian-build` legitimately writes the active task file, and a hook cannot
-  tell which agent is holding the pen — `PostToolUse` carries the tool and its
-  arguments, never the identity of the subagent that called it. Gating would
-  therefore question the harness's own correct operation on every task, which
-  is the friction that gets a harness switched off; logging costs nothing and
-  turns "did somebody write their own passing verdict?" from unanswerable into
-  a line in `<evidenceDir>/evidence-writes.jsonl`.
-
-The write gate never answers *deny* — the strongest thing it says is *ask* — and
-when the closure gate blocks for missing verdicts it blocks once, approving a
-second stop attempt and writing down what went unverified. Both shapes come from
-the same reasoning: a guardrail with no way past it gets switched off, and then
-it protects nothing. That escape is for missing verdicts only: a running hook
-that cannot inspect something — an unreadable config, malformed JSON — asks or
-blocks **every** time, with no second-attempt release, because a hook that
-cannot see is not a hook that should be waved through. (Verified both ways: an
-unparseable config blocks the repeat `Stop` exactly as it blocks the first.)
-
-One case sits outside that rule, and it is worth naming rather than letting a
-reader discover it. When **no Python interpreter can be found at all**, the hook
-never starts, and `run_hook.sh` answers in its place from shell — where a `Stop`
-hook has only *approve* and *block*, no *ask*. It therefore mirrors the
-block-once shape rather than the block-always one, because blocking forever with
-no way to satisfy the gate is the deadlock that gets guardrails switched off.
-What it does not do is go quiet: it approves loudly, saying in the message that
-no verdict was checked and that the task must not be treated as verified.
-
-## How the best-practices guarantee actually works
-
-The plugin's distinctive claim is that nothing gets written or certified without
-the official doctrine having been applied to it. That claim deserves to be
-explained rather than asserted, because part of it cannot be enforced at all.
-
-**What is impossible.** A hook cannot see a subagent's transcript. There is
-therefore no way for any gate here to verify that `appian-practices-auditor`
-loaded `appian-best-practices` or opened the section it needed. Any plugin
-claiming to enforce that is claiming something its hooks cannot check.
-
-**What is verified instead: the trail.** Every verdict must carry a non-empty
-`referencesApplied`, each entry shaped `<file>.md#<anchor>`. Before either gate
-accepts a verdict, `scripts/validate_verdict.py` resolves every one of those
-entries against `skills/appian-best-practices/references/`: the file has to
-exist in this plugin, and the anchor has to match a heading actually present in
-it. A fabricated citation fails there exactly like a missing file — and it
-fails the *gate*, not just a linter, because the gate runs that validation
-itself.
-
-**What that proves.** That the cited section exists and any third party can go
-and read it. That is the failure mode which actually occurs: not a refusal to
-cite, but the plausible citation that turns out not to exist.
-
-**What it does not prove.** That the auditor read the section. That the section
-was the right one for the change. That the judgement built on it was sound.
-Reading the citations and disagreeing with them is still a person's job; what
-the plugin removes is the possibility of citations that cannot be checked.
-
-Two things reinforce the trail without closing that gap. The three agents
-declare `skills: [appian-best-practices]` in their frontmatter, and each is
-instructed to restate a heading of that skill *before its first tool call*, so a
-`Read` cannot stand in for having been given the doctrine. Both are stronger
-than nothing and weaker than proof; the honest summary is that the citations are
-checked mechanically and everything else is convention.
-
-**Shape is not outcome, and the gates check both.** `validate_verdict.py`
-deliberately says nothing about whether a verdict passed — it answers "is this a
-well-formed audit of *this* task and *this* phase, whose citations resolve?" and
-stops. The gates add the outcome check on top: a phase satisfies a gate only on
-`PASS`, or on `NOT_MEASURED` with `notMeasuredClass: DEFERRED`, which the
-validator requires to carry an `owner`, a `closingCondition` and a
-`deferredCriterion` naming one entry off the plugin's closed deferrable list.
-`FAIL` never satisfies — a gate that accepts a `FAIL` is not a gate.
-`NOT_MEASURED` / `BLOCKING` never satisfies either: that class means the harness
-could have measured this and did not, which is a process failure rather than a
-limitation.
-
-**A verdict is a claim about particular work, and it is checked as one.** Both
-gates assemble the path they open from a task id and a phase, and both pass
-those two strings to the validator, which rejects a document naming different
-ones. Without that, `phase` was only ever checked against a list of four legal
-values — so a single audit reading `{"task": "TASK-999", "phase": "qa"}` opened
-all four gates once it was copied into all four filenames, and four copies of
-one audit were indistinguishable from four independent ones. The deferrable
-list is checked the same way: it lives in code as `DEFERRABLE_CRITERIA`, a
-deferral must name which entry it invokes, and the entry it names has to be on
-the list. The reference document lists the same ids and a test fails if the two
-copies ever disagree.
-
-## The verification pyramid
-
-Each level is named by what it catches, and each is honest about what it cannot
-see. Cheapest first.
-
-| Level | Operates on | Catches |
-|---|---|---|
-| **N0** Syntax | the expression | Whether it parses and whether the rules it calls exist |
-| **N1** Static | the source | Components, icons, enumerated values, patterns, accessibility rules |
-| **N2** Structural | the **evaluated component tree** | Everything that only exists once data is resolved |
-| **N3** Coordinates | process models | Overlapping nodes, proximity, backward flow, disconnected nodes |
-| **N4** Behaviour | test cases and the regression suite | Nominal, empty, null, error and repeat paths |
-| **N5** Perceptual | a screenshot of the running site | Visual hierarchy, density, responsiveness, focus |
-| **N6** Human | — | Screen reader, Design Guidance, real login per role |
-
-**N2 is the level most harnesses are missing.** A rendered-interface test does
-not return an image, but it returns the component tree **already evaluated with
-resolved data** (field experience) — heading tags, labels, row headers,
-empty-grid messages, and colours that came out of the database. Those colours
-do not appear in the source at all, so no linter over the source will ever see
-them. That is the gap a 1.6:1 status chip walks through.
-
-Two operating notes for N2, both learned the hard way and offered as field
-experience rather than documentation: the default response size cap truncates a
-real screen, so raise it and trust the truncation flag rather than the byte
-count; and some API surfaces fail to serialize certain component types, so pick
-the surface that answers correctly rather than the one that answers first.
-
-**Where each level actually lives, since the table does not say.** N0 and N1 are
-the platform's own checks and the doctrine in `appian-best-practices`; N4 is the
-project's test cases and regression command; N5 and N6 are people. N2 and N3 are
-the only levels this repository implements as code — `scripts/n2_interface_tree.py`
-(`check_tree(tree, empty_path=False)`, over an evaluated component tree) and
-`scripts/n3_process_layout.py` (`check_layout(nodes, edges)`, over node
-coordinates). Both are importable modules with unit tests **and a command-line
-entry point**:
-
-```
-python3 scripts/n2_interface_tree.py TREE_JSON [--empty-path]
-python3 scripts/n3_process_layout.py LAYOUT_JSON
-```
-
-Each prints one line per finding and exits **0** clean, **1** findings, **2**
-usage, **3** `NOT MEASURED`, so a clean run is distinguishable from a run that
-never happened. That last code is what makes the sentence true, and it had to be
-earned: both checkers used to answer `OK` and exit 0 when they did not
-understand their input, so an unrecognised screen looked exactly like a checked
-one. **N2** answers 3 when a tree holds no component of a type it judges — run
-it with no arguments to see that vocabulary, which is built from the constant
-the checks apply rather than restated beside it — and it names the types it saw
-but does not judge even on a run that did measure something, so a partial gap is
-visible instead of assumed empty. **N3** answers 3 when a layout names no nodes.
-`lint_skills.py` uses the same code for its own zero-skills case, which is where
-this plugin first argued that nothing checked is not a pass.
-`appian-verify` names them and says what each catches and
-what it cannot — but **no hook runs them for you**. They are checkers a verify
-step invokes, not checks the harness performs on your behalf, and describing
-them any other way would be the overclaim this plugin exists to argue against.
-
 ## Installing
 
 This repository **is its own marketplace** — the manifest at
@@ -612,6 +272,347 @@ one exception: the deferred-debt register is re-read before appending, so one
 deferral does not become one line per write attempt. They exist so that "how
 often did this gate stop something, and did anyone answer yes?" — and "who
 wrote this verdict?" — are questions with answers.
+
+## What is in the box
+
+| Path | What is there |
+|---|---|
+| `skills/` | Six skills: five lifecycle phases plus the cross-cutting doctrine |
+| `skills/appian-best-practices/references/` | Eleven domain references, numbered `01`–`11`. Every verdict cites into these |
+| `agents/` | Three judging agents: `appian-practices-auditor`, `appian-reviewer`, `appian-verifier` |
+| `hooks/` | One `hooks.json` declaring five hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
+| `scripts/` | Four modules: `validate_verdict.py`, `lint_skills.py`, `n2_interface_tree.py`, `n3_process_layout.py` |
+| `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
+
+The Python carries its own tests — 84 for `scripts/`, 40 for `hooks/`, standard
+library only:
+
+```
+python3 -m unittest discover -s scripts
+python3 -m unittest discover -s hooks
+python3 scripts/lint_skills.py
+```
+
+## Skills
+
+| Skill | Phase | What it does |
+|---|---|---|
+| `appian-specify` | SPECIFY | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. |
+| `appian-plan` | PLAN | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria. |
+| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Manually invoked. |
+| `appian-verify` | VERIFY | Produces the per-gate report with evidence, in its own context. |
+| `appian-review` | REVIEW | Independent review from a clean context, graduated by risk. |
+| `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. |
+
+`appian-best-practices` carries eleven domain references — data model and record
+types, SAIL interfaces, process models, expression rules, performance, security,
+integrations, ALM and testing, sites and navigation, quality gates, reliability
+and operations. The `SKILL.md` is the index: only the reference the change
+touches gets opened.
+
+**Description phrasing.** The six `SKILL.md` files here write their trigger
+clause in the imperative ("Use when...", "Use after..."), not the third person
+`plugin-dev:skill-development` recommends ("This skill should be used
+when..."). That is a deliberate house style, kept consistent across every
+skill in this plugin, not an oversight: `plugin-dev:skill-reviewer` found the
+grammatical person does not itself affect whether a description triggers —
+what does is the specificity of the conditions it states. `scripts/lint_skills.py`
+accepts both forms, so a contributor who follows the official third-person
+guidance is not rejected for it.
+
+## Agents
+
+The skills orchestrate; three agents do the judging, each in its own context so
+that no judgement is formed by whoever produced the work.
+
+| Agent | What it judges |
+|---|---|
+| `appian-practices-auditor` | One phase — `design`, `implementation`, `review` or `qa` — against the domain references, writing a verdict that cites the sections it applied. |
+| `appian-verifier` | Whether the evidence on hand covers each gate the task's contract requires, naming the evidence behind every `PASS`. |
+| `appian-reviewer` | Whether the change holds up against its contract, from the artifact alone — it is never handed the builder's conclusion. |
+
+## How it is used, end to end
+
+One small task, all the way through. Say the request is *"users need to see the
+requests that are still open"*, and the plan has already turned that into
+`TASK-3: list open requests`. Paths below use the defaults; which of them are
+configurable, and how, is *What the plugin asks of your project*.
+
+**1. `appian-specify`** — asks one question at a time and writes a
+specification: actors, entities and relationships, states and transitions, an
+authorization matrix, expected volume, and an explicit *out of scope*. Nothing
+automated checks this and nothing should; it is read by a person, and no Appian
+object exists yet for a gate to have an opinion about.
+
+**2. `appian-plan`** — reads that specification and writes **two** files: the
+plan, and the operational state. Two rather than one because a plan is approved
+and then stable while state changes every task, and a file that is both is
+trusted as neither. It cuts the work into vertical slices — record type → query
+rule → interface → test case — ordered by the dependencies Appian actually
+imposes, and gives each task four named parts: `allowedObjects`,
+`acceptanceCriteria`, `requiredGates`, `evidenceFile`. Still nothing automated,
+but this is where the later prompts are decided: `TASK-3` listing seven objects
+is a task that will stop at every write.
+
+**3. `appian-build TASK-3`** — invoked by name and only by name; it carries
+`disable-model-invocation: true` because it is the one skill with irreversible
+side effects. In order, it:
+
+- writes the active task file, `tasks/current.json`, as
+  `{"id": "TASK-3", "allowedObjects": ["APP_openRequests", "..."]}` — spelled
+  with those two keys, because the hooks look for those names and nothing near
+  them;
+- **preflights**: reads the real environment and classifies every object in
+  scope as ABSENT, PRESENT AND CONFORMING, PRESENT BUT INCOMPLETE, or
+  CONFLICTING. The remote state wins over any local document. All reads, so no
+  gate fires;
+- dispatches `appian-practices-auditor` with `phase=design` — *before the first
+  write, while changing the answer is still free* — which writes
+  `evidence/TASK-3/practices-design.json`;
+- **then writes.** This is where the **scope gate** fires, on `PreToolUse`: is
+  there an active task, is this object in its `allowedObjects`, is the task
+  within the atomicity budget, and is that design verdict present, structurally
+  valid and passing? It accumulates every failure rather than reporting the
+  first, and the strongest thing it says is *ask*;
+- every write is appended to `evidence/operations.jsonl` by the **write log** on
+  `PostToolUse`, and a write that errors triggers the **failure notice**: do not
+  retry blind, read back whether it persisted;
+- records the identifiers the environment actually returned into the task's
+  `evidenceFile`;
+- **stops, and leaves the active task file exactly where it is.** One task, one
+  stop — but stopping is a handoff into verification, not the end of the task,
+  so the task stays in flight and `appian-review` clears the file at close. The
+  ordinary consequence is that this stop is *blocked* by the closure gate,
+  naming the three verdicts that do not exist yet. That is the harness stating
+  the handoff rather than leaving it to memory.
+
+**4. `appian-verify`** — a fresh invocation, because the builder is the worst
+judge of its own work. It dispatches the auditor with `phase=implementation`
+(→ `evidence/TASK-3/practices-implementation.json`), renders the screen
+**twice** — once against a populated dataset, once against the identifier the
+project guarantees does not exist — and only then dispatches `phase=qa`
+(→ `practices-qa.json`). Both renders are required and neither substitutes for
+the other: a loop over an empty list never evaluates its body, so a broken
+screen passes every test case it has until a row exists (field experience).
+Then `appian-verifier` emits a result for every gate in `requiredGates`, naming
+the evidence behind each `PASS`, and the whole thing is consolidated into
+`evidence/TASK-3/gates.md` so the next reader opens one account instead of
+reassembling three.
+
+**5. `appian-review`** — graduated by risk, so it does not run in full on
+everything. What enters review gets two agents, both with `phase=review`:
+`appian-reviewer` against the task contract, `appian-practices-auditor` against
+domain doctrine. Neither reads the other's output before forming its own, and
+neither is handed anything the builder wrote about why the change should pass.
+The auditor's verdict goes to `evidence/TASK-3/practices-review.json`; the
+findings go to `evidenceFile`. A review recorded only in `evidenceFile` closes
+nothing, because that is not the file the gate opens. Then — **last, after the
+verdict exists** — it deletes the active task file. That deletion is the
+recorded act of closing the task, which is why it belongs to the phase that
+runs last and not to the builder that stopped first.
+
+**6. CLOSE** — no skill; the **closure gate** on `Stop`. While the active task
+file names a task in flight, a stop cannot pass without valid, passing
+`practices-implementation`, `practices-review` and `practices-qa`. It names
+exactly which are missing, invalid or failing. On a repeated stop it approves
+instead of deadlocking, and writes the omission to
+`evidence/deferred-debt.jsonl` as `NOT_MEASURED` / `BLOCKING` — recorded, not
+waived.
+
+The sequencing is what makes that gate reach anything, so it is worth stating
+outright: **a task is in flight from the moment `appian-build` takes it until
+`appian-review` deletes the file, and the closure gate approves any stop with
+nothing in flight.** Every stop in between — the builder's own, and any stop
+during verification or review — meets the three-verdict check. Until
+2026-08-09 `appian-build` deleted that file when it stopped, which left nothing
+in flight and made this gate approve, unchecked, in exactly the flow everyone
+uses; the check only ever bit on a session that happened to stop with a task
+still open.
+
+The visible cost of the fix is that a clean build now ends in a blocked stop.
+That block is correct — the task really is unverified at that moment — and its
+wording names the next phase rather than only what is missing. The wrong way
+past it is deleting the active task file, which does not satisfy the gate but
+retires it.
+
+## The gates
+
+Everything above, the install and configuration sections aside, is doctrine an
+agent can decide to skip. Five hooks make skipping it **visible and awkward**,
+and make the cheapest forgery fail — they cannot make forgery impossible for an
+agent that can write files. That distinction is the honest version of what this
+section used to claim, and it is worth stating before the list rather than
+after it: every input the gates read is a plain file in your project, and the
+agent being gated can write all of them. What the hooks remove is the *cheap*
+way past — the missing verdict, the
+fabricated citation, the audit of one task copied over another's, the
+unexplained deferral. What they cannot remove is an agent that sits down and
+authors a coherent lie. The last line of defence there is a person reading the
+citations, which is why the citations must resolve.
+
+- **scope gate** (before any Appian write) — is there an approved active task,
+  is this object inside its `allowedObjects`, is the task atomic, and is there a
+  *passing* `design` audit for it? Not merely present: structurally valid, with
+  citations that resolve, and an outcome of `PASS` or a sanctioned deferral.
+- **closure gate** (on stop) — while the active task file names a task in
+  flight, a stop does not pass without valid, passing `implementation`,
+  `review` and `qa` verdicts. On a repeated stop it approves rather than
+  deadlocking, and records the omission as `NOT MEASURED · BLOCKING` debt,
+  because a guardrail that cannot be satisfied gets switched off and then
+  protects nothing. With no task in flight it approves without checking
+  anything — which is why the file survives the builder's stop and is cleared
+  only at close; see the note at the end of the walkthrough.
+- **write log** and **failure notice** — the harness records what was written,
+  and tells an agent not to retry a failed write blind.
+- **evidence-write log** (after any `Write` or `Edit`) — records edits aimed at
+  the three files the gates themselves read: the evidence tree,
+  `.claude/appian-harness.json`, and the active task file. It **logs and does
+  not gate**, deliberately. The auditor legitimately writes verdicts and
+  `appian-build` legitimately writes the active task file, and a hook cannot
+  tell which agent is holding the pen — `PostToolUse` carries the tool and its
+  arguments, never the identity of the subagent that called it. Gating would
+  therefore question the harness's own correct operation on every task, which
+  is the friction that gets a harness switched off; logging costs nothing and
+  turns "did somebody write their own passing verdict?" from unanswerable into
+  a line in `<evidenceDir>/evidence-writes.jsonl`.
+
+The write gate never answers *deny* — the strongest thing it says is *ask* — and
+when the closure gate blocks for missing verdicts it blocks once, approving a
+second stop attempt and writing down what went unverified. Both shapes come from
+the same reasoning: a guardrail with no way past it gets switched off, and then
+it protects nothing. That escape is for missing verdicts only: a running hook
+that cannot inspect something — an unreadable config, malformed JSON — asks or
+blocks **every** time, with no second-attempt release, because a hook that
+cannot see is not a hook that should be waved through. (Verified both ways: an
+unparseable config blocks the repeat `Stop` exactly as it blocks the first.)
+
+One case sits outside that rule, and it is worth naming rather than letting a
+reader discover it. When **no Python interpreter can be found at all**, the hook
+never starts, and `run_hook.sh` answers in its place from shell — where a `Stop`
+hook has only *approve* and *block*, no *ask*. It therefore mirrors the
+block-once shape rather than the block-always one, because blocking forever with
+no way to satisfy the gate is the deadlock that gets guardrails switched off.
+What it does not do is go quiet: it approves loudly, saying in the message that
+no verdict was checked and that the task must not be treated as verified.
+
+## How the best-practices guarantee actually works
+
+The plugin's distinctive claim is that nothing gets written or certified without
+the official doctrine having been applied to it. That claim deserves to be
+explained rather than asserted, because part of it cannot be enforced at all.
+
+**What is impossible.** A hook cannot see a subagent's transcript. There is
+therefore no way for any gate here to verify that `appian-practices-auditor`
+loaded `appian-best-practices` or opened the section it needed. Any plugin
+claiming to enforce that is claiming something its hooks cannot check.
+
+**What is verified instead: the trail.** Every verdict must carry a non-empty
+`referencesApplied`, each entry shaped `<file>.md#<anchor>`. Before either gate
+accepts a verdict, `scripts/validate_verdict.py` resolves every one of those
+entries against `skills/appian-best-practices/references/`: the file has to
+exist in this plugin, and the anchor has to match a heading actually present in
+it. A fabricated citation fails there exactly like a missing file — and it
+fails the *gate*, not just a linter, because the gate runs that validation
+itself.
+
+**What that proves.** That the cited section exists and any third party can go
+and read it. That is the failure mode which actually occurs: not a refusal to
+cite, but the plausible citation that turns out not to exist.
+
+**What it does not prove.** That the auditor read the section. That the section
+was the right one for the change. That the judgement built on it was sound.
+Reading the citations and disagreeing with them is still a person's job; what
+the plugin removes is the possibility of citations that cannot be checked.
+
+Two things reinforce the trail without closing that gap. The three agents
+declare `skills: [appian-best-practices]` in their frontmatter, and each is
+instructed to restate a heading of that skill *before its first tool call*, so a
+`Read` cannot stand in for having been given the doctrine. Both are stronger
+than nothing and weaker than proof; the honest summary is that the citations are
+checked mechanically and everything else is convention.
+
+**Shape is not outcome, and the gates check both.** `validate_verdict.py`
+deliberately says nothing about whether a verdict passed — it answers "is this a
+well-formed audit of *this* task and *this* phase, whose citations resolve?" and
+stops. The gates add the outcome check on top: a phase satisfies a gate only on
+`PASS`, or on `NOT_MEASURED` with `notMeasuredClass: DEFERRED`, which the
+validator requires to carry an `owner`, a `closingCondition` and a
+`deferredCriterion` naming one entry off the plugin's closed deferrable list.
+`FAIL` never satisfies — a gate that accepts a `FAIL` is not a gate.
+`NOT_MEASURED` / `BLOCKING` never satisfies either: that class means the harness
+could have measured this and did not, which is a process failure rather than a
+limitation.
+
+**A verdict is a claim about particular work, and it is checked as one.** Both
+gates assemble the path they open from a task id and a phase, and both pass
+those two strings to the validator, which rejects a document naming different
+ones. Without that, `phase` was only ever checked against a list of four legal
+values — so a single audit reading `{"task": "TASK-999", "phase": "qa"}` opened
+all four gates once it was copied into all four filenames, and four copies of
+one audit were indistinguishable from four independent ones. The deferrable
+list is checked the same way: it lives in code as `DEFERRABLE_CRITERIA`, a
+deferral must name which entry it invokes, and the entry it names has to be on
+the list. The reference document lists the same ids and a test fails if the two
+copies ever disagree.
+
+## The verification pyramid
+
+Each level is named by what it catches, and each is honest about what it cannot
+see. Cheapest first.
+
+| Level | Operates on | Catches |
+|---|---|---|
+| **N0** Syntax | the expression | Whether it parses and whether the rules it calls exist |
+| **N1** Static | the source | Components, icons, enumerated values, patterns, accessibility rules |
+| **N2** Structural | the **evaluated component tree** | Everything that only exists once data is resolved |
+| **N3** Coordinates | process models | Overlapping nodes, proximity, backward flow, disconnected nodes |
+| **N4** Behaviour | test cases and the regression suite | Nominal, empty, null, error and repeat paths |
+| **N5** Perceptual | a screenshot of the running site | Visual hierarchy, density, responsiveness, focus |
+| **N6** Human | — | Screen reader, Design Guidance, real login per role |
+
+**N2 is the level most harnesses are missing.** A rendered-interface test does
+not return an image, but it returns the component tree **already evaluated with
+resolved data** (field experience) — heading tags, labels, row headers,
+empty-grid messages, and colours that came out of the database. Those colours
+do not appear in the source at all, so no linter over the source will ever see
+them. That is the gap a 1.6:1 status chip walks through.
+
+Two operating notes for N2, both learned the hard way and offered as field
+experience rather than documentation: the default response size cap truncates a
+real screen, so raise it and trust the truncation flag rather than the byte
+count; and some API surfaces fail to serialize certain component types, so pick
+the surface that answers correctly rather than the one that answers first.
+
+**Where each level actually lives, since the table does not say.** N0 and N1 are
+the platform's own checks and the doctrine in `appian-best-practices`; N4 is the
+project's test cases and regression command; N5 and N6 are people. N2 and N3 are
+the only levels this repository implements as code — `scripts/n2_interface_tree.py`
+(`check_tree(tree, empty_path=False)`, over an evaluated component tree) and
+`scripts/n3_process_layout.py` (`check_layout(nodes, edges)`, over node
+coordinates). Both are importable modules with unit tests **and a command-line
+entry point**:
+
+```
+python3 scripts/n2_interface_tree.py TREE_JSON [--empty-path]
+python3 scripts/n3_process_layout.py LAYOUT_JSON
+```
+
+Each prints one line per finding and exits **0** clean, **1** findings, **2**
+usage, **3** `NOT MEASURED`, so a clean run is distinguishable from a run that
+never happened. That last code is what makes the sentence true, and it had to be
+earned: both checkers used to answer `OK` and exit 0 when they did not
+understand their input, so an unrecognised screen looked exactly like a checked
+one. **N2** answers 3 when a tree holds no component of a type it judges — run
+it with no arguments to see that vocabulary, which is built from the constant
+the checks apply rather than restated beside it — and it names the types it saw
+but does not judge even on a run that did measure something, so a partial gap is
+visible instead of assumed empty. **N3** answers 3 when a layout names no nodes.
+`lint_skills.py` uses the same code for its own zero-skills case, which is where
+this plugin first argued that nothing checked is not a pass.
+`appian-verify` names them and says what each catches and
+what it cannot — but **no hook runs them for you**. They are checkers a verify
+step invokes, not checks the harness performs on your behalf, and describing
+them any other way would be the overclaim this plugin exists to argue against.
 
 ## Troubleshooting
 
