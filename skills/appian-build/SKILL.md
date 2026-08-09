@@ -47,6 +47,21 @@ side effects the user did not necessarily ask for in that exact moment.
    The remote state wins over any local document. This replaces the clean-tree
    check that version control gives you elsewhere: here the artifact lives on a
    server you do not own alone.
+3b. **Audit the design — still before any write.** Dispatch
+    `appian-practices-auditor` with `phase=design`, handing it this task's id,
+    its contract, and the design being proposed. Its verdict lands at
+    `<evidenceDir>/<task-id>/practices-design.json`, where `evidenceDir` is the
+    project's evidence root from `.claude/appian-harness.json` at the project
+    root — `evidence` when that file names none. That is the exact path the
+    scope gate opens. If the verdict does not come back `PASS`, or
+    `NOT_MEASURED` with a `notMeasuredClass` of `DEFERRED` carrying an `owner`
+    and a `closingCondition`, **stop and report.** Those are the only two
+    outcomes the gate accepts, so continuing produces a blocked write and a
+    confused reader rather than progress. This precedes the build instead of
+    following it because a design audit run after the object exists is a
+    review: it arrives when the only remaining choices are to keep something
+    known to be wrong or to rebuild it, and rebuilding costs more than
+    deciding first.
 4. Implement, using `appian-best-practices` for the domains the change touches.
 5. Local verification.
 6. Record what was created or changed, with real identifiers.
@@ -77,6 +92,29 @@ which should have to re-derive it. If any of the four parts is missing before
 step 3 begins, that is itself a reason to stop: building against an incomplete
 contract just moves the missing decision to later, where it is harder to catch.
 
+## The design audit comes before the first write
+
+Step 3b exists because this is the last moment where changing the answer is
+still free. That audit judges whether this is a *good* way to solve the
+problem — component choice, interaction pattern, the shape of the data model —
+which is a different question from whether the platform is willing to run it.
+Asked before the first write, its findings change a decision. Asked after, the
+same findings are a review of something already paid for.
+
+Nothing else produces that verdict. `appian-verify` dispatches
+`phase=implementation` and `phase=qa` and scopes `design` out on purpose;
+`appian-review` owns `phase=review`. If this skill does not dispatch the design
+audit, no one does, and the gate's design check has nothing to read.
+
+"Comes back PASS" is two conditions rather than one, because that is what the
+gate checks. The verdict has to be structurally valid — every entry in its
+`referencesApplied` resolving to a real file and a real heading, so a fabricated
+citation fails exactly like a missing file — **and** its outcome has to be one
+the gate accepts. Validating the verdict is the auditor's own last step; if the
+validator exits nonzero, the audit is not finished and this task has not passed
+anything. The gate also needs to resolve this plugin's root to run that
+validation, and asks rather than allowing when it cannot.
+
 ## The scope gate measures the contract, not the write
 
 A `PreToolUse` hook checks every write against the active task's `allowedObjects`
@@ -96,7 +134,7 @@ Judging whether this is a good way to solve the problem — before the first
 write, while changing the answer is still cheap — is what that half of the gate
 protects. Preflight is all reads, so it passes untouched; the stop lands on the
 first create or update in step 4, and the way past it is to have the design
-audited, not to approve around the prompt.
+audited, not to approve around the prompt. Step 3b is what has it audited.
 
 The gate logs every question it asks — task, tool and reason — and the write log
 records what actually got written afterward. Read together, they turn "do we
@@ -146,10 +184,17 @@ first unverified result. If you cannot determine the state, stop and ask.
   PASS."* A gate that was not actually executed is NOT MEASURED, never PASS.
   Confidence in the implementation is not a substitute for the check the gate
   was defined to run.
+- *"I'll get the design audited once there's something to look at."* Then it is
+  not a design audit any more, it is a review: by the time there is something
+  to look at, the decision it was supposed to inform has already been paid for
+  in objects that exist. Waiting also guarantees the first write is stopped,
+  because that verdict is what the scope gate opens before letting it through.
 
 ## Red Flags
 
 - Writing to the environment without having run the preflight classification.
+- Issuing the first write with no `phase=design` verdict for this task, or with
+  one whose outcome the gate does not accept.
 - Recreating an object that preflight already found PRESENT.
 - Retrying a write after an error or timeout without first reading back whether
   it persisted.
@@ -165,6 +210,10 @@ Before handing this task off:
 - Every object listed in scope was classified in preflight (ABSENT, PRESENT AND
   CONFORMING, PRESENT BUT INCOMPLETE, or CONFLICTING), and no CONFLICTING object
   was written to without stopping first.
+- `appian-practices-auditor` ran with `phase=design` before the first write, and
+  its verdict at `<evidenceDir>/<task-id>/practices-design.json` came back
+  `PASS`, or `NOT_MEASURED` with `notMeasuredClass` `DEFERRED` and both an
+  `owner` and a `closingCondition` — anything else stopped the build.
 - Nothing outside `allowedObjects` was created, modified, or deleted.
 - Every gate in `requiredGates` has a recorded result — PASS, FAIL, or NOT
   MEASURED with a reason — not silence and not an assumed PASS.
