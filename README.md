@@ -695,6 +695,35 @@ Migrate rather than let them coexist:
 
 4. **Restart Claude Code** (or `/reload-plugins`), same as *Installing* step 3.
 
+### The installed copy is behind the repository
+
+`claude plugin update` compares the `version` field in
+`.claude-plugin/plugin.json` against the one it installed. It does not look at
+commits. A plugin whose version never moves answers `already at the latest
+version` however far the source has travelled, and `claude plugin install` on
+something already installed answers `already installed` and does nothing. Both
+messages are accurate and neither updates anything, so a copy can sit commits
+behind for weeks without a single error to notice.
+
+Check rather than assume. `~/.claude/plugins/installed_plugins.json` records a
+`gitCommitSha` per installed plugin; compare it with `git rev-parse HEAD` in the
+checkout. On 2026-08-09 an installation sat at `24e8448` while the source was
+three commits further on, including a fix — which is why this entry exists.
+
+Two ways to move it:
+
+- **Release a version.** Bump `version` in `.claude-plugin/plugin.json` *and* in
+  the marketplace entry — they have to agree, and `claude plugin tag` refuses to
+  tag when they do not. Then `claude plugin update appian-harness@appian-harness`
+  has something to compare and acts on it. Note the fully qualified id: the bare
+  name answers `Plugin "appian-harness" not found`.
+- **Force a fresh install.** `claude plugin marketplace remove appian-harness`,
+  add it again, then install. This picks up the current commit at an unchanged
+  version, which is how the copy installed today got ahead of `24e8448`.
+
+The first is the one to build a habit around; the second is for when you are
+iterating on the plugin itself and versioning every experiment is absurd.
+
 ### The installed copy carries files that are not in git
 
 `/plugin marketplace add` pointed at a directory copies that directory as it
