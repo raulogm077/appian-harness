@@ -1,5 +1,5 @@
 {
-  "name": "appian-harness-local",
+  "name": "appian-harness",
   "description": "Local marketplace for the appian-harness plugin, so a checkout of this repository can be installed directly.",
   "owner": {
     "name": "Raul Gomez Moya"

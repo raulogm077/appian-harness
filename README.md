@@ -395,7 +395,7 @@ them any other way would be the overclaim this plugin exists to argue against.
 
 This repository **is its own marketplace** — the manifest at
 `.claude-plugin/marketplace.json` lists the plugin with `"source": "./"` under
-the marketplace name `appian-harness-local` — and installing from a checkout is
+the marketplace name `appian-harness` — and installing from a checkout is
 the only path that exists today. Nothing public carries `appian-harness`, which
 is what makes the order of these three steps load-bearing:
 
@@ -409,8 +409,13 @@ installs nothing.
 **2. Install the plugin from that marketplace, by its full name.**
 
 ```
-/plugin install appian-harness@appian-harness-local
+/plugin install appian-harness@appian-harness
 ```
+
+(This is not a typo. The part before the `@` is the plugin name, the part
+after it is the marketplace name — this checkout's marketplace and the plugin
+it carries share the name `appian-harness`, so the full install target really
+is `appian-harness@appian-harness`. Do not delete half of it.)
 
 The command opens the plugin's details and asks which scope to install into —
 user, project or local. That prompt is the command working, not a failure.
@@ -424,7 +429,7 @@ nothing is the ordinary appearance of a skipped step 3.
 
 **Skipping step 1 is the failure this section is written around.** Running
 `/plugin install appian-harness` on its own — no marketplace registered, no
-`@appian-harness-local` suffix — answers:
+`@appian-harness` suffix — answers:
 
 ```
 Plugin "appian-harness" not found in any marketplace
@@ -458,7 +463,7 @@ twice:
 
   ```sh
   claude plugin marketplace add "/path/with spaces/appian-harness"
-  claude plugin install appian-harness@appian-harness-local
+  claude plugin install appian-harness@appian-harness
   ```
 
   These do not run inside a session, so what they install loads at the next
@@ -490,7 +495,7 @@ message names what was tried. In a project without `.claude/appian-harness.json`
 it stays out of the way exactly as the hooks themselves do.
 
 **How far the above was checked, and where it stops.** Both manifests exist and
-parse, and the marketplace's name is the `appian-harness-local` that step 2
+parse, and the marketplace's name is the `appian-harness` that step 2
 names. The hooks were exercised directly, by feeding `run_hook.sh` a
 payload the way Claude Code does — the command is under *Troubleshooting* — and
 they answered correctly in six cases, including the whole chain ending in
@@ -619,9 +624,52 @@ succeed. It is not a corrupt manifest and not a misspelled plugin name.
 
 Run the commands in the order *Installing* gives them: `/plugin marketplace add`
 pointed at this checkout **first**, then `/plugin install
-appian-harness@appian-harness-local`, then restart Claude Code. If it is the
+appian-harness@appian-harness`, then restart Claude Code. If it is the
 first of those that failed rather than the install, the path is the thing to
 look at — see the note there on paths containing spaces.
+
+### Installed under the old marketplace name (`appian-harness@appian-harness-local`)
+
+The marketplace was renamed from `appian-harness-local` to `appian-harness` —
+one name for the plugin and the marketplace that carries it, instead of two.
+Renaming the file does not rename an existing installation: Claude Code keeps
+the old marketplace registered under `appian-harness-local`, so a checkout
+updated in place ends up with **both** names known, one of them stale.
+
+Migrate rather than let them coexist:
+
+1. **Remove the old registration.** The argument is the `name` from the old
+   `marketplace.json`, not a path:
+
+   ```
+   /plugin marketplace remove appian-harness-local
+   ```
+
+   or, from a shell:
+
+   ```sh
+   claude plugin marketplace remove appian-harness-local
+   ```
+
+   This also uninstalls the plugin that was installed from it — removing a
+   marketplace from its last remaining scope takes the plugin with it, so
+   step 3 below is not optional.
+
+2. **Add it back under the new name.** Same command as *Installing* step 1,
+   pointed at the same checkout, pulled to a version where
+   `.claude-plugin/marketplace.json` already reads `"name": "appian-harness"`:
+
+   ```
+   /plugin marketplace add "C:\Users\you\My Projects\appian-harness"
+   ```
+
+3. **Reinstall,** now under the matching name from both sides of the `@`:
+
+   ```
+   /plugin install appian-harness@appian-harness
+   ```
+
+4. **Restart Claude Code** (or `/reload-plugins`), same as *Installing* step 3.
 
 ### The hooks do nothing
 
