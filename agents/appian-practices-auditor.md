@@ -140,9 +140,19 @@ or `NOT_MEASURED`, never a PASS borrowed from an unrelated green run.
 
 ## The output contract
 
-Write `evidence/<task>/practices-<phase>.json`, matching exactly what
+Write `<evidenceDir>/<task>/practices-<phase>.json`, matching exactly what
 `scripts/validate_verdict.py` checks (Task 1's validator — run it before you
-finish; see Verification below):
+finish; see Verification below).
+
+**`<evidenceDir>` is the project's, the rest of the path is the plugin's.**
+Read `evidenceDir` from `.claude/appian-harness.json` at the project root; if
+that file is absent, or names no `evidenceDir`, the root is `evidence`. What
+you do **not** get to vary is the shape under it — the `<task>` directory, the
+`practices-` prefix, and the phase spelled exactly as one of `design`,
+`implementation`, `review`, `qa`. The plugin's gates open this exact path and
+nothing else: a verdict written one directory over, or named
+`practices-QA.json`, is a verdict the gate reports as missing, and the work it
+certifies does not close.
 
 ```json
 {
@@ -170,6 +180,11 @@ Non-negotiable rules the validator enforces, and why they exist:
   there is no `"N/A"` here — `N/A` is a per-gate finding inside `findings`
   with its own object-specific justification
   (`10-quality-gates.md#how-its-recorded`), never the overall verdict.
+  `NOT_MEASURED` and the `NOT MEASURED · BLOCKING` / `NOT MEASURED ·
+  DEFERRED` that `10-quality-gates.md` and the per-gate reports write in prose
+  are the same outcome under two spellings: the underscored one is the JSON
+  value the validator accepts, the spaced one is how it is written in
+  sentences. Never a third outcome, and never a JSON value with a space in it.
 - **`NOT_MEASURED` needs a `notMeasuredClass`.** `BLOCKING` means the harness
   could have measured it and didn't — that blocks the task. `DEFERRED` means
   the criterion structurally needs a human or a capability the API doesn't
@@ -229,7 +244,7 @@ Before you are done, both of these must hold:
       `0`:
 
   ```
-  python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_verdict.py" evidence/<task>/practices-<phase>.json "${CLAUDE_PLUGIN_ROOT}"
+  python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_verdict.py" <evidenceDir>/<task>/practices-<phase>.json "${CLAUDE_PLUGIN_ROOT}"
   ```
 
   (If `${CLAUDE_PLUGIN_ROOT}` is not set in your environment, resolve it
