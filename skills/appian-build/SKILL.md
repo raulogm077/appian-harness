@@ -143,6 +143,57 @@ the answer usually is yes, that is not evidence the gate is too strict; it is
 evidence the contract needs to be split smaller at plan time, not approved around
 at build time.
 
+## The active task, written where the gates can read it
+
+The gates enforce against a file, not against what this skill happens to know.
+Its path is `activeTaskFile` in `.claude/appian-harness.json` at the project
+root — `tasks/current.json` when that file names none — and keeping it current
+is this skill's job, because this skill is what takes a task and what stops.
+
+**When step 1 takes a task, write that file.** At minimum it carries two
+fields, spelled exactly like this — the hooks look for these names and nothing
+close to them, and a field name that nearly matches fails the same way a path
+that nearly matches does:
+
+```json
+{
+  "id": "<the task id>",
+  "allowedObjects": ["<object>", "..."]
+}
+```
+
+`id` is also what the verdict path is built from, so it has to be the same
+string the design audit was dispatched with:
+`<evidenceDir>/<id>/practices-design.json` is one path assembled from two
+places, and they have to agree. `allowedObjects` is the contract's list,
+written the way the write call will actually name each object — the gate reads
+the target out of the tool's own arguments and compares strings, so an entry
+that describes an object instead of naming it never matches.
+
+**When step 7 stops, clear that file — delete it.** A stale active task is
+worse than no active task: the next write is measured against the previous
+task's contract, and allowed or questioned on grounds that have nothing to do
+with it, while everything still looks like it is working.
+
+Absence is not a lockout, and three cases differ:
+
+- **No `.claude/appian-harness.json` at all** — every hook allows, approves or
+  no-ops. That file's presence is the activation switch, so a project that has
+  not adopted the harness is never blocked by it.
+- **Config present, active task file absent** — the scope gate asks, naming the
+  missing active task among its reasons. It does not refuse.
+- **Active task file present but unreadable** — fail closed, which here also
+  means ask rather than deny.
+
+This file is not the plan's operational state, and the two must not grow into
+each other. The operational state is written for a person: which task is
+active, what is next, what is blocked. The active task file is the
+machine-readable statement of which single task is in flight right now, written
+by this skill when it takes one and removed when it stops. They name the same
+task while a build is running, and that is fine — they are still different
+artifacts, rewritten by different steps at different moments, and the one the
+gates open cannot carry a queue.
+
 ## Stop before anything irreversible
 
 Ask the user before: deleting any object, deleting record data, removing a mapped
@@ -189,12 +240,17 @@ first unverified result. If you cannot determine the state, stop and ask.
   to look at, the decision it was supposed to inform has already been paid for
   in objects that exist. Waiting also guarantees the first write is stopped,
   because that verdict is what the scope gate opens before letting it through.
+- *"I know which task I'm on, writing it to a file is bookkeeping."* The gates
+  cannot read what this skill knows; they read the active task file. Skipping it
+  does not make the build faster, it makes every single write ask.
 
 ## Red Flags
 
 - Writing to the environment without having run the preflight classification.
 - Issuing the first write with no `phase=design` verdict for this task, or with
   one whose outcome the gate does not accept.
+- Taking a task without writing the active task file, or leaving it pointing at
+  a task that already stopped.
 - Recreating an object that preflight already found PRESENT.
 - Retrying a write after an error or timeout without first reading back whether
   it persisted.
@@ -214,6 +270,9 @@ Before handing this task off:
   its verdict at `<evidenceDir>/<task-id>/practices-design.json` came back
   `PASS`, or `NOT_MEASURED` with `notMeasuredClass` `DEFERRED` and both an
   `owner` and a `closingCondition` — anything else stopped the build.
+- The active task file was written when this task was taken, carries this task's
+  `id` and its `allowedObjects` under exactly those names, and was deleted at
+  STOP rather than left behind.
 - Nothing outside `allowedObjects` was created, modified, or deleted.
 - Every gate in `requiredGates` has a recorded result — PASS, FAIL, or NOT
   MEASURED with a reason — not silence and not an assumed PASS.

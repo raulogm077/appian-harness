@@ -130,6 +130,12 @@ Keep them separate:
 - **State** — the current task, the ordered list of what's next, and any blockers.
   Rewritten every time a task closes or a blocker appears.
 
+The state is written for a person, and it is not the build step's active task
+file: that one is a machine-readable record of the single task in flight right
+now, written by the build step when it takes a task and removed when it stops.
+Both name the current task while a build is running; they are still two
+artifacts, and this skill writes only the first.
+
 **Where they live is project configuration, not something this skill decides.** Ask
 the project — or whoever is driving it — where the plan and the state file belong
 before writing either one. Don't default to a specific filename or directory: a
