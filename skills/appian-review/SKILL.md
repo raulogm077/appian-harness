@@ -41,6 +41,13 @@ the stated reason, into the task's evidence — the same location `appian-plan`
 and `appian-build` already call `evidenceFile`. This skill does not invent a
 second place for that record.
 
+The auditor's verdict is the one exception, and it is not this skill's choice:
+it goes to `<evidenceDir>/<task>/practices-review.json`, where `evidenceDir`
+is the project's root from `.claude/appian-harness.json` (default `evidence`)
+and everything under it is the plugin's fixed shape. That is the file the
+plugin's closure gate opens when it asks whether this change was reviewed, so
+a review recorded only in `evidenceFile` closes nothing.
+
 ## When to Use
 
 Review **enters** when a change:
@@ -126,6 +133,9 @@ Before treating a change as reviewed:
 - [ ] Every finding from either agent is recorded with its classification
       (actionable / not actionable) and, where not actionable, the stated
       reason.
+- [ ] The auditor's `phase=review` verdict exists at
+      `<evidenceDir>/<task>/practices-review.json` — not merely somewhere in
+      the task's evidence.
 - [ ] Findings and classifications are written into the task's evidence, not
       left stranded in a reviewer's own output.
 - [ ] The last two or more review cycles were checked for the review-theatre

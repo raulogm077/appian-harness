@@ -44,22 +44,31 @@ scrutiny. That is `appian-review`'s job, run separately, against its own closed 
    and say so rather than verifying against an incomplete contract.
 2. Ask the project for what this skill needs and does not assume: which identifier is guaranteed
    not to exist, so the empty path gets exercised on purpose rather than by accident; and what
-   command runs the regression suite, so non-regression has evidence behind it. Where a task's
-   evidence gets recorded is also project configuration — the same location `appian-build` already
-   writes real identifiers to.
+   command runs the regression suite, so non-regression has evidence behind it.
+
+   Evidence has a **root** and a **shape**, and only the root is the project's. The root is
+   `evidenceDir` in `.claude/appian-harness.json` — default `evidence` when that file names none.
+   The shape under it is this plugin's contract, not a convention a project gets to restyle:
+   every phase verdict is `<evidenceDir>/<task>/practices-<phase>.json`. That is the exact path
+   the plugin's gates open, so a verdict written anywhere else is a verdict they report as
+   missing. Do not confuse this with `evidenceFile`, the per-task record `appian-plan` assigns
+   and `appian-build` writes real identifiers into: that one the plan places, and it says nothing
+   about where these verdicts go.
 3. Dispatch `appian-practices-auditor` with `phase=implementation`, handing it the artifact and the
    contract. It judges whether the domain rules the change touches were actually followed, and
-   writes its verdict to `practices-implementation.json`.
+   writes its verdict to `<evidenceDir>/<task>/practices-implementation.json`.
 4. Dispatch `appian-practices-auditor` again with `phase=qa` — only after both a populated render
    and an empty-path render exist; see *Verification runs with populated data* below. It judges
    whether the test evidence covers the gate it claims to close, and writes its verdict to
-   `practices-qa.json`.
+   `<evidenceDir>/<task>/practices-qa.json`.
 5. Dispatch `appian-verifier`, handing it the contract and the real artifact — never a summary of
    what the builder believes it did. It emits a result for every gate in `requiredGates`, naming
    the evidence behind every `PASS`.
 6. Consolidate: fold the verifier's per-gate report together with both practices verdicts into one
-   record, `gates.md`, so a reviewer or the close step reads a single account of this task's state
-   instead of opening three files and reconciling them by hand.
+   record, `<evidenceDir>/<task>/gates.md`, so a reviewer or the close step reads a single account
+   of this task's state instead of opening three files and reconciling them by hand. No gate reads
+   this file — it sits beside the verdicts so that whoever opens the task's evidence finds one
+   account rather than a directory to reassemble.
 7. Hand off. This skill's job ends at the consolidated record; it does not proceed into review on
    its own.
 
@@ -115,6 +124,9 @@ nothing else.
 - Proceeding to `appian-review` before both practices verdicts and the verifier's report exist.
 - A blocking `NOT MEASURED` result folded into the consolidated record as if it were resolved.
 - Reusing a previous task's practices verdicts or gate report for a different task.
+- A verdict written anywhere other than `<evidenceDir>/<task>/practices-<phase>.json` — under a
+  different root, outside the task's directory, or with the phase spelled differently. It reads
+  as evidence to a person and as an absence to the gates, which is the worst of both.
 
 ## Verification
 
