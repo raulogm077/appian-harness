@@ -250,7 +250,18 @@ def failure_notice(payload):
 
 
 def _write_result(payload):
-    result = payload.get("tool_result")
+    # PostToolUse delivers what the tool returned as `tool_response`, not
+    # `tool_result` -- confirmed 2026-08-09 against the hooks reference
+    # (code.claude.com/docs/en/hooks, "PostToolUse input": "The input
+    # includes both tool_input, the arguments sent to the tool, and
+    # tool_response, the result it returned", with a payload example
+    # carrying "tool_response"). `tool_result` is read as a fallback so this
+    # stays correct under either name: reading only the absent one would log
+    # every write as "ok", and a write log that lies is worse than none,
+    # because it gets trusted.
+    result = payload.get("tool_response")
+    if result is None:
+        result = payload.get("tool_result")
     if isinstance(result, dict) and (result.get("is_error") or result.get("error")):
         return "error"
     if isinstance(result, str) and result.lower().startswith("error"):

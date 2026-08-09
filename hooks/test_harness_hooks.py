@@ -1,6 +1,6 @@
 import json, os, sys, tempfile, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
-from harness_hooks import scope_gate, closure_gate, failure_notice
+from harness_hooks import scope_gate, closure_gate, failure_notice, log_write
 
 def cfg(root, **over):
     c = {"pluginRoot": root, "evidenceDir": os.path.join(root, "evidence"),
@@ -150,6 +150,40 @@ class TestClosureGate(unittest.TestCase):
             self.assertIn("implementation", entry["missingPhases"])
             self.assertIn("review", entry["missingPhases"])
             self.assertIn("qa", entry["missingPhases"])
+
+class TestWriteLog(unittest.TestCase):
+    """A write log that lies is worse than no write log, because it gets
+    trusted. PostToolUse delivers the tool's return value as `tool_response`;
+    reading only `tool_result` would record every failed write as "ok", so
+    both names are pinned here."""
+
+    def _logged_result(self, root, payload):
+        c = cfg(root, activeTask={"id": "T-1", "allowedObjects": ["A"]})
+        log_write(payload, c)
+        with open(os.path.join(c["evidenceDir"], "operations.jsonl"), encoding="utf-8") as f:
+            return json.loads(f.readline())["result"]
+
+    def test_failed_write_under_tool_response_is_logged_as_error(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.assertEqual(self._logged_result(t, {
+                "tool_name": "mcp__appian-dev__updateInterface",
+                "tool_input": {"name": "A"},
+                "tool_response": {"is_error": True, "error": "Access denied"}}), "error")
+
+    def test_failed_write_under_legacy_tool_result_is_logged_as_error(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.assertEqual(self._logged_result(t, {
+                "tool_name": "mcp__appian-dev__updateInterface",
+                "tool_input": {"name": "A"},
+                "tool_result": {"is_error": True, "error": "Access denied"}}), "error")
+
+    def test_successful_write_is_logged_as_ok(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.assertEqual(self._logged_result(t, {
+                "tool_name": "mcp__appian-dev__updateInterface",
+                "tool_input": {"name": "A"},
+                "tool_response": {"uuid": "_a-0000", "success": True}}), "ok")
+
 
 class TestFailureNotice(unittest.TestCase):
     def test_notice_forbids_a_blind_retry(self):
