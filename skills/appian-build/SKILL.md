@@ -89,6 +89,15 @@ that many entries to describe was sized wrong before this skill ever started.
 Answering "yes, proceed" past the prompt does not fix that — it just carries the
 oversized contract into the build.
 
+The same gate asks for one thing the contract does not carry: a `design` audit
+for this task that passes, at `<evidenceDir>/<task>/practices-design.json`,
+where `evidenceDir` is the project's root from `.claude/appian-harness.json`.
+Judging whether this is a good way to solve the problem — before the first
+write, while changing the answer is still cheap — is what that half of the gate
+protects. So a task that reaches step 3 with no design verdict gets stopped
+there, and the way past it is to have the design audited, not to approve around
+the prompt.
+
 The gate logs every question it asks — task, tool and reason — and the write log
 records what actually got written afterward. Read together, they turn "do we
 usually say yes to this prompt" into something measurable instead of a guess. If

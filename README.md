@@ -11,8 +11,10 @@ right component was chosen, whether the screen has a heading, or whether a colou
 resolved from the database is readable against its background.
 
 This plugin exists to close that gap. It is a set of lifecycle skills, a
-Definition of Done expressed as quality gates, and a verification pyramid that
-states, level by level, what each kind of check does and does not prove.
+Definition of Done expressed as quality gates, a verification pyramid that
+states level by level what each kind of check does and does not prove, and a
+set of hooks that stop the whole thing from being advice an agent can talk
+itself out of.
 
 ## The guiding principle
 
@@ -48,24 +50,52 @@ wrong direction.
 
 ## Skills
 
-Four of the six skills below are shipped; `appian-verify` and `appian-review`
-are still to come. Each row's status flips to `shipped` with a one-word edit
-once that skill's `SKILL.md` lands.
-
-| Skill | Phase | What it does | Status |
-|---|---|---|---|
-| `appian-specify` | SPECIFY | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. | shipped |
-| `appian-plan` | PLAN | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria. | shipped |
-| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Manually invoked. | shipped |
-| `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. | shipped |
-| `appian-verify` | VERIFY | Produces the per-gate report with evidence, in its own context. | planned |
-| `appian-review` | REVIEW | Independent review from a clean context, graduated by risk. | planned |
+| Skill | Phase | What it does |
+|---|---|---|
+| `appian-specify` | SPECIFY | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. |
+| `appian-plan` | PLAN | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria. |
+| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Manually invoked. |
+| `appian-verify` | VERIFY | Produces the per-gate report with evidence, in its own context. |
+| `appian-review` | REVIEW | Independent review from a clean context, graduated by risk. |
+| `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. |
 
 `appian-best-practices` carries eleven domain references — data model and record
 types, SAIL interfaces, process models, expression rules, performance, security,
 integrations, ALM and testing, sites and navigation, quality gates, reliability
 and operations. The `SKILL.md` is the index: only the reference the change
 touches gets opened.
+
+## Agents
+
+The skills orchestrate; three agents do the judging, each in its own context so
+that no judgement is formed by whoever produced the work.
+
+| Agent | What it judges |
+|---|---|
+| `appian-practices-auditor` | One phase — `design`, `implementation`, `review` or `qa` — against the domain references, writing a verdict that cites the sections it applied. |
+| `appian-verifier` | Whether the evidence on hand covers each gate the task's contract requires, naming the evidence behind every `PASS`. |
+| `appian-reviewer` | Whether the change holds up against its contract, from the artifact alone — it is never handed the builder's conclusion. |
+
+## The gates
+
+Everything above is doctrine an agent can decide to skip. Four hooks make the
+central parts of it hold whether or not the agent agrees:
+
+- **scope gate** (before any Appian write) — is there an approved active task,
+  is this object inside its `allowedObjects`, is the task atomic, and is there a
+  *passing* `design` audit for it? Not merely present: structurally valid, with
+  citations that resolve, and an outcome of `PASS` or a sanctioned deferral.
+- **closure gate** (on stop) — a task does not close without valid, passing
+  `implementation`, `review` and `qa` verdicts. On a repeated stop it approves
+  rather than deadlocking, and records the omission as `NOT MEASURED ·
+  BLOCKING` debt, because a guardrail that cannot be satisfied gets switched
+  off and then protects nothing.
+- **write log** and **failure notice** — the harness records what was written,
+  and tells an agent not to retry a failed write blind.
+
+No hook ever returns *deny*: the strongest answer is *ask*. And when it cannot
+inspect something — an unreadable config, malformed JSON — it asks rather than
+letting it through.
 
 ## The verification pyramid
 
@@ -112,33 +142,66 @@ manifest at `.claude-plugin/marketplace.json` lists the plugin with `"source":
 /plugin install appian-harness@appian-harness-local
 ```
 
-The skills carry no runtime dependencies; the skill validator under `scripts/`
-needs only Python 3 and the standard library.
+The skills carry no runtime dependencies. The hooks and the validators under
+`scripts/` need Python 3 on the `PATH` as `python`, and nothing beyond the
+standard library.
 
 ## What the plugin asks of your project
 
 The plugin is deliberately free of any assumption about your repository layout.
-It asks for configuration rather than guessing — but only three of the five
-pieces below are asked for by the skills that ship today. The other two are the
-configuration surface of `appian-verify`, which is still to come; they are
-listed because they are real and worth planning for, not because anything in
-this plugin reads them yet.
+It asks for configuration rather than guessing.
 
-| Configuration | Asked for by | Why it is needed |
-|---|---|---|
-| **Where the specification lives** | shipped | `appian-plan` reads it; `appian-build` resolves acceptance criteria against it. |
-| **Where the plan and the operational state live** | shipped | Two files, not one. A plan is approved and stable; state changes every task. Keeping them together makes both untrustworthy. |
-| **Which naming convention is frozen** | shipped | Object prefixes and names the agent must not invent. |
-| **What command runs the regression suite** | with `appian-verify` | The evidence of non-regression after any change that touches data or objects. |
-| **Which identifier exercises the empty path** | with `appian-verify` | An id that is guaranteed *not* to exist, so empty states are tested on purpose rather than by accident. |
+| Configuration | Why it is needed |
+|---|---|
+| **Where the specification lives** | `appian-plan` reads it; `appian-build` resolves acceptance criteria against it. |
+| **Where the plan and the operational state live** | Two files, not one. A plan is approved and stable; state changes every task. Keeping them together makes both untrustworthy. |
+| **Which naming convention is frozen** | Object prefixes and names the agent must not invent. |
+| **What command runs the regression suite** | The evidence of non-regression after any change that touches data or objects. |
+| **Which identifier exercises the empty path** | An id that is guaranteed *not* to exist, so empty states are tested on purpose rather than by accident. |
 
 A sixth location — where a task's evidence gets recorded — is asked for per task
 rather than once per project: `appian-plan` writes it into each task as
-`evidenceFile`, and `appian-build` refuses to start without it.
+`evidenceFile`, and `appian-build` refuses to start without it. That is a
+different thing from `evidenceDir` below: the plan places `evidenceFile`, and it
+has no say over where the gates' verdicts go.
 
 Everything specific to one application — the requirements document, real object
 identifiers, test fixtures, the environment — stays in your project. None of it
 belongs here.
+
+### The one file the hooks read
+
+The gates need paths they can open without asking anyone, so they read one file
+at your project root, `.claude/appian-harness.json`:
+
+```json
+{
+  "evidenceDir": "evidence",
+  "activeTaskFile": "tasks/current.json",
+  "maxAllowedObjects": 3
+}
+```
+
+Every key is optional and the values above are the defaults. **The file's
+presence is the activation switch:** without it, every hook allows, approves or
+no-ops, so the plugin installed in a project that does not use it stays out of
+the way.
+
+`activeTaskFile` holds the task the gates enforce against — its `id` and its
+`allowedObjects`. Your project chooses the root; the plugin fixes the shape
+under it, and a file written to any other shape is one the gates report as
+missing:
+
+| Path | Written by | Read by |
+|---|---|---|
+| `<evidenceDir>/<task>/practices-<phase>.json` | `appian-practices-auditor`, one per phase | Both gates. The scope gate reads `design`; the closure gate reads `implementation`, `review`, `qa` |
+| `<evidenceDir>/operations.jsonl` | the write log | a person, afterwards |
+| `<evidenceDir>/gate-decisions.jsonl` | the scope gate, every time it asks | a person, afterwards |
+| `<evidenceDir>/deferred-debt.jsonl` | the closure gate, when forced to approve unverified work | a person, afterwards |
+
+The three logs are append-only and nothing in the plugin reads them back. They
+exist so that "how often did this gate stop something, and did anyone answer
+yes?" is a question with an answer.
 
 ## What this plugin does not do
 
