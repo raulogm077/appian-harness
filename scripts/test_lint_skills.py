@@ -120,6 +120,31 @@ class TestLintSkill(unittest.TestCase):
                       "This skill should be used before a task is closed.")
             self.assertEqual(lint_skill(p), [])
 
+    def test_a_trigger_followed_by_an_exclusion_still_passes(self):
+        # The commonest real shape, and the one the whole-description search
+        # rejected: state when the skill fires, then state when it does not.
+        # The old comment claimed sentence punctuation protected this. It
+        # only protected a negation placed BEFORE the trigger -- here the
+        # negation is its own later sentence and was still fatal.
+        with tempfile.TemporaryDirectory() as t:
+            p = write(t, "appian-build",
+                      "Use when building an Appian object. Do not use when the change is cosmetic.")
+            self.assertEqual(lint_skill(p), [])
+
+    def test_an_exclusion_before_the_trigger_also_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = write(t, "appian-build",
+                      "Do not use when the change is cosmetic. Use when building an Appian object.")
+            self.assertEqual(lint_skill(p), [])
+
+    def test_only_an_exclusion_still_fails(self):
+        # The exclusion sentence must still not count as a trigger on its
+        # own -- otherwise the fix would just delete the check.
+        with tempfile.TemporaryDirectory() as t:
+            p = write(t, "appian-build",
+                      "Appian best practices. Do not use when the change is cosmetic.")
+            self.assertTrue(any("trigger" in e for e in lint_skill(p)))
+
     def test_third_person_negated_trigger_does_not_count(self):
         # The negated form of the third-person phrasing must be rejected the
         # same way "Do not use when..." is, for symmetry.

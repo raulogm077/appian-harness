@@ -62,7 +62,7 @@ wrong direction.
 | `scripts/` | Four modules: `validate_verdict.py`, `lint_skills.py`, `n2_interface_tree.py`, `n3_process_layout.py` |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
 
-The Python carries its own tests — 53 for `scripts/`, 16 for `hooks/`, standard
+The Python carries its own tests — 75 for `scripts/`, 40 for `hooks/`, standard
 library only:
 
 ```
@@ -342,7 +342,7 @@ see. Cheapest first.
 | **N0** Syntax | the expression | Whether it parses and whether the rules it calls exist |
 | **N1** Static | the source | Components, icons, enumerated values, patterns, accessibility rules |
 | **N2** Structural | the **evaluated component tree** | Everything that only exists once data is resolved |
-| **N3** Coordinates | process models | Overlapping nodes, proximity, backward flow, lanes |
+| **N3** Coordinates | process models | Overlapping nodes, proximity, backward flow, disconnected nodes |
 | **N4** Behaviour | test cases and the regression suite | Nominal, empty, null, error and repeat paths |
 | **N5** Perceptual | a screenshot of the running site | Visual hierarchy, density, responsiveness, focus |
 | **N6** Human | — | Screen reader, Design Guidance, real login per role |

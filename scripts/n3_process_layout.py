@@ -10,7 +10,15 @@ import sys
 
 MIN_DX = 150
 MIN_DY = 100
-LANE_DY = 150
+
+# The check ids jump from C3 to C5, and that gap is deliberate rather than an
+# omission to be filled later. C4 was to be a lane check -- "the nominal path
+# sits on one y, branches get their own" -- and nodes plus edges do not carry
+# enough to decide it: nothing here says which path is nominal, and any rule
+# guessing it from coordinates would only be re-asserting whatever layout it
+# was given. A constant for it (LANE_DY) sat here unused while the README
+# advertised the check; both are gone. Lanes are a judgement made by looking
+# at the diagram, which is N5.
 
 
 def _back_edges(edges):

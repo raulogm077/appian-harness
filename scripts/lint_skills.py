@@ -32,11 +32,42 @@ TRIGGER = re.compile(
 # etc. describe an exclusion, not a trigger. The negation word can be a few
 # words away from "use"/"used" ("Not for use when...") rather than directly
 # adjacent to it ("Do not use when..."), so this matches a negation word
-# followed, within the same sentence, by "use" or "used" — but a
-# sentence-ending punctuation mark between them breaks the match, so a
-# negation earlier in the description that isn't about the trigger clause
-# ("Not applicable to legacy skills. Use when...") is left alone.
+# followed, within the same sentence, by "use" or "used".
+#
+# This is applied per sentence, by has_trigger below, and that is the whole
+# point of it. Applied to the description as a whole it rejected
+# "Use when X. Do not use when Y." -- a description with a perfectly good
+# trigger and an exclusion after it, which is the commonest real shape there
+# is. An earlier comment here claimed sentence punctuation protected that
+# case; it does not. What it protects is a negation placed BEFORE the
+# trigger ("Not applicable to legacy skills. Use when...") which the
+# `[^.!?]` cannot reach across. A negation AFTER the trigger sits in its own
+# later sentence and matched perfectly well.
 TRIGGER_NEGATED = re.compile(r"\b(do not|don't|never|avoid|not)\b[^.!?]{0,30}\bused?\b", re.I)
+
+# Splitting on sentence-ending punctuation followed by whitespace. A
+# description is one or two sentences of prose, so this does not need to
+# survive "e.g." or an abbreviation mid-clause -- and if it mis-split one,
+# the result is a sentence with no trigger, which the next sentence covers.
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+
+def has_trigger(description):
+    """True when SOME sentence says when the skill fires.
+
+    Per sentence rather than per description: a trigger and an exclusion are
+    two different statements, and a skill that states both is better
+    documented than one that states only the trigger. Judging them together
+    means the better description is the one that gets rejected.
+
+    The exclusion sentence still cannot serve as the trigger on its own --
+    it is skipped, not accepted -- so a description carrying only
+    "Do not use when..." fails exactly as before.
+    """
+    for sentence in SENTENCE_SPLIT.split(description):
+        if TRIGGER.search(sentence) and not TRIGGER_NEGATED.search(sentence):
+            return True
+    return False
 
 # name -> documented reason. Empty on purpose: every skill this plugin ships
 # carries the required sections, so nothing is exempt. The mechanism stays
@@ -88,8 +119,9 @@ def lint_skill(path):
     else:
         if len(desc) > MAX_DESCRIPTION:
             errors.append("description is %d chars; the limit is %d" % (len(desc), MAX_DESCRIPTION))
-        if TRIGGER_NEGATED.search(desc) or not TRIGGER.search(desc):
-            errors.append("description has no trigger phrase (needs 'use when' / 'use before'; a negated form does not count)")
+        if not has_trigger(desc):
+            errors.append("description has no trigger phrase (needs 'use when' / 'use before' in "
+                          "a sentence that is not itself an exclusion; a negated form does not count)")
 
     if name not in SECTION_EXEMPT:
         for section in REQUIRED_SECTIONS:
