@@ -1,0 +1,5 @@
+# hooks/run_hook.sh is executed by sh on every platform. Checked out with
+# CRLF endings it fails to start on macOS and Linux -- and a hook that fails
+# to start does not gate, which is the exact silent absence this plugin
+# exists to prevent. Pin shell scripts to LF regardless of core.autocrlf.
+*.sh text eol=lf

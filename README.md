@@ -158,8 +158,25 @@ manifest at `.claude-plugin/marketplace.json` lists the plugin with `"source":
 ```
 
 The skills carry no runtime dependencies. The hooks and the validators under
-`scripts/` need Python 3 on the `PATH` as `python`, and nothing beyond the
-standard library.
+`scripts/` need Python 3 on the `PATH` and nothing beyond the standard library.
+Any of `python3`, `python` or `py -3` will do: `hooks/run_hook.sh` probes them
+in that order and runs the first that answers as Python 3, so the plugin does
+not depend on a distribution having named the interpreter one particular way.
+
+The hooks are invoked through `sh`, which macOS and Linux always provide and
+which on Windows comes from Git Bash. **One configuration is not covered:
+Windows without Git Bash installed.** There, Claude Code runs hook commands
+through PowerShell, `sh` does not resolve, and the hooks do not run at all —
+silently, because a command that cannot be found produces no decision. Install
+[Git for Windows](https://git-scm.com/download/win) and the hooks work; Claude
+Code wants it on Windows anyway, since without it there is no Bash tool either.
+
+If no interpreter is found, `hooks/run_hook.sh` answers in the Python code's
+place rather than going quiet: the scope gate asks, the closure gate blocks
+once and then approves loudly on the repeat `Stop` so the session cannot
+deadlock, the write log reports that the write was not recorded, and each
+message names what was tried. In a project without `.claude/appian-harness.json`
+it stays out of the way exactly as the hooks themselves do.
 
 ## What the plugin asks of your project
 

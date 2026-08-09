@@ -260,8 +260,12 @@ Before you are done, both of these must hold:
       `0`:
 
   ```
-  python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_verdict.py" <evidenceDir>/<task>/practices-<phase>.json "${CLAUDE_PLUGIN_ROOT}"
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/validate_verdict.py" <evidenceDir>/<task>/practices-<phase>.json "${CLAUDE_PLUGIN_ROOT}"
   ```
+
+  (Use `python` where that is the name Python 3 answers to — on Windows it
+  usually is, while on macOS and most Linux distributions `python3` is the
+  only one that exists.)
 
   (If `${CLAUDE_PLUGIN_ROOT}` is not set in your environment, resolve it
   yourself as the checkout root of this plugin — the directory that contains

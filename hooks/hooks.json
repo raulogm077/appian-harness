@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/harness_hooks.py\" scope-gate",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.sh\" \"${CLAUDE_PLUGIN_ROOT}\" scope-gate",
             "timeout": 15
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/harness_hooks.py\" log-write",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.sh\" \"${CLAUDE_PLUGIN_ROOT}\" log-write",
             "timeout": 15
           }
         ]
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/harness_hooks.py\" failure-notice",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.sh\" \"${CLAUDE_PLUGIN_ROOT}\" failure-notice",
             "timeout": 15
           }
         ]
@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/harness_hooks.py\" closure-gate",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.sh\" \"${CLAUDE_PLUGIN_ROOT}\" closure-gate",
             "timeout": 20
           }
         ]
