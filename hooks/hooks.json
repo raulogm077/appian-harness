@@ -1,5 +1,5 @@
 {
-  "description": "Scope gate, closure gate, write log and failure notice for Appian work.",
+  "description": "Scope gate, closure gate, write log, evidence-write log and failure notice for Appian work.",
   "hooks": {
     "PreToolUse": [
       {

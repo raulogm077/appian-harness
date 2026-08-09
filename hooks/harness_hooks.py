@@ -1,4 +1,4 @@
-"""Four hooks that enforce the Appian harness's write and closure gates.
+"""Five hooks that enforce the Appian harness's write and closure gates.
 
 The plugin's premise is that an agent must not be able to mark its own work
 as passing. These hooks are where that stops being advice:
