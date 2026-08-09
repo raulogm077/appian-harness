@@ -1,5 +1,8 @@
 import io, os, tempfile, unittest
 from contextlib import redirect_stdout
+from unittest.mock import patch
+
+import lint_skills
 from lint_skills import lint_skill, main
 
 VALID_BODY = """
@@ -63,10 +66,17 @@ class TestLintSkill(unittest.TestCase):
             self.assertTrue(any("Red Flags" in e for e in lint_skill(p)))
 
     def test_exempt_skill_skips_section_check(self):
+        # SECTION_EXEMPT ships empty, so the exemption is injected here
+        # rather than naming a real skill: the mechanism is what is under
+        # test, and a live entry for a skill that does not exist would
+        # exempt whatever took that name later.
         body = "## Overview\nOnly this.\n"
         with tempfile.TemporaryDirectory() as t:
-            p = write(t, "using-appian-harness", "Use when starting work on an Appian project.", body)
-            self.assertEqual(lint_skill(p), [])
+            p = write(t, "some-router", "Use when starting work on an Appian project.", body)
+            self.assertTrue(any("Red Flags" in e for e in lint_skill(p)))
+            with patch.dict(lint_skills.SECTION_EXEMPT,
+                            {"some-router": "Router skill: it lists other skills."}):
+                self.assertEqual(lint_skill(p), [])
 
     def test_negated_trigger_not_for_use_phrasing_fails(self):
         # "Not for use when..." puts a word between the negation and "use",

@@ -38,10 +38,15 @@ TRIGGER = re.compile(
 # ("Not applicable to legacy skills. Use when...") is left alone.
 TRIGGER_NEGATED = re.compile(r"\b(do not|don't|never|avoid|not)\b[^.!?]{0,30}\bused?\b", re.I)
 
-# name -> documented reason
-SECTION_EXEMPT = {
-    "using-appian-harness": "Router skill: it lists other skills, it has no procedure to rationalize about.",
-}
+# name -> documented reason. Empty on purpose: every skill this plugin ships
+# carries the required sections, so nothing is exempt. The mechanism stays
+# because a router skill -- one that only lists other skills, with no
+# procedure to rationalize about -- would legitimately need it. It held one
+# entry for "using-appian-harness", a skill that does not exist here; a live
+# exemption for a phantom would silently exempt whatever took that name
+# later, which is not what a file whose exemptions are meant to be
+# unbypassable should do.
+SECTION_EXEMPT = {}
 
 
 def parse_frontmatter(text):
