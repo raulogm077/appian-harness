@@ -174,6 +174,16 @@ It asks for configuration rather than guessing.
 | **What command runs the regression suite** | The evidence of non-regression after any change that touches data or objects. |
 | **Which identifier exercises the empty path** | An id that is guaranteed *not* to exist, so empty states are tested on purpose rather than by accident. |
 
+**None of these five is machine-read.** They are what a project records so the
+people and agents following the process can find them, and the skills act on
+them as prose: `appian-plan` opens the specification because the skill tells it
+to, not because a hook resolved a key. No code in this plugin reads any of the
+five — a project that writes them into a config file gets a note to its future
+self, not behaviour. The regression command in particular is run by whoever is
+following the process; the harness never runs it for them. That is the line
+between doctrine an agent applies and a gate that holds without it, and it is
+worth knowing before you expect a value recorded here to take effect on its own.
+
 A sixth location — where a task's evidence gets recorded — is asked for per task
 rather than once per project: `appian-plan` writes it into each task as
 `evidenceFile`, and `appian-build` refuses to start without it. That is a
@@ -201,6 +211,13 @@ Every key is optional and the values above are the defaults. **The file's
 presence is the activation switch:** without it, every hook allows, approves or
 no-ops, so the plugin installed in a project that does not use it stays out of
 the way.
+
+**Three keys, and the list is closed.** `evidenceDir`, `activeTaskFile` and
+`maxAllowedObjects` are the whole of what the hooks open today. Every other key
+in this file is inert to the plugin: nothing rejects an extra one, and nothing
+acts on it either. A project is free to record more here for its own use — the
+five items above are worth writing down somewhere — as long as it does not
+expect the harness to notice.
 
 `activeTaskFile` holds the task the gates enforce against — its `id` and its
 `allowedObjects`. `maxAllowedObjects` is the atomicity budget: past it, the
