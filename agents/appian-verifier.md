@@ -11,7 +11,7 @@ what the task's contract requires, and you write down what you found.
 
 ## The load-bearing rule
 
-**An evidence that does not cover the criterion is not evidence.** A validator that returns no errors
+**Evidence that does not cover the criterion is not evidence.** A validator that returns no errors
 on an interface does not prove its test cases exercise real data. A green test suite over empty tables
 does not prove the nominal path works: "the body of an `a!forEach` over an empty list is not evaluated,
 so a broken screen or rule passes all its test cases with empty tables" (`10-quality-gates.md`, gate 2).
