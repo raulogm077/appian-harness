@@ -194,6 +194,15 @@ def closure_gate(payload, config):
     verdicts are missing, invalid, or failing so the agent doesn't have to
     guess.
 
+    A task stays in flight from the moment appian-build takes it until
+    appian-review closes it, so the builder's own Stop lands here with the
+    three verdicts legitimately absent -- the task really is unverified at
+    that moment. That block is not a failure report, and its wording says
+    so: it names the next phase to run rather than only what is missing.
+    (Before 2026-08-09 appian-build deleted the active task file at STOP,
+    which left nothing in flight and made this gate approve every nominal
+    session without checking a thing.)
+
     A Stop hook can only approve or block -- there's no third answer -- so
     an unconditional block on missing verdicts is a deadlock with no in-band
     escape whenever they genuinely cannot be produced yet (auditor
@@ -233,8 +242,14 @@ def closure_gate(payload, config):
                                  debt_path))}
 
     return {"decision": "block",
-            "reason": "task %r cannot close: missing or invalid verdicts -- %s" %
-                      (task_id, " | ".join(missing_details))}
+            "reason": "task %r is still in flight, so this stop is a handoff, not a close. "
+                      "Not yet produced or not yet passing: %s. Next step: run appian-verify "
+                      "for this task -- it produces practices-implementation and practices-qa "
+                      "-- and then appian-review, which produces practices-review and clears "
+                      "the active task file once the task closes. Detail: %s" %
+                      (task_id,
+                       ", ".join("practices-%s" % p for p in missing_phases),
+                       " | ".join(missing_details))}
 
 
 def failure_notice(payload):
