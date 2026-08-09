@@ -5,12 +5,19 @@ as passing. These hooks are where that stops being advice:
 
 - scope_gate (PreToolUse on Appian write tools): is there an approved active
   task? is the object in its allowedObjects? is the task atomic? is there a
-  VALID design audit for it? "Valid" is decided by validate_verdict, so a
-  fabricated citation fails the gate, not just a missing file.
+  PASSING design audit for it? "Passing" is two checks stacked: structurally
+  valid per validate_verdict (so a fabricated citation fails the gate, not
+  just a missing file), AND an outcome of PASS or a sanctioned, owned
+  NOT_MEASURED/DEFERRED -- a FAIL or an unowned NOT_MEASURED/BLOCKING audit
+  does not unlock the write, because a gate that accepts a FAIL is not a
+  gate.
 - closure_gate (Stop): the write gate cannot cover review and QA, which
-  happen after writing. This blocks closing a task without valid
+  happen after writing. This blocks closing a task without passing
   practices-implementation, practices-review and practices-qa verdicts, and
-  names which are missing.
+  names which are missing or failing -- except on a repeat Stop attempt,
+  where blocking forever would just get the gate disabled, so it approves
+  and records the omission as recorded debt instead (see closure_gate's
+  own docstring).
 - log_write (PostToolUse): appends task, tool, object and result to
   operations.jsonl. The harness records it, not the agent -- an agent asked
   to log its own writes forgets exactly when it matters.
@@ -41,7 +48,7 @@ import time
 # Inserted unconditionally so this module is self-sufficient whether it's
 # imported by the test suite or run directly as the hook's entry point.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-from validate_verdict import validate_verdict
+from validate_verdict import load_verdict, validate_verdict
 
 # Matches the same verbs as hooks.json's PreToolUse/PostToolUse matcher, so
 # scope_gate/closure_gate agree with what the matcher already routed to them
@@ -88,12 +95,27 @@ def _verdict_path(config, task_id, phase):
 
 
 def _phase_errors(config, task_id, phase):
-    """Names what's wrong with a phase's verdict; empty list means valid.
+    """Names what's wrong with a phase's verdict; empty list means valid AND
+    passing. Both halves matter and neither is optional:
 
-    A missing file and a structurally-invalid file (per validate_verdict,
-    which resolves every cited reference against this plugin's own docs)
-    both fail closed -- the caller decides what to do with the list, this
-    only inspects.
+    - validate_verdict answers "is this a well-formed audit whose citations
+      resolve?" -- a document-shape question. It deliberately says nothing
+      about the outcome, and that separation is correct: it is not this
+      function's job to duplicate validate_verdict's citation-resolution
+      logic, only to add the outcome check on top of it.
+    - A phase audit only SATISFIES a gate when verdict == PASS, or
+      verdict == NOT_MEASURED with notMeasuredClass == DEFERRED (which
+      validate_verdict already guarantees carries an owner and a
+      closingCondition). FAIL never satisfies. NOT_MEASURED/BLOCKING never
+      satisfies either: DEFERRED is the sanctioned, owned, named escape;
+      BLOCKING is the harness saying it could have measured this and did
+      not, which is a process failure, not a limitation.
+
+    A missing file, a structurally-invalid file, and a structurally-valid
+    file with a non-satisfying outcome are three different problems, and the
+    caller (an "ask" or "block" reason shown to a person) needs to be able
+    to tell them apart -- "the audit exists and says FAIL" is not the same
+    message as "there is no audit".
     """
     path = _verdict_path(config, task_id, phase)
     if not os.path.isfile(path):
@@ -104,7 +126,18 @@ def _phase_errors(config, task_id, phase):
     errors = validate_verdict(path, plugin_root)
     if errors:
         return ["practices-%s verdict is invalid: %s" % (phase, "; ".join(errors))]
-    return []
+
+    verdict = load_verdict(path)
+    outcome = verdict.get("verdict")
+    if outcome == "PASS":
+        return []
+    if outcome == "NOT_MEASURED" and verdict.get("notMeasuredClass") == "DEFERRED":
+        return []
+    if outcome == "FAIL":
+        return ["the practices-%s audit exists and is well-formed, but says FAIL" % phase]
+    return ["the practices-%s audit exists and is well-formed, but is NOT_MEASURED with "
+            "notMeasuredClass=BLOCKING: it could have been measured and was not, which "
+            "is a process failure, not a sanctioned limitation" % phase]
 
 
 def scope_gate(payload, config):
@@ -154,24 +187,50 @@ def closure_gate(payload, config):
 
     scope_gate only covers the write itself; review and QA happen after
     writing, so they can only be enforced here. Names exactly which
-    verdicts are missing or invalid so the agent doesn't have to guess.
+    verdicts are missing, invalid, or failing so the agent doesn't have to
+    guess.
+
+    A Stop hook can only approve or block -- there's no third answer -- so
+    an unconditional block on missing verdicts is a deadlock with no in-band
+    escape whenever they genuinely cannot be produced yet (auditor
+    unavailable, a human-dependent step). The first thing anyone does with a
+    deadlocked guardrail is disable it, and a disabled guardrail protects
+    nothing. Claude Code marks a repeat Stop attempt with
+    payload["stop_hook_active"]; on that repeat, this approves instead of
+    blocking forever -- but never as a silent pass. It converts the omission
+    into named, recorded debt: NOT_MEASURED / BLOCKING, written to the
+    project's evidence so a human finds it. That is the plugin's own
+    doctrine applied to itself.
     """
     active_task = config.get("activeTask")
     if not active_task or not active_task.get("id"):
         return {"decision": "approve"}
 
     task_id = active_task["id"]
-    missing = []
+    missing_phases = []
+    missing_details = []
     for phase in CLOSURE_PHASES:
         errs = _phase_errors(config, task_id, phase)
         if errs:
-            missing.append("practices-%s (%s)" % (phase, "; ".join(errs)))
+            missing_phases.append(phase)
+            missing_details.append("practices-%s (%s)" % (phase, "; ".join(errs)))
 
-    if missing:
-        return {"decision": "block",
-                "reason": "task %r cannot close: missing or invalid verdicts -- %s" %
-                          (task_id, " | ".join(missing))}
-    return {"decision": "approve"}
+    if not missing_details:
+        return {"decision": "approve"}
+
+    if payload.get("stop_hook_active"):
+        debt_path = _record_deferred_debt(config, task_id, missing_phases)
+        return {"decision": "approve",
+                "systemMessage": (
+                    "Task %r is closing UNMEASURED: %s could not be produced. "
+                    "This is recorded as NOT_MEASURED/BLOCKING debt in %s, not "
+                    "waived." % (task_id,
+                                 ", ".join("practices-%s" % p for p in missing_phases),
+                                 debt_path))}
+
+    return {"decision": "block",
+            "reason": "task %r cannot close: missing or invalid verdicts -- %s" %
+                      (task_id, " | ".join(missing_details))}
 
 
 def failure_notice(payload):
@@ -204,7 +263,7 @@ def log_write(payload, config):
     to log its own writes forgets exactly when it matters."""
     active_task = config.get("activeTask") or {}
     entry = {
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "timestamp": _now(),
         "task": active_task.get("id"),
         "tool": payload.get("tool_name"),
         "object": _object_name(payload.get("tool_input", {})),
@@ -213,6 +272,10 @@ def log_write(payload, config):
     _append_jsonl(os.path.join(config.get("evidenceDir", DEFAULT_EVIDENCE_DIR),
                                 "operations.jsonl"), entry)
     return {}
+
+
+def _now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def _append_jsonl(path, entry):
@@ -228,7 +291,7 @@ def _log_ask(config, task_id, tool_name, reason):
     # a scope-gate prompt can be measured later without instrumenting the
     # agent itself.
     entry = {
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "timestamp": _now(),
         "task": task_id,
         "tool": tool_name,
         "decision": "ask",
@@ -236,6 +299,25 @@ def _log_ask(config, task_id, tool_name, reason):
     }
     _append_jsonl(os.path.join(config.get("evidenceDir", DEFAULT_EVIDENCE_DIR),
                                 "gate-decisions.jsonl"), entry)
+
+
+def _record_deferred_debt(config, task_id, missing_phases):
+    """Writes one entry to the project's deferred-debt register when the
+    closure gate is forced to approve a task it cannot verify. Returns the
+    register's path so the caller can point a human at it."""
+    debt_path = os.path.join(config.get("evidenceDir", DEFAULT_EVIDENCE_DIR),
+                              "deferred-debt.jsonl")
+    entry = {
+        "timestamp": _now(),
+        "task": task_id,
+        "missingPhases": missing_phases,
+        "verdict": "NOT_MEASURED",
+        "notMeasuredClass": "BLOCKING",
+        "reason": "task %r closed via a repeated Stop without valid verdicts for: %s" %
+                   (task_id, ", ".join(missing_phases)),
+    }
+    _append_jsonl(debt_path, entry)
+    return debt_path
 
 
 # --- CLI wiring --------------------------------------------------------
