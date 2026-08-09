@@ -50,9 +50,13 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
 from validate_verdict import load_verdict, validate_verdict
 
-# Matches the same verbs as hooks.json's PreToolUse/PostToolUse matcher, so
-# scope_gate/closure_gate agree with what the matcher already routed to them
-# even when called directly (as the unit tests do, bypassing hooks.json).
+# Covers the same verbs as hooks.json's PreToolUse/PostToolUse matcher, so
+# scope_gate still recognises a write tool when called directly (as the unit
+# tests do, bypassing hooks.json). The two are not identical and are not
+# meant to be: the JSON matcher carries no (?i) and is case-sensitive as
+# written, while this is case-insensitive, so this side is equal or broader.
+# That direction is the safe one -- it re-checks what the matcher already
+# routed here and can never admit a tool the matcher kept out.
 WRITE_TOOL_RE = re.compile(
     r"^mcp__.*__(create|update|add|insert|configure|reorder|upload|replace|delete|remove)",
     re.IGNORECASE,
