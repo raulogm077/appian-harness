@@ -11,7 +11,12 @@ occurs: the plausible citation that turns out not to exist.
 """
 import json, os, re, sys
 
-PHASES = ("design", "implementation", "review", "qa")
+# `risk` is the fifth and it is not a stricter `review`. Review asks "does
+# this meet its contract"; risk asks "how does this fail" -- a different
+# premise, which is the only thing that makes a fourth opinion worth its
+# cost. It is required only for tasks the plan declared high-risk, so the
+# adversarial pass arrives where a mistake is expensive and nowhere else.
+PHASES = ("design", "implementation", "review", "qa", "risk")
 VERDICTS = ("PASS", "FAIL", "NOT_MEASURED")
 CLASSES = ("BLOCKING", "DEFERRED")
 
@@ -76,18 +81,31 @@ def isfile_exact(path, root=None):
     everything above it are taken as given -- they are the project's own
     configured paths, not something an agent chose. With no root, only the
     final component is checked.
+
+    **A path outside `root` is False, not a softer check.** This used to
+    fall back to comparing the basename, on the reasoning that a root which
+    does not contain the path is a configuration oddity rather than an
+    answer. It is an answer, and the fallback was a hole: a verdict citing
+    `../../../README.md#the-gates` resolved cleanly, because README.md does
+    exist -- one directory up from where citations are allowed to point.
+    Worse, an agent could write its own markdown anywhere, name a heading
+    in it, cite it by a relative path and have both gates accept it as
+    resolved doctrine. The whole claim this function underwrites is that a
+    citation names something inside this plugin, so leaving root is a
+    refusal.
     """
     if not os.path.isfile(path):
         return False
     path = os.path.abspath(path)
-    try:
-        stop = os.path.abspath(root) if root else os.path.dirname(path)
-        rel = os.path.relpath(path, stop)
-        if rel == os.curdir or rel.startswith(os.pardir):
-            raise ValueError("path is not under root")
-    except ValueError:
-        # Different drives on Windows, or a root that does not contain the
-        # path: fall back to checking the name alone rather than giving up.
+    if root:
+        stop = os.path.abspath(root)
+        try:
+            rel = os.path.relpath(path, stop)
+        except ValueError:
+            return False  # different drives: it cannot be under root
+        if rel == os.curdir or rel == os.pardir or rel.startswith(os.pardir + os.sep):
+            return False
+    else:
         stop, rel = os.path.dirname(path), os.path.basename(path)
     current = stop
     for part in rel.split(os.sep):
@@ -100,8 +118,34 @@ def isfile_exact(path, root=None):
     return True
 
 
+def _is_citable_filename(fname):
+    """Whether a citation's filename may name a doctrine file at all.
+
+    A reference is `<file>.md#<anchor>` where `<file>` sits directly in
+    `references/`. Anything with a directory separator, a parent-directory
+    component or a drive letter is trying to leave, and a citation that
+    leaves is not a citation to this plugin's doctrine.
+    """
+    if not fname or os.path.isabs(fname) or not fname.lower().endswith(".md"):
+        return False
+    parts = fname.replace("\\", "/").split("/")
+    if len(parts) != 1:
+        return False
+    return parts[0] not in (os.curdir, os.pardir)
+
+
 def _slug(heading):
-    """GitHub-style anchor for a markdown heading."""
+    """The anchor for a markdown heading, as THIS validator derives it.
+
+    Deliberately not documented as "GitHub's rule", which it is not: GitHub
+    keeps runs of separators, so `a / b` anchors as `a--b` there and `a-b`
+    here. Twenty-one of this plugin's own reference headings differ between
+    the two, so anyone copying an anchor out of a rendered table of
+    contents would be rejected by a validator claiming to use the same
+    rule. The rule that matters is this function, because this function is
+    what `anchors_of` derives the accepted set with -- an anchor is correct
+    when it matches what this produces for a heading that really exists.
+    """
     s = heading.strip().lower()
     s = re.sub(r"[^\w\s-]", "", s)
     return re.sub(r"[\s_]+", "-", s).strip("-")
@@ -204,6 +248,16 @@ def validate_verdict(path, plugin_root, expected_task=None, expected_phase=None)
                 errors.append("reference %r must be '<file>.md#<anchor>'" % (ref,))
                 continue
             fname, anchor = ref.split("#", 1)
+            # Checked before touching the filesystem, and stated as its own
+            # error, because "does not exist" would be the wrong message for
+            # a file that exists somewhere it is not allowed to be cited
+            # from. Defence in depth with isfile_exact's root bound: this
+            # rejects the shape, that one rejects the resolved location.
+            if not _is_citable_filename(fname):
+                errors.append("reference %r must name a .md file directly inside references/ -- "
+                              "no absolute path, no '..', no subdirectory. A citation names "
+                              "this plugin's doctrine, not an arbitrary file" % fname)
+                continue
             fpath = os.path.join(refdir, fname)
             if not isfile_exact(fpath, refdir):
                 errors.append("reference file %r does not exist in this plugin" % fname)

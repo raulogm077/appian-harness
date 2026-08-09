@@ -51,6 +51,60 @@ wrong direction.
 **CLOSE is not a skill.** The first five phases each have one; CLOSE is what the
 `Stop` hook does. There is no `appian-close` to look for.
 
+## Requirements
+
+Writing to Appian through an MCP server needs three things, and this plugin is
+only one of them. They form a chain — each link is required by the one above it:
+
+```
+appian-harness  ──requires──▶  a design MCP (e.g. appian-dev)
+                └─requires──▶  the official Appian skill
+                                        └─requires──▶  a documentation MCP (e.g. appian-docs)
+```
+
+| Requirement | What it contributes | What happens without it |
+|---|---|---|
+| **A design MCP** (`appian-dev` or equivalent) | The write surface, and the only thing the write hooks fire on (the closure gate fires on `Stop`, with no MCP involved) | The plugin installs, its tests pass, it looks healthy — and **it gates nothing**, because there is no tool for the matcher to catch |
+| **The official Appian skill**<br/>[`appian/dev-mcp-skills`](https://github.com/appian/dev-mcp-skills/) | Naming conventions, both sides of a relationship, the order objects must be created in, real UUIDs versus invented ones — everything the tool schemas describe parameters for but not correct use of | Objects get written with invented names and UUIDs, one-sided relationships, and wrong creation order. **No gate here catches that**: they check the contract, atomicity and the presence of a verdict |
+| **A documentation MCP** (`appian-docs` or equivalent) | The official skill's function-availability checks run against it | Those checks return empty, and **empty is indistinguishable from "the function does not exist"** — the vacuous pass this plugin argues against everywhere else |
+
+**This is enforced, not just documented.** `appian-build` loads the official
+skill before the design audit and before the first write, and records the load
+at `<evidenceDir>/<task>/appian-skill-loaded.json`. The scope gate opens that
+file the same way it opens the design verdict: no record, or a record naming
+another task, omitting `docsMcp`, or claiming a version the installed skill
+does not declare, and the write asks instead of going through.
+
+Be clear about what that is worth, on the same terms as the rest of this
+plugin: **it does not prove the skill was loaded.** A hook cannot see an
+agent's context — the same limit stated in *How the best-practices guarantee
+actually works*. What it removes is the silent case: writing to a shared
+environment having never opened the domain knowledge, with nothing anywhere
+recording it. One check is stronger than that, and it is the reason
+`appianVersion` is in the record at all: point `officialAppianSkillPath` at the
+installed skill and the version claim gets compared against the file on disk
+instead of taken on trust.
+
+```json
+{
+  "officialAppianSkillPath": "~/.claude/skills/appian"
+}
+```
+
+Optional, absolute or `~`-prefixed or project-relative. Left out, the check
+falls back to presence only — which is the right default, since the skill is
+normally installed at user scope, outside any project.
+
+Verifying all three actually answer, before trusting any of it:
+
+| Link | Check | A healthy answer |
+|---|---|---|
+| Design MCP | `validateExpression("1 + 1")` | `{"hasErrors": false, "errors": []}` |
+| Official skill | Load it; read `**Appian Version:**` from its `SKILL.md` | The version your environment actually runs |
+| Documentation MCP | Any real query | Documentation chunks, not an empty result |
+
+`tools/list` is not a check: it is answered locally and never reaches Appian.
+
 ## Installing
 
 This repository **is its own marketplace** — the manifest at
@@ -214,6 +268,12 @@ answer, rather than presenting one as settled.
 
 ## What the plugin asks of your project
 
+**Start here:** `/appian-init` checks the three requirements, asks where this
+project wants its specification, plan, state and decisions to live, writes
+`.claude/appian-harness.json`, and creates the state layer including the task
+ledger. Run it once per project. Everything below is what it sets up, and what
+to do if you would rather do it by hand.
+
 The plugin is deliberately free of any assumption about your repository layout.
 It asks for configuration rather than guessing.
 
@@ -225,7 +285,7 @@ It asks for configuration rather than guessing.
 | **What command runs the regression suite** | The evidence of non-regression after any change that touches data or objects. |
 | **Which identifier exercises the empty path** | An id that is guaranteed *not* to exist, so empty states are tested on purpose rather than by accident. |
 
-**None of these five is machine-read.** They are what a project records so the
+**These five are recorded, not resolved by code.** They are what a project records so the
 people and agents following the process can find them, and the skills act on
 them as prose: `appian-plan` opens the specification because the skill tells it
 to, not because a hook resolved a key. No code in this plugin reads any of the
@@ -254,7 +314,12 @@ at your project root, `.claude/appian-harness.json`:
 {
   "evidenceDir": "evidence",
   "activeTaskFile": "tasks/current.json",
-  "maxAllowedObjects": 3
+  "maxAllowedObjects": 3,
+  "officialAppianSkillPath": null,
+  "leaseFile": null,
+  "activeRunFile": null,
+  "designMcpServer": "appian-dev",
+  "docsMcpServer": "appian-docs"
 }
 ```
 
@@ -263,8 +328,10 @@ presence is the activation switch:** without it, every hook allows, approves or
 no-ops, so the plugin installed in a project that does not use it stays out of
 the way.
 
-**Three keys, and the list is closed.** `evidenceDir`, `activeTaskFile` and
-`maxAllowedObjects` are the whole of what the hooks open today. Every other key
+**Eight keys, and the list is closed.** `evidenceDir`, `activeTaskFile`,
+`maxAllowedObjects`, `officialAppianSkillPath`, `leaseFile`, `activeRunFile`,
+`designMcpServer` and `docsMcpServer` are the whole of what the
+hooks open today. Every other key
 in this file is inert to the plugin: nothing rejects an extra one, and nothing
 acts on it either. A project is free to record more here for its own use — the
 five items above are worth writing down somewhere — as long as it does not
@@ -282,30 +349,112 @@ which reads as evidence to a person and as an absence to the gate.
 | Path | Written by | Read by |
 |---|---|---|
 | `<evidenceDir>/<task>/practices-<phase>.json` | `appian-practices-auditor`, one per phase | Both gates. The scope gate reads `design`; the closure gate reads `implementation`, `review`, `qa` |
+| `<evidenceDir>/<task>/appian-skill-loaded.json` | `appian-build`, when it loads the official Appian skill for the task | The scope gate, before every write — see *Requirements* |
+| `<evidenceDir>/<task>/dependents.json` | `appian-build`, before any delete or record-data overwrite | The destructive guard. "Checked, zero dependents" and "never checked" are different answers |
 | `<evidenceDir>/<task>/gates.md` | `appian-verify`, consolidating the per-gate report with both its verdicts | a person, or the review step. **No gate reads it** — it sits beside the verdicts so the task's evidence is one account rather than a directory to reassemble |
 | `<evidenceDir>/operations.jsonl` | the write log | a person, afterwards |
 | `<evidenceDir>/gate-decisions.jsonl` | the scope gate, every time it asks | a person, afterwards |
+| `<evidenceDir>/risk-downgrades.jsonl` | the closure gate, when a task closes on the `trivial` tier | a person, afterwards. Cheaper ceremony is allowed; choosing it is recorded |
 | `<evidenceDir>/deferred-debt.jsonl` | the closure gate when forced to approve unverified work (`BLOCKING`), and either gate when an accepted deferral opens it (`DEFERRED`) | a person, afterwards |
 | `<evidenceDir>/evidence-writes.jsonl` | the evidence-write log, on any `Write` or `Edit` aimed at a file the gates read | a person, afterwards |
 
-The four logs are append-only and nothing in the plugin reads them back, with
-one exception: the deferred-debt register is re-read before appending, so one
-deferral does not become one line per write attempt. They exist so that "how
+The five logs are append-only, and two of them are re-read before appending —
+the deferred-debt register and the risk-downgrade register — so that one
+deferral, or one task closing on the cheap tier, does not become one line per
+attempt. The closure gate can fire repeatedly for the same task, and a register
+that repeats itself is a register nobody reads. They exist so that "how
 often did this gate stop something, and did anyone answer yes?" — and "who
 wrote this verdict?" — are questions with answers.
+
+## Running a plan without a keystroke per task
+
+`appian-build` builds one task and stops — that has not changed, and it is the
+unit a reviewer can reject on its own. What changed is that **starting** each one
+no longer needs a person. It used to carry `disable-model-invocation: true`, so
+a twenty-task plan cost twenty interventions that decided nothing, while the
+decisions actually worth attention were spread thin among them.
+
+`/appian-run` grants a run instead: **once, bounded, and written where the gate
+reads it.** It sequences build → verify → review per task, retries a FAIL up to
+a fix budget, and stops on eight closed conditions — the first of which is
+anything irreversible, which **no authorization ever covers.**
+
+**Be clear about what removing that flag widens.** The model can now start a
+build on its own. Four things still stand between it and a write — an active
+task file, the object in `allowedObjects`, the official-skill load record, and
+a passing `design` verdict — and it has to produce all four, which is not
+something that happens by accident. But if you want the narrower guarantee back,
+configure `activeRunFile`: with it set, a write outside an authorized run asks,
+and "nobody granted this" becomes a thing the gate can say rather than a thing
+you hope. Left unset, no write-time behaviour changes at all — but the
+invocation guarantee does not come back on its own, which is the trade this
+section is about.
+
+```json
+{ "activeRunFile": "tasks/run.json" }
+```
+
+The run file has to name a budget — `maxTasks` and `tasksCompleted`, both whole
+numbers — and the gate refuses a grant without one. That is not bookkeeping:
+`maxTasks` is the difference between *the user authorized this run* and *the
+user authorized everything from here on*, and a file missing it, or spelling it
+`"5"`, used to read as the wider of the two while looking like the narrower.
+Delete the file when the run ends; an authorization that outlives its plan
+authorizes the next one.
+
+## Building several tasks at once
+
+More than one builder can work at a time. Doing it safely needs **two separate
+isolations**, and the one people reach for covers the wrong half:
+
+> **A git worktree isolates files. It does not isolate Appian.** Two builders in
+> two worktrees calling `createRecordType` write to the same environment.
+
+| Isolation | Protects | Mechanism |
+|---|---|---|
+| **Local** | Source files, the active task file, the evidence tree | One git worktree per builder |
+| **Remote** | The Appian objects, where a collision is not a merge conflict but a change that silently loses | `leaseFile`, checked by the scope gate |
+
+Turning it on is two decisions. First, prove the tasks are independent —
+`scripts/parallel_safety.py` reads the plan's `allowedObjects` and `dependsOn`
+and refuses on shared objects, on dependencies **including transitive ones**,
+on anything destructive, and on objects everything quietly depends on:
+
+```
+# partition the whole plan
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/parallel_safety.py" PLAN_JSON
+
+# check one proposed group
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/parallel_safety.py" PLAN_JSON --group T-3,T-5
+```
+
+Exit `0` clean, `1` findings, `2` usage, `3` NOT MEASURED — and 3 is not a
+pass. The transitive case is the one worth knowing: T-1 ← T-2 ← T-3 has no
+direct edge between T-1 and T-3, and they are still not independent.
+
+Second, point `leaseFile` at a register **shared by every worktree**. Each
+builder claims its `allowedObjects` before its first write and releases them at
+close. The gate's rule is one-sided on purpose: **a lease held by another task
+blocks; no lease at all does not** — requiring one would break every
+single-builder project, which is the default.
+
+Reviewers and researchers stay read-only regardless. Concurrency here is for
+multiplying perspectives and independent slices, never for multiplying writers
+on one object.
 
 ## What is in the box
 
 | Path | What is there |
 |---|---|
-| `skills/` | Six skills: five lifecycle phases plus the cross-cutting doctrine |
+| `skills/` | Seven skills: five lifecycle phases, the run orchestrator, and the cross-cutting doctrine |
 | `skills/appian-best-practices/references/` | Eleven domain references, numbered `01`–`11`. Every verdict cites into these |
 | `agents/` | Three judging agents: `appian-practices-auditor`, `appian-reviewer`, `appian-verifier` |
-| `hooks/` | One `hooks.json` declaring five hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
-| `scripts/` | Four modules: `validate_verdict.py`, `lint_skills.py`, `n2_interface_tree.py`, `n3_process_layout.py` |
+| `hooks/` | One `hooks.json` declaring six hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
+| `scripts/` | Six modules: `validate_verdict.py`, `lint_skills.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `parallel_safety.py`, `check_readme_claims.py` |
+| `commands/` | One command: `/appian-init`, which adopts the harness into a project |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
 
-The Python carries its own tests — 84 for `scripts/`, 40 for `hooks/`, standard
+The Python carries its own tests — 132 for `scripts/`, 167 for `hooks/`, standard
 library only:
 
 ```
@@ -314,15 +463,30 @@ python3 -m unittest discover -s hooks
 python3 scripts/lint_skills.py
 ```
 
+**The launcher tests are the slow ones, and deliberately so.** They run
+`run_hook.sh` through a real shell with the interpreter search starved, because
+that fail-closed path is what answers when nothing else can — and it was the one
+component with no tests at all. On Windows each invocation costs ~4s starved and
+~8.5s with an interpreter, essentially all of it Git Bash and Python startup.
+For the loop you run after every edit:
+
+```
+APPIAN_HARNESS_SKIP_SLOW=1 python3 -m unittest discover -s hooks
+```
+
+Default is to run them — a suite that skips by default is a suite that rots — so
+the fast path is an opt-out you have to type, and CI never sets it.
+
 ## Skills
 
 | Skill | Phase | What it does |
 |---|---|---|
 | `appian-specify` | SPECIFY | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. |
 | `appian-plan` | PLAN | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria. |
-| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Manually invoked. |
+| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Invoked by name, or by `appian-run` inside an authorized run. |
 | `appian-verify` | VERIFY | Produces the per-gate report with evidence, in its own context. |
 | `appian-review` | REVIEW | Independent review from a clean context, graduated by risk. |
+| `appian-run` | orchestration | Builds a plan's pending tasks end to end without a keystroke per task. Authorization is granted once per run and checked by the gate; eight closed conditions stop it. Invoked by name — granting a run is the user's act. |
 | `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. |
 
 `appian-best-practices` carries eleven domain references — data model and record
@@ -331,7 +495,7 @@ integrations, ALM and testing, sites and navigation, quality gates, reliability
 and operations. The `SKILL.md` is the index: only the reference the change
 touches gets opened.
 
-**Description phrasing.** The six `SKILL.md` files here write their trigger
+**Description phrasing.** The seven `SKILL.md` files here write their trigger
 clause in the imperative ("Use when...", "Use after..."), not the third person
 `plugin-dev:skill-development` recommends ("This skill should be used
 when..."). That is a deliberate house style, kept consistent across every
@@ -375,9 +539,10 @@ imposes, and gives each task four named parts: `allowedObjects`,
 but this is where the later prompts are decided: `TASK-3` listing seven objects
 is a task that will stop at every write.
 
-**3. `appian-build TASK-3`** — invoked by name and only by name; it carries
-`disable-model-invocation: true` because it is the one skill with irreversible
-side effects. In order, it:
+**3. `appian-build TASK-3`** — invoked by name, or reached by `appian-run`
+inside an authorized run. It is the one skill with irreversible side effects,
+and what guards that is no longer a frontmatter flag but the run authorization
+the scope gate checks. In order, it:
 
 - writes the active task file, `tasks/current.json`, as
   `{"id": "TASK-3", "allowedObjects": ["APP_openRequests", "..."]}` — spelled
@@ -459,7 +624,7 @@ retires it.
 ## The gates
 
 Everything above, the install and configuration sections aside, is doctrine an
-agent can decide to skip. Five hooks make skipping it **visible and awkward**,
+agent can decide to skip. Six hooks make skipping it **visible and awkward**,
 and make the cheapest forgery fail — they cannot make forgery impossible for an
 agent that can write files. That distinction is the honest version of what this
 section used to claim, and it is worth stating before the list rather than
@@ -471,13 +636,44 @@ unexplained deferral. What they cannot remove is an agent that sits down and
 authors a coherent lie. The last line of defence there is a person reading the
 citations, which is why the citations must resolve.
 
+- **requirements check** (at session start) — are the three links of
+  *Requirements* present: a design MCP, the official Appian skill, a
+  documentation MCP? It **informs and never blocks**, because a session missing
+  one is still worth having for reading, specifying and planning; what must not
+  happen is reaching the first write before finding out. It reads the same
+  configuration Claude Code does — `.mcp.json` and `~/.claude.json` — so it
+  reports what is **declared**, and says so: configured and answering are
+  different states, and it asks for `validateExpression("1 + 1")` rather than
+  pretending otherwise. A project that has not adopted the harness hears
+  nothing, and a configuration it cannot read is reported as unknown rather
+  than as missing — a check that cries wolf is one people learn to scroll past.
 - **scope gate** (before any Appian write) — is there an approved active task,
-  is this object inside its `allowedObjects`, is the task atomic, and is there a
-  *passing* `design` audit for it? Not merely present: structurally valid, with
+  is this object inside its `allowedObjects`, **is the task inside an authorized
+  run** (when the project configures one), is the object leased to somebody
+  else, is this an irreversible action, is the task atomic, was the official
+  Appian skill loaded and recorded for this task (see *Requirements*), and is
+  there a *passing* `design` audit for it? It accumulates every reason it finds
+  rather than reporting the first. Not merely present: structurally valid, with
   citations that resolve, and an outcome of `PASS` or a sanctioned deferral.
+- **destructive guard** (part of the scope gate) — a delete is not a stricter
+  update, it is a different question. It **always** prompts, even with a clean
+  impact assessment on file, because destroying something in a shared
+  environment is not a decision this harness should make quietly on your
+  behalf. What it also checks is that `getObjectDependents` was actually run for
+  *that* object and recorded at `<evidenceDir>/<task>/dependents.json` —
+  because **"checked, zero dependents" and "never checked" are different
+  answers**, and only one is evidence. Reading dependents is never gated, so the
+  check the guard demands can always be run.
 - **closure gate** (on stop) — while the active task file names a task in
-  flight, a stop does not pass without valid, passing `implementation`,
-  `review` and `qa` verdicts. On a repeated stop it approves rather than
+  flight, a stop does not pass without valid, passing verdicts **for the phases
+  that task's risk tier requires** — `implementation` alone for `trivial`,
+  `implementation`+`review`+`qa` for `standard` (the default, and what anything
+  unrecognised means), plus an adversarial `risk` verdict for `high` — **and
+  none of them older than the task's most recent write.** A verdict is a claim about a version of the work: review comes
+  back FAIL, the fix writes more objects, and re-running only `phase=review`
+  used to close the task on two PASSes certifying an artifact that no longer
+  existed. The gate compares each verdict against `operations.jsonl` and names
+  the stale ones. `design` is exempt — it is *supposed* to predate every write. On a repeated stop it approves rather than
   deadlocking, and records the omission as `NOT MEASURED · BLOCKING` debt,
   because a guardrail that cannot be satisfied gets switched off and then
   protects nothing. With no task in flight it approves without checking
@@ -753,6 +949,30 @@ have run does not, and no longer happens — `run_hook.sh` exports
 `PYTHONDONTWRITEBYTECODE`, because bytecode written next to the source is
 exactly what makes the copy stop being comparable.
 
+### The hooks feel slow on Windows
+
+The launcher probes for a working Python 3 before it can run anything, and on
+Windows `python3` on PATH is usually the App Execution Alias in `WindowsApps` —
+a reparse point that redirects to the real interpreter. It does not fail; it
+just answers slowly, and whichever candidate wins the probe is then what runs
+the hook. Probing the alias first therefore charged that cost twice on every
+gated call.
+
+`run_hook.sh` now orders the candidates by platform: `python`, `py -3`,
+`python3` on Windows, and `python3` first everywhere else where `python` is
+often absent or a Python 2. Measured on one machine with a python.org install
+and the alias present, probe plus exec went from **13.1s to 2.6s** under load.
+
+If it is still slow, check what `python3` resolves to:
+
+```
+command -v python3        # a WindowsApps path is the alias
+command -v python
+```
+
+Removing the alias (Settings → Apps → Advanced app settings → App execution
+aliases) helps every tool on the machine, not just this one.
+
 ### The hooks do nothing
 
 In the order worth checking:
@@ -857,13 +1077,21 @@ the fields a `NOT_MEASURED` verdict needs, is in
 
 Anchors in `referencesApplied` are **derived from headings**, not written by
 hand, so the fix is nearly always to open the reference and look at the real
-heading. The rule is GitHub's: lowercase the heading text, drop every character
-that is not a word character, whitespace or hyphen, then collapse runs of
-whitespace and underscores into single hyphens. The references number their
-headings, so a real one makes the point: `## 2. Choose the data source and
-access method` becomes `#2-choose-the-data-source-and-access-method` — the
-number survives, the period does not. Punctuation generally — colons, backticks,
-parentheses — is removed rather than encoded.
+heading. The rule is `_slug` in `scripts/validate_verdict.py`: lowercase the
+heading text, drop every character that is not a word character, whitespace or
+hyphen, then collapse runs of whitespace and underscores into single hyphens.
+The references number their headings, so a real one makes the point:
+`## 2. Choose the data source and access method` becomes
+`#2-choose-the-data-source-and-access-method` — the number survives, the period
+does not. Punctuation generally — colons, backticks, parentheses — is removed
+rather than encoded.
+
+⚠️ **This is not GitHub's rule, and this page used to say it was.** They agree
+most of the time and differ on runs: GitHub keeps them, so `## Naming / prefixes`
+anchors as `#naming--prefixes` there and `#naming-prefixes` here. Twenty-one of
+this plugin's own reference headings differ between the two. **Do not copy an
+anchor out of a rendered table of contents** — derive it from the heading, or
+let the validator tell you, which is faster than either.
 
 Run the validator directly to see which half failed; it distinguishes a
 reference file that does not exist from an anchor that does not exist in it, and
@@ -921,7 +1149,7 @@ identical to a session in which everything passed.
 
 That is the cheapest bypass in the plugin, cheaper than the active task file —
 deleting the task file disables one gate for one task, deleting the config
-disables all five hooks for good — and it is not a defect that can be fixed
+disables all six hooks for good — and it is not a defect that can be fixed
 from inside, because a plugin that got in the way of projects which have not
 adopted it would be worse. What exists instead is a record: an `Edit` or
 `Write` aimed at that file is logged to `<evidenceDir>/evidence-writes.jsonl`
@@ -966,6 +1194,17 @@ harness:
 - **It does not run your regression suite.** The command is something a project
   records so the person following the process can find it; no code here reads
   it or executes it.
+- **It gates nothing at all without a design MCP configured.** The write and
+  closure gates hang off Appian `mcp__*` write tools; with no such server in the
+  session there is no tool to match, so the plugin installs, passes its tests, looks healthy and
+  watches nothing. See *Requirements*. This is the second failure mode, after
+  Windows without Git Bash, where the thing that would fail closed never runs.
+- **It cannot prove the official Appian skill was loaded.** It checks that a
+  load was recorded for the task, that the record is about that task, that it
+  names a documentation MCP, and — when `officialAppianSkillPath` is set — that
+  the version it claims matches the installed skill. An agent that writes that
+  record without loading anything still gets through. Same limit, same reason,
+  as the plugin's own doctrine.
 
 - **It cannot make forgery impossible.** Every input the gates read — the
   evidence tree, the harness config, the active task file — is a plain file in

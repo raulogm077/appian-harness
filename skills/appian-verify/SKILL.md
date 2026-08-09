@@ -150,6 +150,37 @@ vocabulary needs a person, not a green tick.
   tells you where every node **sits** and never where any connection **routes**. A clean N3 run is
   not a clean diagram.
 
+## Where a session can safely end
+
+This is the natural seam, so the policy belongs here rather than nowhere.
+
+**Between tasks, everything needed to continue is on disk.** The evidence tree
+holds the verdicts and the gate results, `operations.jsonl` holds what was
+actually written, the operational state holds what is next and what is blocked,
+and the active task file holds the one task in flight. None of that lives in
+the conversation. So compacting, or closing the session and opening a clean one
+that re-reads those, loses nothing.
+
+**Within a task it is not safe**, and the reason is specific rather than
+general caution: the contract's `acceptanceCriteria` and `requiredGates` are
+read from the plan at the start, the preflight classification exists only in
+the session that ran it, and the real identifiers the environment returned are
+in context before they reach `evidenceFile`. Compact in the middle of that and
+the second half of the task proceeds against a half-remembered contract.
+
+| Situation | Do |
+|---|---|
+| A task just closed and the next is independent | Compact, or start clean. Cheapest point in the cycle |
+| Mid-task, context filling up | Finish the task first — it is one task, not one phase — then compact |
+| A large MCP result or a broad search is about to land | Isolate it in a subagent and take back the conclusion, rather than compacting afterwards |
+| A run of many tasks (`appian-run`) | Compact between tasks as a matter of course; a twenty-task run in one context degrades into a session that has forgotten its own first half |
+| After `/clear`, resuming | Read the operational state, then the active task file, then that task's evidence directory. In that order — the first tells you whether there is a task in flight at all |
+
+The one thing that does **not** survive a clean session is whatever was decided
+out loud and never written down. That is an argument for writing the decision
+into the plan or the decisions record when it is made, not an argument for
+keeping the session alive.
+
 ## What this skill does not cover
 
 Two of the four phases `appian-practices-auditor` supports are out of scope here, on purpose.

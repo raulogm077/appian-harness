@@ -55,9 +55,32 @@ try_interpreter() {
     fi
 }
 
-try_interpreter python3
-try_interpreter python
-try_interpreter py -3
+# Order matters, and it is platform-dependent for a measured reason.
+#
+# On POSIX, `python` is often absent or a Python 2, so `python3` first is
+# both correct and cheap.
+#
+# On Windows, `python3` on PATH is usually the App Execution Alias in
+# WindowsApps -- a reparse point that redirects to the real interpreter.
+# The comment above anticipated it failing; the more common case is worse,
+# because it *succeeds* and is simply slow. Measured on a normal
+# python.org install with the alias present: `python3` answers the probe in
+# ~2040ms and `python` in ~1070ms, and the winner of the probe is then what
+# `exec` runs for the real work. Since this script runs on every gated
+# Appian call, probing the alias first roughly doubled the fixed cost of
+# every hook in the plugin.
+#
+# $OS is set to Windows_NT by Windows itself and is visible in Git Bash, so
+# the branch costs nothing -- no subprocess, no uname.
+if [ "${OS:-}" = "Windows_NT" ]; then
+    try_interpreter python
+    try_interpreter py -3
+    try_interpreter python3
+else
+    try_interpreter python3
+    try_interpreter python
+    try_interpreter py -3
+fi
 
 # --- No interpreter found ------------------------------------------------
 #
@@ -85,6 +108,17 @@ if [ -f "$PROJECT_ROOT/.claude/appian-harness.json" ]; then
 fi
 
 case "$SUBCOMMAND" in
+    session-start)
+        # The requirements check is the one hook whose whole purpose is to
+        # tell you something is missing before you rely on it. Silence here
+        # would be read as "all three are present", which is the exact
+        # false reassurance it exists to prevent.
+        if [ "$CONFIGURED" -eq 0 ]; then
+            printf '%s\n' '{}'
+        else
+            printf '%s\n' "{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"$NOTE Nothing has checked that the design MCP, the official Appian skill and the documentation MCP are present, and no gate will run in this session. Do not treat any Appian write as verified.\"}}"
+        fi
+        ;;
     scope-gate)
         if [ "$CONFIGURED" -eq 0 ]; then
             printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"appian-harness not configured for this project"}}'

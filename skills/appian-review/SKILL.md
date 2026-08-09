@@ -33,6 +33,15 @@ Two independent agents run per change that enters review, both dispatched with
   same quality gates and cardinal rules a build step is expected to have already
   applied, audited from outside that step.
 
+That second agent is where `appian-best-practices` enters this phase, and the
+duplication is the design rather than an oversight. Every phase before this one
+consults the doctrine to *prevent* — `appian-specify` on entities, security and
+volume, `appian-plan` on naming and which gates a task requires, `appian-build`
+on the domains it writes. This phase applies the same doctrine to *verify*,
+from a context that did not produce the work. Prevention and independent
+verification are two layers, not one done twice: the first decides what gets
+built, and only the second can catch what the first talked itself into.
+
 Both read the same artifact and the same contract; neither reads the other's
 output before forming its own, and neither reads anything the builder wrote
 about why the change should pass. Record every finding either agent raises,
@@ -65,6 +74,14 @@ the recorded act of closing, not a cleanup step that could be done early.
 Deleting the file before `practices-review.json` exists produces a task that
 looks closed to the closure gate — with nothing in flight it approves without
 checking anything — while the review it was waiting on never happened.
+
+**If the project builds concurrently, releasing this task's object leases is
+part of the same closing act.** `appian-build` claims them before its first
+write; nothing else is positioned to know the task is over. A lease left behind
+is the same defect as an active task file left behind, one layer down: the
+object stays blocked for every other builder, and it looks like coordination
+rather than like a leak. Release the leases and delete the active task file
+together, in that order, as the last thing this phase does.
 
 Two paths reach that deletion, and both end the same way:
 
@@ -119,6 +136,40 @@ closed. Route the exemption call to whatever already stands outside the build
 step for this project, rather than letting it default to silence because no one
 was asked.
 
+## High-risk changes get a third question
+
+A task the plan declared `high` — data model, security, architecture,
+integrations, anything hard to reverse — takes one more pass: dispatch
+`appian-practices-auditor` again with **`phase=risk`**, and its verdict lands
+at `<evidenceDir>/<task>/practices-risk.json`. The closure gate requires it for
+those tasks and for no others.
+
+The reason it is worth a fourth opinion is that it asks a **different
+question**, not a stricter version of the same one:
+
+| Phase | Question |
+|---|---|
+| `review` | Does this do what the contract says, and only that? |
+| `practices` (`phase=review`) | Does this follow the rules of the domains it touches? |
+| **`risk`** | **How does this fail?** Under concurrency, at 10× volume, when a neighbouring object changes underneath it, reached by someone the authorization matrix did not consider — and if it were wrong, how would anyone find out? |
+
+Three agents agreeing on a change they each judged on a different premise is
+worth something. Three agents agreeing because they asked the same question
+three times is worth nothing, and costs three times as much. That is the whole
+test for whether a lens deserves to exist.
+
+**Nothing here is a majority vote.** A single well-evidenced finding from one
+reviewer outweighs two clean verdicts from the others, because the clean ones
+are silence about a question they never asked.
+
+Where Agent Teams are available, these are genuinely independent lines of
+reasoning and can run in parallel — they share an artifact and a contract, and
+nothing else. Where they are not, running them as sequential dispatches loses
+nothing but wall-clock: each already receives its own context and none of them
+reads another's output before forming its own. **Do not make the parallel form
+a requirement.** The guarantee lives in the independence, not in the
+concurrency.
+
 ## Review theatre
 
 If across two or more cycles the reviewer raised substantive findings and
@@ -170,6 +221,14 @@ of the *process*, not of any single review.
 - The active task file still in place after this skill has finished. The task is
   closed and the file now measures the *next* task's writes against this task's
   contract, while everything still looks like it is working.
+- Object leases from this task still held after it closed. Nothing later has a
+  reason to look, so they stay held forever — every other builder is blocked
+  from an object nobody is working on, and the register reads like coordination
+  instead of like a leak.
+- A verdict reused from before a fix. If anything was rewritten in response to a
+  finding, the `implementation` and `qa` verdicts that predate the rewrite
+  certify an artifact that no longer exists; the closure gate now measures that
+  against the write log and says so, but noticing it here is cheaper.
 
 ## Verification
 

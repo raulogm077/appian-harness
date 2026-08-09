@@ -88,6 +88,16 @@ up, not before.
 
 Check what is available in the session; do not invent tools or assume they exist.
 
+**Before writing through a design MCP, the official Appian skill is required — not recommended.**
+[`appian/dev-mcp-skills`](https://github.com/appian/dev-mcp-skills/) carries what the tool schemas
+cannot express: naming conventions, the fact that a relationship needs declaring on both sides, the
+order objects have to be created in, and real UUIDs as against invented ones. None of that is
+anything this plugin's gates measure — they check the contract, atomicity and the presence of a
+verdict — so a write issued without it fails in a way nothing here catches. Load it, then record the
+load for the task, which is what the scope gate opens. That skill in turn depends on the
+documentation MCP, so the requirement is a chain of three: **design MCP → official skill →
+documentation MCP.**
+
 **Design MCP (e.g. `appian-dev` or equivalent) — "how is this actually implemented?"**
 Inspect and modify real objects, dependencies, validate against the environment. Ask for **the specific
 objects** you need; do not list the whole application to find one. Do not repeat a call whose response you
@@ -105,9 +115,15 @@ this component accept this property?", not "everything about SAIL") and stop as 
 Proportionality: known capability → do not consult; doubtful parameter or unusual function → one query;
 architecture, security, performance, integration or platform-limit decision → verify.
 
-If there is no documentation MCP, consult `docs.appian.com/suite/help/latest/…` by whatever means you
-have; if there is none at all, **say explicitly what you were not able to verify** instead of asserting it
-from memory.
+**For reading and reviewing**, if there is no documentation MCP, consult
+`docs.appian.com/suite/help/latest/…` by whatever means you have; if there is none at all, **say
+explicitly what you were not able to verify** instead of asserting it from memory.
+
+**For writing, it is not optional.** The official Appian skill leans on this MCP for its
+function-availability checks, and without it those checks come back empty — which reads as *"the
+function does not exist"* rather than as *"nothing was checked"*. That is the failure mode this
+plugin argues against everywhere else, arriving through the back door. If the documentation MCP is
+missing, say so and stop rather than writing on an unverified function.
 
 ⚠️ **Do not invent Appian.** `a!` functions, parameters, components, properties, smart services and
 capabilities: either you know them with certainty, or you verify them. The typical failure is carrying
@@ -159,6 +175,22 @@ the operational-readiness gate in **11** if it reaches production.
 Meeting the requirements demonstrates **functional** acceptance; the gates demonstrate **technical**
 quality. Both are needed, and a FAIL blocks closing. If something is left unverified, **say so** — do not
 wave it through in silence.
+
+## Which Source Wins
+
+Four sources of Appian knowledge can be in the room at once, and they are not interchangeable. Each
+one governs **what it was written for**:
+
+| Source | Wins on | Because |
+|---|---|---|
+| **Official documentation** (`docs.appian.com`, documentation MCP) | Everything, for the environment's version | It is the platform's own account of itself |
+| **Official Appian skill** ([`dev-mcp-skills`](https://github.com/appian/dev-mcp-skills/)) | Naming conventions, both sides of a relationship, creation order, UUID handling | It is the vendor's account of how its own API behaves, which is exactly what these docs do not cover |
+| **These `references/`** | Quality gates, the three outcomes, what counts as evidence, when something is finished | That is what this plugin is for, and no other layer defines it |
+| **The project's local convention** | House style, prefixes, structure | Consistency inside one app beats canonical style — unless it breaks security or platform validity, and then say so |
+
+They overlap far less than they look like they might. Where they do overlap, the one higher in this
+table wins, and a disagreement worth noticing is worth **saying out loud** rather than resolving
+quietly.
 
 ## When Doctrine and Official Documentation Conflict
 

@@ -1,7 +1,6 @@
 ---
 name: appian-build
-description: Implements exactly one approved task against an Appian environment and stops. Use when the next pending task from the plan is ready to be built. Use before any create or update call against a live Appian environment, because it establishes the preflight and the scope contract that the verification step depends on.
-disable-model-invocation: true
+description: Implements exactly one approved task against an Appian environment and stops. Use when the next pending task from the plan is ready to be built, either invoked by name or as a step inside an authorized run. Use before any create or update call against a live Appian environment, because it establishes the preflight and the scope contract that the verification step depends on.
 argument-hint: "[task-id]"
 ---
 
@@ -30,9 +29,30 @@ work against the environment. Use it before issuing any create or update call
 against a live Appian environment: skipping straight to the write means skipping
 the preflight and the scope contract that everything downstream depends on.
 
-This skill only runs when invoked by name with a task id
-(`disable-model-invocation: true`); it does not trigger itself, because it has
-side effects the user did not necessarily ask for in that exact moment.
+## What authorizes a write
+
+This skill used to carry `disable-model-invocation: true`, so it could only
+start when a person typed its name. The intent was right — no spontaneous
+writes the user did not ask for — but the mechanism put the human gate on
+*starting each task*, which decides almost nothing, and a twenty-task plan cost
+twenty interventions that were not decisions.
+
+Authorization is now **per run rather than per invocation**, and it is checked
+rather than assumed:
+
+- **Invoked by name with a task id** — the user is asking for this task. Build it.
+- **Inside an authorized run** — `appian-run` recorded who granted it, which
+  tasks it covers and its budget, at `activeRunFile`. The scope gate refuses a
+  write from a task outside that list, or once the budget is spent, so removing
+  the frontmatter flag did not turn into "write whenever it likes."
+- **Neither** — if the project configured `activeRunFile` and there is no run,
+  every write asks. Stop and say so instead of approving past the prompt.
+
+**No authorization ever covers the irreversible.** Deleting an object, deleting
+record data, removing a mapped field or importing a package prompts regardless
+of any run — see *Stop before anything irreversible*. A grant that quietly
+included deletions would be a master key, which is the opposite of what
+granting a run is for.
 
 ## Core Process
 
@@ -47,6 +67,41 @@ side effects the user did not necessarily ask for in that exact moment.
    The remote state wins over any local document. This replaces the clean-tree
    check that version control gives you elsewhere: here the artifact lives on a
    server you do not own alone.
+3a. **Load the official Appian skill — before the design audit and before any
+    write.** [`appian/dev-mcp-skills`](https://github.com/appian/dev-mcp-skills/)
+    carries what the MCP tool schemas cannot: naming conventions, the fact
+    that a relationship has to be declared on both sides, the order objects
+    must be created in, and real UUIDs as against invented ones. **None of
+    that is anything this plugin's gates measure** — they check the
+    contract, atomicity and the presence of a verdict — so a write issued
+    without it fails in exactly the way nothing here would catch. It comes
+    before 3b because domain knowledge is what a good design decision is
+    made *with*; a design audited without it was audited against the wrong
+    thing.
+
+    Then record the load at `<evidenceDir>/<task-id>/appian-skill-loaded.json`,
+    because the gate reads a file and cannot read your context:
+
+    ```json
+    {
+      "task": "<the task id>",
+      "skill": "appian",
+      "source": "github.com/appian/dev-mcp-skills",
+      "appianVersion": "<the version the skill's own Configuration declares>",
+      "docsMcp": "<the documentation MCP server this session has>"
+    }
+    ```
+
+    All four fields are checked. `appianVersion` is the load-bearing one:
+    it is the only field you cannot fill in without having opened the
+    skill, and where the project sets `officialAppianSkillPath`, the gate
+    compares it against the installed file rather than taking your word.
+    `docsMcp` is there because the official skill depends on the
+    documentation MCP for its function-availability checks — without it
+    those return empty, and **empty reads as "the function does not
+    exist."** If this session has no documentation MCP, stop and say so;
+    do not write on an unverified function.
+
 3b. **Audit the design — still before any write.** Dispatch
     `appian-practices-auditor` with `phase=design`, handing it this task's id,
     its contract, and the design being proposed. Its verdict lands at
@@ -68,6 +123,11 @@ side effects the user did not necessarily ask for in that exact moment.
 6. Record what was created or changed, with real identifiers.
 7. **STOP.** Do not continue to the next task, and leave the active task file
    in place — the task is still in flight until it is verified and reviewed.
+   Hand control back to whoever started this: `appian-run` if a run is active,
+   the user otherwise. **Stopping is a handoff, not a close**, and the unit
+   this skill produces is one task ending in a stop — never one phase, and
+   never two tasks. That does not change inside a run: a run means fewer
+   keystrokes between tasks, not bigger tasks.
 
 ## The Task Contract
 
@@ -120,9 +180,22 @@ validation, and asks rather than allowing when it cannot.
 
 ## The scope gate measures the contract, not the write
 
-A `PreToolUse` hook checks every write against the active task's `allowedObjects`
-before it reaches the environment. When that list is longer than the project's
-configured budget, the gate asks instead of letting the write through.
+A `PreToolUse` hook checks every write before it reaches the environment, and it
+accumulates every reason it finds rather than reporting the first:
+
+| It checks | And asks when |
+|---|---|
+| An active task exists | Nothing has been scoped and approved |
+| The object is in `allowedObjects` | No identifier in the call matches an entry |
+| The task is inside an authorized run | The project configured `activeRunFile` and this task is outside the grant, or its budget is spent. Inert when unconfigured |
+| No other task holds the object | The project configured `leaseFile` and somebody else has it. Inert when unconfigured |
+| Irreversible actions | **Always**, for a delete or a record-data overwrite — and it names whether the impact assessment exists |
+| The task is atomic | `allowedObjects` is longer than the configured budget |
+| The official skill was loaded | No load record for this task, or one that does not match |
+| The `design` verdict passes | Missing, structurally invalid, or an outcome the gate does not accept |
+
+The atomicity one is worth dwelling on, because it is the one people argue
+with.
 
 That prompt is not the hook being obstructive. It is measuring the same thing
 `appian-plan`'s *One task, one object* names: a task whose `allowedObjects` needs
@@ -192,7 +265,7 @@ deleting the file here silently switches that gate off for the entire nominal
 flow. The task stays in flight across `appian-verify` and `appian-review`, and
 **`appian-review` deletes it when the task actually closes.** That skill is the
 last phase before close and the only one positioned to know the task is over;
-see *The active task file is cleared at close, by `appian-review`* there.
+see *The active task file is cleared at close, by this skill* there.
 
 A stale active task is still worse than no active task — the next write gets
 measured against the previous task's contract, and is allowed or questioned on
@@ -238,11 +311,89 @@ so the stop goes through. That trades a message for a silently unguarded task �
 the gate would then approve, having checked nothing, and the three phases it
 exists to enforce would go unmeasured with no record that they did.
 
+## Building several tasks at once
+
+More than one builder can work at a time, and doing it safely needs **two
+separate isolations**, because one of them is the one people reach for and it
+covers the wrong half.
+
+**A git worktree isolates files. It does not isolate Appian.** Two builders in
+two worktrees calling `createRecordType` write to the same environment. The
+worktree gives each of them their own working tree, their own active task file,
+their own evidence directory and their own SAIL sources — all genuinely useful,
+and all of it the *recoverable* half of the problem. The half that is not
+recoverable is untouched by it.
+
+| Isolation | What it protects | Mechanism |
+|---|---|---|
+| **Local** | Source files, the active task file, the evidence tree — anything two builders would otherwise overwrite | One git worktree per builder |
+| **Remote** | The Appian objects themselves, where a collision is not a merge conflict but a lost change nobody can attribute | An object lease register, checked by the scope gate |
+
+Three things have to hold before builders run concurrently:
+
+1. **The tasks are provably independent.** Run the plugin's checker over the
+   plan rather than eyeballing it:
+
+   ```
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/parallel_safety.py" PLAN_JSON --group T-3,T-5
+   ```
+
+   It refuses on shared objects, on dependencies **including transitive ones**
+   (T-1 ← T-2 ← T-3 means T-1 and T-3 are not independent, even though nothing
+   connects them directly), on anything that looks destructive, and on objects
+   everything quietly depends on — the application, a group, a shared constant.
+   It exits `0` clean, `1` findings, `2` usage, `3` NOT MEASURED — and **3 is
+   not a pass**: a plan it could not read is a plan nobody checked.
+
+2. **Each builder holds a lease on what it will touch.** Claim this task's
+   `allowedObjects` in the shared lease register before the first write, and
+   release them at close. The register is `leaseFile` in
+   `.claude/appian-harness.json`, and it must point somewhere **shared by all
+   the worktrees** — a register each builder has a private copy of is worse
+   than none, because it looks like coordination.
+
+3. **Still one task per builder, still ending in a stop.** Concurrency changes
+   how many builders there are, never what one of them does. The unit a
+   reviewer can reject on its own is what makes any of this reviewable.
+
+The gate's rule is one-sided on purpose: **a lease held by another task blocks;
+no lease at all does not.** Requiring one would break every single-builder
+project, which is the default and the common case.
+
+**Do not run destructive tasks concurrently with anything.** A deletion's blast
+radius is not bounded by `allowedObjects` — it can break objects no task
+listed, including ones another builder is holding.
+
 ## Stop before anything irreversible
 
 Ask the user before: deleting any object, deleting record data, removing a mapped
 field, or importing a package. An update is versioned and recoverable. A deletion
 is not, and neither is a dropped column.
+
+**Before any delete, run the impact assessment and write down what it found.**
+`getObjectDependents` for the object, recorded at
+`<evidenceDir>/<task-id>/dependents.json`, keyed by the object it is about:
+
+```json
+{
+  "RGM_OldRule": {
+    "checkedAt": "<when>",
+    "tool": "getObjectDependents",
+    "dependents": ["<what would break>", "..."]
+  }
+}
+```
+
+The scope gate reads it, and the two outcomes it distinguishes are the point:
+**"checked, zero dependents" and "never checked" are different answers**, and
+only one of them is evidence. Reading dependents is itself never gated, so the
+check can always be run.
+
+The prompt on a delete is **unconditional** — it appears even with the
+assessment on file and nothing found. That is not the gate being unable to tell;
+it is the harness declining to destroy something in a shared environment quietly
+on your behalf. What the assessment changes is what the prompt can tell the
+person answering it.
 
 Object versioning is not a transactional rollback: reverting an object does not
 undo schema changes, data, groups, or the effects of processes that already ran.
@@ -284,6 +435,28 @@ first unverified result. If you cannot determine the state, stop and ask.
   to look at, the decision it was supposed to inform has already been paid for
   in objects that exist. Waiting also guarantees the first write is stopped,
   because that verdict is what the scope gate opens before letting it through.
+- *"I loaded the official Appian skill earlier in this session, that covers
+  this task too."* The record is per task because the gate is per task, and
+  because a session that has drifted through three tasks and a compaction is
+  not a session you can assert anything about. Writing it again costs one
+  file; skipping it makes every write ask.
+- *"I know Appian well enough, the official skill is a formality."* It is the
+  vendor's account of how its own API behaves, and the specific things it
+  carries — both sides of a relationship, creation order, real UUIDs — are
+  precisely the ones **no gate in this plugin measures**. Confidence is not a
+  substitute for it, in exactly the way confidence is not a substitute for a
+  gate that was never run.
+- *"Each builder has its own worktree, so they can't collide."* They can't
+  collide **on files**. They are both writing to the same Appian environment,
+  where a collision is not a merge conflict you get told about — it is a change
+  that silently loses to another one, with two evidence trees each claiming
+  credit. The worktree covers the half that was already recoverable.
+- *"These two tasks don't share any object, so they're independent."* Check the
+  dependency chain, not just the object lists. T-1 ← T-2 ← T-3 has no direct
+  edge between T-1 and T-3 and they are still not independent: running them
+  together starts T-3 before T-2 has begun. `parallel_safety.py` computes the
+  transitive closure precisely because the direct check looks convincing and is
+  wrong.
 - *"I know which task I'm on, writing it to a file is bookkeeping."* The gates
   cannot read what this skill knows; they read the active task file. Skipping it
   does not make the build faster, it makes every single write ask.
@@ -300,10 +473,21 @@ first unverified result. If you cannot determine the state, stop and ask.
 ## Red Flags
 
 - Writing to the environment without having run the preflight classification.
+- Issuing any write without this task's official-skill load record, or with one
+  that names another task, omits `docsMcp`, or claims a version the installed
+  skill does not declare.
+- Writing at all in a session with no documentation MCP: the official skill's
+  function-availability checks come back empty there, and empty is
+  indistinguishable from "the function does not exist."
 - Issuing the first write with no `phase=design` verdict for this task, or with
   one whose outcome the gate does not accept.
 - Taking a task without writing the active task file, or leaving it pointing at
   a task that already closed.
+- Building concurrently on the strength of a worktree alone. Worktrees isolate
+  files; the Appian objects are still shared, and that is where the damage is.
+- Writing to an object leased by another task, or starting a concurrent build
+  without claiming leases at all.
+- Running a destructive task alongside anything else.
 - Deleting the active task file at STOP, or to get past a blocked stop. It is
   cleared at close, by `appian-review`, and this skill stopping is not a close.
 - Recreating an object that preflight already found PRESENT.
@@ -321,6 +505,10 @@ Before handing this task off:
 - Every object listed in scope was classified in preflight (ABSENT, PRESENT AND
   CONFORMING, PRESENT BUT INCOMPLETE, or CONFLICTING), and no CONFLICTING object
   was written to without stopping first.
+- The official Appian skill was loaded before the design audit and before the
+  first write, and its load is recorded at
+  `<evidenceDir>/<task-id>/appian-skill-loaded.json` naming this task, the
+  version the skill itself declares, and this session's documentation MCP.
 - `appian-practices-auditor` ran with `phase=design` before the first write, and
   its verdict at `<evidenceDir>/<task-id>/practices-design.json` came back
   `PASS`, or `NOT_MEASURED` with `notMeasuredClass` `DEFERRED` naming an

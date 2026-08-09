@@ -53,6 +53,28 @@ Building itself — writing SAIL, creating record types, running a create or upd
 call — is a separate step that consumes the tasks this skill produces; it should not
 start from a specification directly.
 
+## The doctrine this phase consults
+
+Two of the four contract parts cannot be written well from general knowledge, so open the reference
+for the one you are writing rather than the whole set:
+
+| While writing… | Read from `appian-best-practices` |
+|---|---|
+| **The slice boundary** — where one task ends and the next begins is a data-model question first, not a scheduling one | `references/01-data-model-records.md`, and `references/03-processes.md` for a lifecycle-shaped slice |
+| **`allowedObjects`** — object names have to follow the convention the app already froze, and a name invented here is a name the build inherits | `references/08-alm-testing-naming.md` |
+| **`requiredGates`** — the gates are defined there, with what each one protects and what counts as evidence for it. A gate named here that does not exist there is a gate nobody can run | `references/10-quality-gates.md` |
+
+`requiredGates` is the load-bearing one. It is where this phase decides what "done" will mean for a
+task, and every later phase reads that decision rather than re-forming it — so a gate list assembled
+from memory quietly sets the standard for work that has not been written yet.
+
+**Write the constraint down, not just the task.** When a reference settles something about a task —
+this entity keeps its own record type, this field needs row-level security, this list has to be paged
+— record it *with* the task, in one line, naming the reference. It costs a sentence here and it saves
+the same decision being re-derived three more times: by the build, by the design audit that runs
+before the first write, and by the reviewer. A plan that carries only *what* to build makes every
+later phase reconstruct *why*, and reconstruction is where the constraint quietly goes missing.
+
 ## Vertical slices, not layers
 
 An Appian slice is: **record type → query rule → interface → test case**, for one
@@ -193,6 +215,50 @@ Use those four names literally. The build step looks for exactly them, and a tas
 that describes the same four things in its own words still has to be translated by
 whoever picks it up — which is the point at which one of them quietly goes missing.
 
+### Declare each task's risk, because the gates now read it
+
+A fifth field, optional but consequential: `risk`, one of **`trivial`**,
+**`standard`** (the default, and what anything unrecognised means) or
+**`high`**. It belongs here rather than at build time, for the same reason the
+acceptance criterion does — decided in advance by someone who is not about to
+be inconvenienced by it.
+
+| | When | What the closure gate then requires |
+|---|---|---|
+| `trivial` | Cosmetic, local, touches no data, no permissions, no queries, changes no component or structure — the same four conditions `appian-review` uses for exemption | `implementation` only |
+| `standard` | Everything else | `implementation`, `review`, `qa` |
+| `high` | Data model, security, architecture, integrations, anything hard to reverse | Those three **plus `risk`**, an adversarial pass asking *how does this fail* rather than *does this meet the contract* |
+
+Two things about this are deliberate and worth not undoing:
+
+- **`trivial` is cheaper, not free.** One recorded verdict, not none. The
+  alternative people actually take when a text fix costs four verdicts is to
+  stop declaring the task at all, and then there is no record of anything.
+- **Declaring `trivial` is logged.** The gate writes it to
+  `<evidenceDir>/risk-downgrades.jsonl`, so "was that really trivial?" has an
+  answer later. It is not prevented — like everything else here, the cheap
+  route is closed and the deliberate one is made visible.
+
+A typo in this field buys more ceremony, never less: anything the gate does not
+recognise is treated as `standard`.
+
+### And mark the tasks a person has to see, if any
+
+A sixth field, also optional: **`requiresHumanConfirmation: true`**. It is not a
+risk tier and does not change what the closure gate requires. It says one thing:
+an unattended run stops here and hands the task to a person before building it.
+`appian-run` reads it as one of its stop conditions.
+
+`risk: high` and this are different questions, and conflating them is the easy
+mistake. High risk buys a fourth, adversarial opinion — and then the run
+continues, because the extra scrutiny is the answer. This buys no scrutiny at
+all; it says the *decision* is not the builder's to make. A task can be trivial
+and still need it: renaming something a client sees is cosmetic by every
+technical measure and still not a call to make at 2am inside a twenty-task run.
+
+Set it at plan time or not at all. A run that discovers mid-flight that it
+should have asked has already written.
+
 Separately, and not part of the contract, every task needs **a place in the
 dependency order**: which earlier tasks must close first, following the platform
 order above. That one is a planning concern — it governs the sequence tasks are
@@ -201,6 +267,40 @@ written in, not what a builder is handed for any single task.
 Both questions the contract answers — what this task may touch, and what "done"
 means for it — should be answerable by reading the task on its own, without pulling
 in the rest of the plan for context.
+
+## Which tasks could be built at the same time
+
+If more than one builder will work at once, that decision belongs here, not at
+build time — it is a property of how the plan was cut. Record `dependsOn` on
+every task that has a predecessor, and keep `allowedObjects` exhaustive, because
+those two fields are the entire input to the safety check:
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/parallel_safety.py" PLAN_JSON
+```
+
+With no `--group` it partitions the whole plan and prints the concurrent groups
+it can defend. It refuses a pairing on shared objects, on dependencies
+**including transitive ones**, on anything that reads as destructive, and on
+objects everything quietly depends on — an application, a group, a shared
+constant. Exit `3` is NOT MEASURED, not a pass: a plan it could not read is a
+plan nobody checked.
+
+Two things this changes about planning:
+
+- **A missing `dependsOn` is no longer just untidy.** Sequentially, the order in
+  the document carries it. Concurrently, an unrecorded dependency is what lets
+  two builders start in the wrong order, and the checker cannot see what the
+  plan did not say.
+- **Vertical slices are what make concurrency possible at all.** Layer-by-layer
+  work shares objects by construction — every task touches the record types —
+  so nothing in it can be parallelised. Slices give disjoint object sets almost
+  for free, which is a second reason for a rule that already had one.
+
+Do not mark a group concurrent because it *would be faster*. Mark it because
+the checker cannot find a reason against it, and note that a **git worktree is
+not the answer to this question** — worktrees isolate files, and the objects
+these tasks share live on a server both builders reach.
 
 ## Common Rationalizations
 

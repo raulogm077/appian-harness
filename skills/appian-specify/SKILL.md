@@ -47,6 +47,22 @@ order regardless of the order the answers arrived in.
   classified as sensitive or not — those are exactly the changes that quietly outgrow the existing
   specification.
 
+## The doctrine this phase consults
+
+Three of the six sections are Appian design decisions wearing business clothes, and getting them
+wrong here is what makes them expensive later. Open the reference **for the section you are asking
+about**, not the set:
+
+| While asking about… | Read from `appian-best-practices` |
+|---|---|
+| **Entities and relationships** — is this one entity or two, what is its key, which way does the cardinality go | `references/01-data-model-records.md` |
+| **Authorization matrix**, and any field flagged sensitive | `references/06-security.md` |
+| **Volume and growth** — because the answer decides sync-enabled versus query-time, and that is settled when the record type is modelled | `references/05-performance.md` |
+
+This is the cheapest point in the whole lifecycle to apply them: here they change a question, and a
+question costs nothing. The same rules applied after BUILD change an object that already exists, and
+things already exist on top of it.
+
 ## Procedure: One Question at a Time
 
 Ask one question, get an answer, then ask the next. Do not hand over all six sections as a form to

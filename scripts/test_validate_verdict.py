@@ -1,5 +1,5 @@
 import json, os, re, tempfile, unittest
-from validate_verdict import DEFERRABLE_CRITERIA, validate_verdict
+from validate_verdict import DEFERRABLE_CRITERIA, validate_verdict, isfile_exact
 
 PLUGIN_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 GATES_DOC = os.path.join(PLUGIN_ROOT, "skills", "appian-best-practices", "references",
@@ -293,6 +293,98 @@ class TestCaseSensitiveLookup(unittest.TestCase):
             make_plugin(t)
             p = write_verdict(t, referencesApplied=["06-SECURITY.md#record-level-security"])
             self.assertTrue(any("06-SECURITY.md" in e for e in validate_verdict(p, t)))
+
+
+class TestACitationCannotLeaveReferences(unittest.TestCase):
+    """The plugin's distinctive claim is that a cited section exists in this
+    plugin and any third party can go and read it. It did not hold: a
+    reference resolving outside `references/` was accepted, because
+    isfile_exact fell back to comparing the basename whenever the path left
+    its root. So `../../../README.md#the-gates` validated cleanly -- and so
+    did a markdown file the agent wrote itself, with a heading it chose."""
+
+    def _verdict(self, ref):
+        return {"task": "T", "phase": "design", "verdict": "PASS",
+                "referencesApplied": [ref],
+                "findings": [{"criterion": "c", "verdict": "PASS",
+                              "evidence": "e", "reference": ref}]}
+
+    def _check(self, root, ref):
+        path = os.path.join(root, "v.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self._verdict(ref), f)
+        return validate_verdict(path, root, expected_task="T", expected_phase="design")
+
+    def _plugin(self, root):
+        d = os.path.join(root, "skills", "appian-best-practices", "references")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "06-security.md"), "w", encoding="utf-8") as f:
+            f.write("# Security\n\n## Record level security\nBody.\n")
+        with open(os.path.join(root, "README.md"), "w", encoding="utf-8") as f:
+            f.write("# Readme\n\n## The gates\nBody.\n")
+
+    def test_a_real_reference_still_validates(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._plugin(t)
+            self.assertEqual(self._check(t, "06-security.md#record-level-security"), [])
+
+    def test_the_readme_traversal_is_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._plugin(t)
+            errs = self._check(t, "../../../README.md#the-gates")
+            self.assertTrue(errs)
+
+    def test_a_file_the_agent_wrote_itself_is_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._plugin(t)
+            decoy = os.path.join(t, "01-data-model-records.md")
+            with open(decoy, "w", encoding="utf-8") as f:
+                f.write("## Everything is fine here\n")
+            rel = os.path.relpath(decoy, os.path.join(
+                t, "skills", "appian-best-practices", "references")).replace("\\", "/")
+            self.assertTrue(self._check(t, rel + "#everything-is-fine-here"))
+
+    def test_a_subdirectory_is_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._plugin(t)
+            self.assertTrue(self._check(t, "sub/06-security.md#record-level-security"))
+
+    def test_a_non_markdown_file_is_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._plugin(t)
+            self.assertTrue(self._check(t, "validate_verdict.py#anything"))
+
+    def test_an_absolute_path_is_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._plugin(t)
+            self.assertTrue(self._check(t, os.path.abspath(
+                os.path.join(t, "README.md")) + "#the-gates"))
+
+
+class TestIsfileExactRefusesOutsideRoot(unittest.TestCase):
+    def test_a_path_outside_root_is_false_not_a_basename_check(self):
+        with tempfile.TemporaryDirectory() as t:
+            inner = os.path.join(t, "inner")
+            os.makedirs(inner)
+            outside = os.path.join(t, "thing.md")
+            with open(outside, "w", encoding="utf-8") as f:
+                f.write("x")
+            self.assertFalse(isfile_exact(outside, inner))
+
+    def test_a_path_inside_root_still_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = os.path.join(t, "thing.md")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("x")
+            self.assertTrue(isfile_exact(p, t))
+
+    def test_with_no_root_the_basename_check_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = os.path.join(t, "thing.md")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("x")
+            self.assertTrue(isfile_exact(p))
+
 
 if __name__ == "__main__":
     unittest.main()

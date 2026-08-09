@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .DS_Store
+
+# Editor state, not plugin content. A directory install copies the working
+# tree as it stands -- including files git ignores -- so anything that lands
+# here uninvited is worth naming rather than discovering in an install.
+.claude/settings.local.json

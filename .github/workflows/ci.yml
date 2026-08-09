@@ -1,0 +1,88 @@
+name: checks
+
+# The plugin argued for a long time that nothing checked is not a pass, while
+# its own checks ran only when somebody remembered. `lint_skills.py` in
+# particular claims its exemption list cannot be bypassed -- true only while
+# someone runs it. This is that claim becoming true.
+#
+# Both platforms on purpose. `isfile_exact` exists because NTFS and APFS are
+# case-insensitive and ext4 is not, so a verdict named `practices-QA.json`
+# closes a task on a laptop and blocks it in CI. A harness that behaves
+# differently in two places is worse than either behaviour consistently, and
+# a single-platform CI would have let exactly that back in.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        # The floor is what the hooks must survive, not what a developer
+        # happens to have: they run under whatever interpreter the launcher
+        # finds on the machine, which is rarely the newest.
+        python: ["3.9", "3.13"]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Hooks — gates, launcher, verdict freshness, destructive guard
+        run: python -m unittest discover -s hooks -v
+
+      - name: Scripts — validator, checkers, skill linter, parallel safety
+        run: python -m unittest discover -s scripts -v
+
+      - name: Skill frontmatter lint
+        run: python scripts/lint_skills.py
+
+      # Counts in prose drift. This plugin's drifted three times in one
+      # working session -- hooks, skills, test totals -- and a reader caught
+      # it every time, a check caught it never. It is a script rather than an
+      # inline step so the same check runs locally, before CI, which is where
+      # drift is cheap to fix.
+      - name: README's self-description matches the tree
+        run: python scripts/check_readme_claims.py
+
+      # No step here re-checks that the deferrable list in the document and
+      # in `DEFERRABLE_CRITERIA` agree, or that every reference file has
+      # citable anchors. Both are already unit tests
+      # (`test_the_document_and_the_constant_name_the_same_criteria` and the
+      # reference-resolution tests), and a CI step restating a test is one
+      # more copy to drift -- the exact failure this plugin spends a section
+      # arguing against.
+
+      - name: The plugin ships no project state of its own
+        shell: python
+        run: |
+            import os, sys
+            # Plugin and project are separate layers. Harness state inside
+            # this repository would mean the plugin had started governing
+            # itself, which is the contamination the separation prevents.
+            #
+            # Named precisely rather than by directory. `.claude/` also
+            # holds editor artifacts like settings.local.json, and flagging
+            # those would make this cry wolf -- a check people learn to
+            # scroll past protects nothing, which is the same argument the
+            # session-start check makes about unknown MCP configuration.
+            leaked = [p for p in (
+                os.path.join(".claude", "appian-harness.json"),
+                "evidence",
+                "tasks",
+            ) if os.path.exists(p)]
+            if leaked:
+                sys.exit("harness project state leaked into the plugin: %s" % leaked)
+            print("plugin/project separation intact")

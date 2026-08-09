@@ -1,7 +1,7 @@
 import json, os, sys, tempfile, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from harness_hooks import (scope_gate, closure_gate, failure_notice, log_write,
-                           log_evidence_write)
+                           log_evidence_write, session_start, requirements_errors)
 from validate_verdict import DEFERRABLE_CRITERIA
 
 # The one shape of NOT_MEASURED that opens a gate: sanctioned, owned, with a
@@ -57,6 +57,44 @@ def write_verdict(root, task_id, phase, filename=None, **over):
 
 def write_design_verdict(root, task_id, **over):
     write_verdict(root, task_id, "design", **over)
+
+
+INSTALLED_VERSION = "26.7"
+
+
+def write_skill_record(root, task_id, **over):
+    """Writes this task's official-Appian-skill load record.
+
+    A write now has two preconditions, not one: a passing design audit and
+    evidence that the official skill (github.com/appian/dev-mcp-skills) was
+    loaded for this task. Tests that exercise one of them write both and
+    then break the one under test, so a failure names the thing it is
+    about."""
+    record = {
+        "task": task_id,
+        "skill": "appian",
+        "source": "github.com/appian/dev-mcp-skills",
+        "appianVersion": INSTALLED_VERSION,
+        "docsMcp": "appian-docs",
+    }
+    record.update(over)
+    d = os.path.join(root, "evidence", task_id)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "appian-skill-loaded.json"), "w", encoding="utf-8") as f:
+        json.dump(record, f)
+
+
+def write_installed_skill(root, version=INSTALLED_VERSION):
+    """A stand-in for the installed official skill, so the record's version
+    claim can be checked against a file instead of trusted. Returns the path
+    a project would put in `officialAppianSkillPath`."""
+    d = os.path.join(root, "official-skill")
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, "SKILL.md")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("---\nname: appian\n---\n\n## Configuration\n\n"
+                "**Appian Version:** %s\n\nBody.\n" % version)
+    return d
 
 class TestScopeGate(unittest.TestCase):
     def test_no_active_task_asks(self):
@@ -118,6 +156,7 @@ class TestScopeMatchesEitherIdentifier(unittest.TestCase):
         make_plugin_root(root)
         c = cfg(root, activeTask={"id": "T-1", "allowedObjects": allowed})
         write_design_verdict(root, "T-1")
+        write_skill_record(root, "T-1")
         return scope_gate({"tool_name": tool, "tool_input": tool_input}, c)
 
     def test_a_task_scoped_by_uuid_admits_a_write_that_carries_only_a_uuid(self):
@@ -173,6 +212,7 @@ class TestScopeGateOutcome(unittest.TestCase):
 
     def _base_config(self, root):
         make_plugin_root(root)
+        write_skill_record(root, "T-1")
         return cfg(root, activeTask={"id": "T-1", "allowedObjects": ["A"]})
 
     def _gate(self, root, config):
@@ -219,6 +259,7 @@ class TestDeferralIsRecordedNotMerelyPermitted(unittest.TestCase):
 
     def _config(self, root):
         make_plugin_root(root)
+        write_skill_record(root, "T-1")
         return cfg(root, activeTask={"id": "T-1", "allowedObjects": ["A"]})
 
     def _write_call(self, config):
@@ -293,6 +334,7 @@ class TestVerdictMustAgreeWithItsPath(unittest.TestCase):
 
     def _config(self, root):
         make_plugin_root(root)
+        write_skill_record(root, "TASK-3")
         return cfg(root, activeTask={"id": "TASK-3", "allowedObjects": ["A"]})
 
     def _write_call(self, config):
@@ -469,6 +511,25 @@ class TestEvidenceWritesAreVisible(unittest.TestCase):
             self._write(c, c["activeTaskFile"])
             self.assertEqual([e["target"] for e in self._log(c)], ["active-task"])
 
+    def test_a_write_to_the_run_authorization_is_recorded(self):
+        # The gate reads this file to decide whether anyone authorized the
+        # writes at all, so an agent that edits it grants itself the run.
+        # Same footing as the active task file, and it arrived later --
+        # which is the whole reason this list has to grow with the gates
+        # rather than be written once.
+        with tempfile.TemporaryDirectory() as t:
+            run = os.path.join(t, "tasks", "run.json")
+            c = cfg(t, activeRunFile=run)
+            self._write(c, run, tool="Edit")
+            self.assertEqual([e["target"] for e in self._log(c)], ["run-authorization"])
+
+    def test_a_write_to_the_lease_register_is_recorded(self):
+        with tempfile.TemporaryDirectory() as t:
+            lease = os.path.join(t, "tasks", "leases.json")
+            c = cfg(t, leaseFile=lease)
+            self._write(c, lease)
+            self.assertEqual([e["target"] for e in self._log(c)], ["lease-register"])
+
     def test_an_unrelated_write_is_not_recorded(self):
         with tempfile.TemporaryDirectory() as t:
             c = cfg(t)
@@ -503,3 +564,389 @@ class TestFailureNotice(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOfficialAppianSkillIsRequiredBeforeWriting(unittest.TestCase):
+    """Writing through the design MCP requires the official Appian skill
+    (github.com/appian/dev-mcp-skills). It carries what the tool schemas
+    cannot express -- naming conventions, both sides of a relationship, the
+    order objects must be created in, real UUIDs versus invented ones --
+    and none of that is anything the other gates measure, so a write issued
+    without it fails in a way nothing here would otherwise catch.
+
+    A hook cannot see whether a skill is in an agent's context; that limit
+    is the same one this plugin already states about its own doctrine. What
+    it can do is open a file, so the requirement is enforced the way the
+    design audit already is: recorded per task, read by the gate."""
+
+    def _config(self, root, **over):
+        make_plugin_root(root)
+        write_design_verdict(root, "T-1")
+        return cfg(root, activeTask={"id": "T-1", "allowedObjects": ["A"]}, **over)
+
+    def _write_call(self, config):
+        return scope_gate({"tool_name": "mcp__appian-dev__updateInterface",
+                           "tool_input": {"name": "A"}}, config)
+
+    def test_a_write_with_no_load_record_asks(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = self._write_call(self._config(t))
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("dev-mcp-skills", d["permissionDecisionReason"])
+
+    def test_a_complete_load_record_lets_the_write_through(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_skill_record(t, "T-1")
+            self.assertEqual(self._write_call(c)["permissionDecision"], "allow")
+
+    def test_a_record_naming_another_task_does_not_count(self):
+        # The same discipline the phase verdicts get: one record copied
+        # across tasks is indistinguishable from N real ones unless the
+        # gate checks which task it is about.
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_skill_record(t, "T-1", task="T-OTHER")
+            d = self._write_call(c)
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("T-OTHER", d["permissionDecisionReason"])
+
+    def test_a_record_that_does_not_name_the_docs_mcp_does_not_count(self):
+        # The official skill leans on the documentation MCP for its
+        # function-availability checks. Without it those come back empty,
+        # and empty reads as "the function does not exist".
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_skill_record(t, "T-1", docsMcp="")
+            d = self._write_call(c)
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("docsMcp", d["permissionDecisionReason"])
+
+    def test_a_record_with_no_appian_version_does_not_count(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_skill_record(t, "T-1", appianVersion="")
+            d = self._write_call(c)
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("appianVersion", d["permissionDecisionReason"])
+
+    def test_the_version_claim_is_checked_against_the_installed_skill(self):
+        # The strong half: when the project points at the installed skill,
+        # the record's version stops being self-reported.
+        with tempfile.TemporaryDirectory() as t:
+            skill_dir = write_installed_skill(t, version="26.7")
+            c = self._config(t, officialAppianSkillPath=skill_dir)
+            write_skill_record(t, "T-1", appianVersion="26.3")
+            d = self._write_call(c)
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("26.3", d["permissionDecisionReason"])
+            self.assertIn("26.7", d["permissionDecisionReason"])
+
+    def test_a_matching_version_against_the_installed_skill_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            skill_dir = write_installed_skill(t, version="26.7")
+            c = self._config(t, officialAppianSkillPath=skill_dir)
+            write_skill_record(t, "T-1", appianVersion="26.7")
+            self.assertEqual(self._write_call(c)["permissionDecision"], "allow")
+
+    def test_an_unconfigured_skill_path_leaves_the_presence_check_alone(self):
+        # Not configuring `officialAppianSkillPath` weakens the check to
+        # presence-only. It must not turn into a failure: the skill is
+        # normally installed at user scope, outside any project.
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_skill_record(t, "T-1", appianVersion="whatever-the-project-says")
+            self.assertEqual(self._write_call(c)["permissionDecision"], "allow")
+
+    def test_an_unreadable_record_asks_rather_than_allowing(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            d = os.path.join(t, "evidence", "T-1")
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "appian-skill-loaded.json"), "w", encoding="utf-8") as f:
+                f.write("{not json")
+            self.assertEqual(self._write_call(c)["permissionDecision"], "ask")
+
+    def test_a_read_is_still_never_gated_by_this(self):
+        # The requirement is about writing. Discovery must stay free --
+        # preflight is all reads, and gating it would be the friction that
+        # gets a harness switched off.
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            d = scope_gate({"tool_name": "mcp__appian-dev__getObjectDependents",
+                            "tool_input": {"uuid": "A"}}, c)
+            self.assertEqual(d["permissionDecision"], "allow")
+
+    def test_it_never_denies(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = self._write_call(self._config(t))
+            self.assertNotEqual(d["permissionDecision"], "deny")
+
+
+class TestSessionStartChecksTheThreeRequirements(unittest.TestCase):
+    """Writing to Appian needs three links -- a design MCP, the official
+    Appian skill, and a documentation MCP -- and each one fails in a way
+    that looks like something else. Discovered one at a time they are three
+    confusing afternoons; discovered at session start they are one message.
+
+    This hook informs and never blocks. A session missing a link is still
+    worth having for reading, specifying and planning; what must not happen
+    is reaching the first write before finding out."""
+
+    def _cfg(self, root, **over):
+        base = {"mcpServers": ["appian-dev", "appian-docs"],
+                "designMcpServer": "appian-dev", "docsMcpServer": "appian-docs",
+                "officialAppianSkillPath": write_installed_skill(root)}
+        base.update(over)
+        return cfg(root, **base)
+
+    def test_all_three_present_reports_ready_and_still_asks_for_a_liveness_check(self):
+        with tempfile.TemporaryDirectory() as t:
+            out = session_start({}, self._cfg(t))
+            ctx = out["additionalContext"]
+            self.assertIn("all three requirements are present", ctx)
+            # Configured is not answering. Only a real call tells them apart.
+            self.assertIn("validateExpression", ctx)
+
+    def test_a_ready_session_is_reminded_of_the_phases_and_the_doctrine(self):
+        with tempfile.TemporaryDirectory() as t:
+            ctx = session_start({}, self._cfg(t))["additionalContext"]
+            for phase in ("appian-specify", "appian-plan", "appian-build",
+                          "appian-verify", "appian-review"):
+                self.assertIn(phase, ctx)
+            self.assertIn("appian-best-practices", ctx)
+
+    def test_a_missing_design_mcp_is_named(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._cfg(t, mcpServers=["appian-docs"])
+            errs = requirements_errors(c)
+            self.assertEqual(len(errs), 1)
+            self.assertIn("appian-dev", errs[0])
+            self.assertIn("gates nothing", errs[0])
+
+    def test_a_missing_docs_mcp_is_named(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._cfg(t, mcpServers=["appian-dev"])
+            errs = requirements_errors(c)
+            self.assertEqual(len(errs), 1)
+            self.assertIn("appian-docs", errs[0])
+            self.assertIn("does not exist", errs[0])
+
+    def test_a_missing_official_skill_is_named(self):
+        with tempfile.TemporaryDirectory() as t:
+            # Point at a path that does not exist, so the user-scope
+            # fallback cannot rescue it and the absence is the thing tested.
+            c = self._cfg(t, officialAppianSkillPath=os.path.join(t, "nope", "SKILL.md"))
+            errs = requirements_errors(c)
+            self.assertEqual(len(errs), 1)
+            self.assertIn("dev-mcp-skills", errs[0])
+
+    def test_all_three_missing_are_reported_together(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._cfg(t, mcpServers=[],
+                          officialAppianSkillPath=os.path.join(t, "nope", "SKILL.md"))
+            self.assertEqual(len(requirements_errors(c)), 3)
+            ctx = session_start({}, c)["additionalContext"]
+            self.assertIn("NOT SAFE", ctx)
+            self.assertIn("3 of the three", ctx)
+
+    def test_unknown_mcp_configuration_is_not_reported_as_missing(self):
+        # None means discovery could not read anything, which is not the
+        # same as knowing there are no servers. Crying wolf here trains the
+        # reader to scroll past the one message that matters.
+        with tempfile.TemporaryDirectory() as t:
+            c = self._cfg(t, mcpServers=None)
+            self.assertEqual(requirements_errors(c), [])
+
+    def test_a_project_may_name_its_servers_whatever_it_likes(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._cfg(t, mcpServers=["acme-design", "acme-docs"],
+                          designMcpServer="acme-design", docsMcpServer="acme-docs")
+            self.assertEqual(requirements_errors(c), [])
+
+    def test_the_skill_is_found_at_user_scope_without_being_configured(self):
+        # dev-mcp-skills installs at ~/.claude/skills/appian, outside any
+        # project. A project should not have to restate that.
+        with tempfile.TemporaryDirectory() as t:
+            c = self._cfg(t, officialAppianSkillPath=None)
+            home_skill = os.path.join(os.path.expanduser("~"), ".claude", "skills",
+                                      "appian", "SKILL.md")
+            expected = [] if os.path.isfile(home_skill) else ["missing"]
+            got = ["missing"] if requirements_errors(c) else []
+            self.assertEqual(got, expected)
+
+    def test_session_start_never_blocks(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._cfg(t, mcpServers=[],
+                          officialAppianSkillPath=os.path.join(t, "nope", "SKILL.md"))
+            out = session_start({}, c)
+            self.assertNotIn("decision", out)
+            self.assertNotIn("permissionDecision", out)
+
+
+class TestTheDocsMcpClaimIsCrossChecked(unittest.TestCase):
+    """`docsMcp` is the one field in the load record that does not have to
+    settle for self-reporting: by write time the gate knows which servers
+    are configured, so a claim can be compared rather than believed."""
+
+    def _config(self, root, **over):
+        make_plugin_root(root)
+        write_design_verdict(root, "T-1")
+        write_skill_record(root, "T-1")
+        return cfg(root, activeTask={"id": "T-1", "allowedObjects": ["A"]}, **over)
+
+    def _write_call(self, config):
+        return scope_gate({"tool_name": "mcp__appian-dev__updateInterface",
+                           "tool_input": {"name": "A"}}, config)
+
+    def test_a_claimed_docs_mcp_that_is_not_configured_asks(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, mcpServers=["appian-dev"])
+            d = self._write_call(c)
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("appian-docs", d["permissionDecisionReason"])
+
+    def test_a_claimed_docs_mcp_that_is_configured_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, mcpServers=["appian-dev", "appian-docs"])
+            self.assertEqual(self._write_call(c)["permissionDecision"], "allow")
+
+    def test_unknown_server_configuration_does_not_manufacture_a_failure(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, mcpServers=None)
+            self.assertEqual(self._write_call(c)["permissionDecision"], "allow")
+
+
+class TestObjectLeasesGuardConcurrentBuilders(unittest.TestCase):
+    """The half of concurrency a git worktree cannot cover.
+
+    A worktree gives each builder its own files and its own active task
+    file, and two builders in two worktrees calling createRecordType still
+    write to the same Appian. Worktrees isolate the recoverable half."""
+
+    def _config(self, root, leases=None, task="T-1", **over):
+        make_plugin_root(root)
+        write_design_verdict(root, task)
+        write_skill_record(root, task)
+        lease_path = None
+        if leases is not None:
+            lease_path = os.path.join(root, "shared-leases.json")
+            with open(lease_path, "w", encoding="utf-8") as f:
+                json.dump(leases, f)
+        return cfg(root, activeTask={"id": task, "allowedObjects": ["RGM_Candidate"]},
+                   leaseFile=lease_path, **over)
+
+    def _write(self, config, obj="RGM_Candidate"):
+        return scope_gate({"tool_name": "mcp__appian-dev__updateRecordType",
+                           "tool_input": {"name": obj}}, config)
+
+    def test_no_lease_register_at_all_is_the_sequential_default(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.assertEqual(self._write(self._config(t))["permissionDecision"], "allow")
+
+    def test_an_object_leased_to_another_task_is_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, leases={"RGM_Candidate": "T-2"})
+            d = self._write(c)
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("T-2", d["permissionDecisionReason"])
+            self.assertIn("worktree", d["permissionDecisionReason"])
+
+    def test_an_object_leased_to_this_task_goes_through(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, leases={"RGM_Candidate": "T-1"})
+            self.assertEqual(self._write(c)["permissionDecision"], "allow")
+
+    def test_an_unleased_object_is_not_blocked(self):
+        # Requiring a lease would break every single-builder project, which
+        # is the default. Refusing one held by somebody else is the rule.
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, leases={"RGM_Interview": "T-2"})
+            self.assertEqual(self._write(c)["permissionDecision"], "allow")
+
+    def test_the_lease_comparison_ignores_case_and_padding(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, leases={"  rgm_candidate ": "T-2"})
+            self.assertEqual(self._write(c)["permissionDecision"], "ask")
+
+    def test_a_uuid_lease_matches_a_write_that_carries_only_a_uuid(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, leases={"_a-0000-uuid": "T-2"})
+            c["activeTask"]["allowedObjects"] = ["_a-0000-uuid"]
+            d = scope_gate({"tool_name": "mcp__appian-dev__updateRecordType",
+                            "tool_input": {"uuid": "_a-0000-uuid"}}, c)
+            self.assertEqual(d["permissionDecision"], "ask")
+
+    def test_an_unreadable_lease_register_asks_rather_than_allowing(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, leases={})
+            with open(c["leaseFile"], "w", encoding="utf-8") as f:
+                f.write("{not json")
+            self.assertEqual(self._write(c)["permissionDecision"], "ask")
+
+    def test_a_lease_register_of_the_wrong_shape_asks(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, leases=["RGM_Candidate"])
+            self.assertEqual(self._write(c)["permissionDecision"], "ask")
+
+    def test_leases_never_produce_a_deny(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, leases={"RGM_Candidate": "T-2"})
+            self.assertNotEqual(self._write(c)["permissionDecision"], "deny")
+
+    def test_a_read_is_unaffected_by_any_lease(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t, leases={"RGM_Candidate": "T-2"})
+            d = scope_gate({"tool_name": "mcp__appian-dev__getRecordType",
+                            "tool_input": {"name": "RGM_Candidate"}}, c)
+            self.assertEqual(d["permissionDecision"], "allow")
+
+
+class TestWriteMatcherAimsAtAppianAndAtRuntime(unittest.TestCase):
+    """The matcher was wrong in both directions at once, and both were
+    measured against real tool names rather than argued about.
+
+    Too wide: `^mcp__.*__` matched every MCP server, so Supabase, Figma and
+    Google Drive writes were measured against an Appian task's contract.
+    Too narrow: the verb list described the design catalogue and ignored the
+    runtime, so invoking a process model -- which starts real work and
+    writes real data in a shared environment -- passed with no gate."""
+
+    def _w(self, name):
+        return scope_gate({"tool_name": name, "tool_input": {}},
+                          cfg(tempfile.gettempdir()))["permissionDecision"]
+
+    def test_appian_design_writes_are_gated(self):
+        for name in ("mcp__appian-dev__createRecordType",
+                     "mcp__appian-dev__deleteRecordData",
+                     "mcp__appian-dev__addRecordTypeField",
+                     "mcp__appian-dev__updateInterface"):
+            self.assertEqual(self._w(name), "ask", name)
+
+    def test_appian_runtime_execution_is_gated(self):
+        # These change real state and used to escape entirely.
+        for name in ("mcp__appian__appian_invoke_process_model",
+                     "mcp__appian__appian_invoke_agent",
+                     "mcp__appian-dev__testProcessModel"):
+            self.assertEqual(self._w(name), "ask", name)
+
+    def test_non_appian_servers_are_not_gated_by_an_appian_harness(self):
+        for name in ("mcp__claude_ai_Supabase__create_project",
+                     "mcp__claude_ai_Supabase__delete_branch",
+                     "mcp__claude_ai_Figma__create_new_file",
+                     "mcp__claude_ai_Google_Drive__create_file",
+                     "mcp__claude_ai_Notion__notion-create-pages"):
+            self.assertEqual(self._w(name), "allow", name)
+
+    def test_reads_and_stored_test_runs_stay_free(self):
+        # Discovery and replaying stored cases are what verification does;
+        # gating them is the friction that gets a harness switched off.
+        for name in ("mcp__appian-dev__getRecordType",
+                     "mcp__appian-dev__listInterfaces",
+                     "mcp__appian-dev__getObjectDependents",
+                     "mcp__appian-dev__validateExpression",
+                     "mcp__appian-dev__testInterface",
+                     "mcp__appian-dev__runAllInterfaceTestCases",
+                     "mcp__appian-dev__runAllExpressionRuleTestCases",
+                     "mcp__appian__appian_data_fabric_sql_query"):
+            self.assertEqual(self._w(name), "allow", name)
