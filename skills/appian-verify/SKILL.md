@@ -109,13 +109,23 @@ the check, for every phase this skill and `appian-review` are supposed to close.
 ## Two deterministic checkers this plugin ships
 
 `appian-verifier` and the practices auditor both reason about evidence. Two of the checks are
-mechanical enough to be code, and this plugin ships them as scripts under `scripts/`. Nothing
+mechanical enough to be code, and this plugin ships them under its own `scripts/` directory. Nothing
 dispatches them automatically — run them and feed their output to the dispatch that needs it.
 
 ```
-python scripts/n2_interface_tree.py TREE_JSON [--empty-path]
-python scripts/n3_process_layout.py LAYOUT_JSON
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/n2_interface_tree.py" TREE_JSON [--empty-path]
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/n3_process_layout.py" LAYOUT_JSON
 ```
+
+**Both parts of that path matter.** You are working in the project's directory, not the plugin's, so
+a bare `scripts/…` resolves against the project and finds nothing.
+
+(Use `python` where that is the name Python 3 answers to — on Windows it usually is, while on macOS
+and most Linux distributions `python3` is the only one that exists.)
+
+(If `${CLAUDE_PLUGIN_ROOT}` is not set in your environment, resolve it yourself as the checkout root
+of this plugin — the directory that contains `skills/appian-best-practices/references/` — and pass
+that path instead.)
 
 Both print one line per finding and exit **0 clean, 1 findings, 2 usage, 3 NOT MEASURED**, so a
 `NOT MEASURED` here is distinguishable from a clean run rather than being assumed. Exit 3 is the one
