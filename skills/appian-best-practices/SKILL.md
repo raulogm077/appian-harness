@@ -213,7 +213,7 @@ Before calling the work finished, confirm each of these and record the outcome:
 
 - [ ] Every applicable gate in `references/10-quality-gates.md` has PASS, FAIL, or NOT MEASURED with its class.
 - [ ] Every PASS names the evidence that produced it.
-- [ ] Every NOT MEASURED · DEFERRED has an owner and a closing condition, and its criterion is on the closed deferral list.
+- [ ] Every NOT MEASURED · DEFERRED names three things — its criterion, an owner and a closing condition — and that criterion is on the closed deferral list (`DEFERRABLE_CRITERIA` in `scripts/validate_verdict.py`, with its prose in `references/10-quality-gates.md`). Short of all three it is not a deferral; it is BLOCKING.
 - [ ] Behaviour was exercised with populated data, not only with empty tables.
 - [ ] If the change touches data, permissions or actions, one authorized and one unauthorized role were both tested.
 - [ ] Nothing was changed outside the agreed scope; anything noticed and left alone is stated explicitly.

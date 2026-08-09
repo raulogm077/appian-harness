@@ -148,6 +148,14 @@ def _phase_errors(config, task_id, phase):
     if outcome == "PASS":
         return []
     if outcome == "NOT_MEASURED" and verdict.get("notMeasuredClass") == "DEFERRED":
+        # A deferral is not a permission, it is a named debt -- which is
+        # what 10-quality-gates.md always said and nothing ever did. This is
+        # the moment the debt is incurred (a gate opening on unmeasured
+        # work), so this is where it gets written down. If the register
+        # cannot be written the exception propagates: main() turns it into
+        # the fail-closed answer, because a gate opening on a deferral
+        # nobody recorded is the defect, not a tidy edge case.
+        _record_deferral(config, task_id, phase, verdict)
         return []
     if outcome == "FAIL":
         return ["the practices-%s audit exists and is well-formed, but says FAIL" % phase]
@@ -343,12 +351,57 @@ def _log_ask(config, task_id, tool_name, reason):
                                 "gate-decisions.jsonl"), entry)
 
 
+def _debt_register(config):
+    return os.path.join(config.get("evidenceDir", DEFAULT_EVIDENCE_DIR), "deferred-debt.jsonl")
+
+
+def _record_deferral(config, task_id, phase, verdict):
+    """Appends one accepted deferral to the project's deferred-debt register.
+
+    Deduplicated on (task, phase, criterion) because the scope gate runs on
+    every single write: without it, one deferral becomes one register line
+    per write attempt, and a register nobody can read is a register nobody
+    reads. Re-reading the file each time is affordable -- it holds one line
+    per deferred criterion, not one per operation.
+
+    These entries share the file with the closure gate's forced-approval
+    entries and are told apart by `notMeasuredClass`: DEFERRED here, a
+    sanctioned and owned debt; BLOCKING there, a process failure.
+    """
+    path = _debt_register(config)
+    criterion = verdict.get("deferredCriterion")
+    key = (task_id, phase, criterion)
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                if (e.get("task"), e.get("phase"), e.get("criterion")) == key:
+                    return path
+    _append_jsonl(path, {
+        "timestamp": _now(),
+        "task": task_id,
+        "phase": phase,
+        "criterion": criterion,
+        "verdict": "NOT_MEASURED",
+        "notMeasuredClass": "DEFERRED",
+        "owner": verdict.get("owner"),
+        "closingCondition": verdict.get("closingCondition"),
+        "reason": "practices-%s for task %r deferred %r; it opened the gate on the owner and "
+                  "closing condition recorded here" % (phase, task_id, criterion),
+    })
+    return path
+
+
 def _record_deferred_debt(config, task_id, missing_phases):
     """Writes one entry to the project's deferred-debt register when the
     closure gate is forced to approve a task it cannot verify. Returns the
     register's path so the caller can point a human at it."""
-    debt_path = os.path.join(config.get("evidenceDir", DEFAULT_EVIDENCE_DIR),
-                              "deferred-debt.jsonl")
+    debt_path = _debt_register(config)
     entry = {
         "timestamp": _now(),
         "task": task_id,

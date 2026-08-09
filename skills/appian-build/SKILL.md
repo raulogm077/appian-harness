@@ -54,8 +54,9 @@ side effects the user did not necessarily ask for in that exact moment.
     project's evidence root from `.claude/appian-harness.json` at the project
     root — `evidence` when that file names none. That is the exact path the
     scope gate opens. If the verdict does not come back `PASS`, or
-    `NOT_MEASURED` with a `notMeasuredClass` of `DEFERRED` carrying an `owner`
-    and a `closingCondition`, **stop and report.** Those are the only two
+    `NOT_MEASURED` with a `notMeasuredClass` of `DEFERRED` carrying an `owner`,
+    a `closingCondition` and a `deferredCriterion` off the plugin's closed
+    list, **stop and report.** Those are the only two
     outcomes the gate accepts, so continuing produces a blocked write and a
     confused reader rather than progress. This precedes the build instead of
     following it because a design audit run after the object exists is a
@@ -309,8 +310,9 @@ Before handing this task off:
   was written to without stopping first.
 - `appian-practices-auditor` ran with `phase=design` before the first write, and
   its verdict at `<evidenceDir>/<task-id>/practices-design.json` came back
-  `PASS`, or `NOT_MEASURED` with `notMeasuredClass` `DEFERRED` and both an
-  `owner` and a `closingCondition` — anything else stopped the build.
+  `PASS`, or `NOT_MEASURED` with `notMeasuredClass` `DEFERRED` naming an
+  `owner`, a `closingCondition` and a `deferredCriterion` off the plugin's
+  closed list — anything else stopped the build.
 - The active task file was written when this task was taken, carries this task's
   `id` and its `allowedObjects` under exactly those names, and is still in place
   at STOP — it is `appian-review` that removes it, at close.

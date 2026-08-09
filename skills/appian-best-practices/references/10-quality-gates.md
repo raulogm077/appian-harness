@@ -56,17 +56,29 @@ object at all, made *before* the three outcomes below become relevant.
 
 A deferral is not a permission, it is a named debt: it goes into the project's
 deferred-debt register with task, criterion, reason, **owner and closing
-condition**. A deferral without an owner degrades to blocking.
+condition**. A deferral **missing any of those is rejected** — the verdict does
+not stand and the gate it was meant to open stays shut. It is not quietly
+rewritten into `NOT MEASURED · BLOCKING`: a record that says something nobody
+claimed is worse than a record that refuses an incomplete claim.
 
 **Only these criteria may be deferred.** This list is closed and lives in the
 plugin, not in the task: an agent cannot declare a criterion deferrable in
-order to unblock itself.
+order to unblock itself. Each one has an id, and a deferral **names the id it
+is invoking** — a deferral that names none, or names something not on this
+list, is rejected.
 
-- Screen reader testing.
-- Design Guidance warnings (not exposed by the API).
-- Row-level and field-level security tested with a real user per role.
-- Contrast against theme-supplied colors.
-- Process model connection routing (waypoints are not exposed by the API).
+- `screen-reader-testing` — screen reader testing.
+- `design-guidance-warnings` — Design Guidance warnings (not exposed by the API).
+- `row-and-field-level-security-with-a-real-user` — row-level and field-level security tested with a real user per role.
+- `contrast-against-theme-supplied-colors` — contrast against theme-supplied colors.
+- `process-model-connection-routing` — process model connection routing (waypoints are not exposed by the API).
+
+> **These ids are a copy, and the plugin holds the original.** The list that
+> decides what a gate accepts is `DEFERRABLE_CRITERIA` in
+> `scripts/validate_verdict.py`; the bullets above exist so the list can be
+> read in context, and a test parses them and fails if the two ever disagree.
+> Adding a deferrable criterion means editing the constant — editing only this
+> document changes nothing except this document.
 
 ---
 

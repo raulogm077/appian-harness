@@ -1,6 +1,18 @@
 import json, os, sys, tempfile, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from harness_hooks import scope_gate, closure_gate, failure_notice, log_write
+from validate_verdict import DEFERRABLE_CRITERIA
+
+# The one shape of NOT_MEASURED that opens a gate: sanctioned, owned, with a
+# closing condition, and naming which criterion off the plugin's closed list
+# is being deferred.
+DEFERRAL = {
+    "verdict": "NOT_MEASURED",
+    "notMeasuredClass": "DEFERRED",
+    "owner": "the accessibility lead",
+    "closingCondition": "before the site is released",
+    "deferredCriterion": DEFERRABLE_CRITERIA[0],
+}
 
 def cfg(root, **over):
     c = {"pluginRoot": root, "evidenceDir": os.path.join(root, "evidence"),
@@ -106,8 +118,7 @@ class TestScopeGateOutcome(unittest.TestCase):
     def test_deferred_not_measured_with_owner_satisfies_the_gate(self):
         with tempfile.TemporaryDirectory() as t:
             c = self._base_config(t)
-            write_design_verdict(t, "T-1", verdict="NOT_MEASURED", notMeasuredClass="DEFERRED",
-                                  owner="a person", closingCondition="when the site ships")
+            write_design_verdict(t, "T-1", **DEFERRAL)
             d = self._gate(t, c)
             self.assertEqual(d["permissionDecision"], "allow")
 
@@ -127,6 +138,81 @@ class TestScopeGateOutcome(unittest.TestCase):
             d = self._gate(t, c)
             self.assertEqual(d["permissionDecision"], "ask")
             self.assertIn("BLOCKING", d["permissionDecisionReason"])
+
+class TestDeferralIsRecordedNotMerelyPermitted(unittest.TestCase):
+    """`10-quality-gates.md` says a deferral "goes into the project's
+    deferred-debt register with task, criterion, reason, owner and closing
+    condition". Nothing wrote it there, so a deferral was a permission and
+    the register was a sentence. A deferral that opens a gate now leaves a
+    line behind."""
+
+    def _config(self, root):
+        make_plugin_root(root)
+        return cfg(root, activeTask={"id": "T-1", "allowedObjects": ["A"]})
+
+    def _write_call(self, config):
+        return scope_gate({"tool_name": "mcp__appian-dev__updateInterface",
+                            "tool_input": {"name": "A"}}, config)
+
+    def _register(self, config):
+        path = os.path.join(config["evidenceDir"], "deferred-debt.jsonl")
+        if not os.path.isfile(path):
+            return []
+        with open(path, encoding="utf-8") as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    def test_a_deferral_that_opens_the_gate_is_appended_to_the_register(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_design_verdict(t, "T-1", **DEFERRAL)
+            self.assertEqual(self._write_call(c)["permissionDecision"], "allow")
+            entries = self._register(c)
+            self.assertEqual(len(entries), 1)
+            e = entries[0]
+            self.assertEqual(e["task"], "T-1")
+            self.assertEqual(e["phase"], "design")
+            self.assertEqual(e["criterion"], DEFERRABLE_CRITERIA[0])
+            self.assertEqual(e["notMeasuredClass"], "DEFERRED")
+            self.assertEqual(e["owner"], DEFERRAL["owner"])
+            self.assertEqual(e["closingCondition"], DEFERRAL["closingCondition"])
+
+    def test_repeated_writes_do_not_duplicate_the_entry(self):
+        # The scope gate runs on every write. A naive append would turn one
+        # deferral into one register line per write attempt.
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_design_verdict(t, "T-1", **DEFERRAL)
+            for _ in range(4):
+                self._write_call(c)
+            self.assertEqual(len(self._register(c)), 1)
+
+    def test_a_passing_verdict_writes_nothing_to_the_register(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_design_verdict(t, "T-1", verdict="PASS")
+            self._write_call(c)
+            self.assertEqual(self._register(c), [])
+
+    def test_a_second_phase_deferring_the_same_criterion_is_its_own_entry(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            for phase in ("implementation", "review", "qa"):
+                write_verdict(t, "T-1", phase, **DEFERRAL)
+            self.assertEqual(closure_gate({}, c)["decision"], "approve")
+            self.assertEqual(sorted(e["phase"] for e in self._register(c)),
+                             ["implementation", "qa", "review"])
+
+    def test_a_deferral_naming_no_criterion_does_not_open_the_gate(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            deferral = dict(DEFERRAL)
+            del deferral["deferredCriterion"]
+            write_design_verdict(t, "T-1", **deferral)
+            d = self._write_call(c)
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("deferredCriterion", d["permissionDecisionReason"])
+            self.assertEqual(self._register(c), [])
+
 
 class TestVerdictMustAgreeWithItsPath(unittest.TestCase):
     """The gates open one exact path per phase. Until they also told the

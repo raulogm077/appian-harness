@@ -178,12 +178,13 @@ certifies does not close.
   "notMeasuredClass": "BLOCKING | DEFERRED",
   "owner": "<required only when notMeasuredClass is DEFERRED>",
   "closingCondition": "<required only when notMeasuredClass is DEFERRED>",
+  "deferredCriterion": "<required only when notMeasuredClass is DEFERRED — an id off the plugin's closed list>",
   "referencesApplied": ["<file>.md#<anchor>", "..."],
   "findings": [
     {
       "criterion": "<what was checked>",
-      "verdict": "PASS | FAIL | NOT_MEASURED",
-      "evidence": "<what you looked at>",
+      "verdict": "PASS | FAIL | NOT_MEASURED | N/A",
+      "evidence": "<what you looked at — for N/A, what the OBJECT does not expose, touch or need>",
       "reference": "<file>.md#<anchor>"
     }
   ]
@@ -204,10 +205,26 @@ Non-negotiable rules the validator enforces, and why they exist:
 - **`NOT_MEASURED` needs a `notMeasuredClass`.** `BLOCKING` means the harness
   could have measured it and didn't — that blocks the task. `DEFERRED` means
   the criterion structurally needs a human or a capability the API doesn't
-  expose, and it needs an `owner` and a `closingCondition` or it silently
-  degrades to `BLOCKING` — see `10-quality-gates.md#three-outcomes-not-two`.
-  Only the criteria listed there as deferrable may ever carry `DEFERRED`;
-  you do not get to declare a new one deferrable to unblock yourself.
+  expose, and it needs **three** fields: an `owner`, a `closingCondition`,
+  and a `deferredCriterion` naming which entry off the plugin's closed list
+  is being invoked. Missing any of them, the verdict is **rejected** — not
+  quietly rewritten into `BLOCKING`, which would put a claim in the record
+  that nobody made. See `10-quality-gates.md#three-outcomes-not-two`.
+- **The deferrable list is closed, and it is not in this file.** The ids the
+  validator accepts are `DEFERRABLE_CRITERIA` in
+  `scripts/validate_verdict.py`; `10-quality-gates.md` lists the same ids
+  with their prose. Read one of those two rather than guessing — restating
+  the list here would make a third copy to drift. You do not get to declare
+  a new criterion deferrable in order to unblock yourself, and now you
+  cannot: an id that is not on the list fails validation.
+- **`findings[]` is checked too, and `N/A` is checked hardest.** Every entry
+  needs a `criterion`, a `verdict` of `PASS`/`FAIL`/`NOT_MEASURED`/`N/A`,
+  and non-empty `evidence`. `N/A` is legal here and only here — but its
+  justification must be about the **object**. An `N/A` whose evidence
+  appeals to the process, the schedule or the time available is refused by
+  the validator, because that is `NOT_MEASURED · BLOCKING` wearing another
+  name. A bare `"N/A"` restates the verdict instead of justifying it and is
+  refused for the same reason.
 - **`referencesApplied` may not be empty.** Every entry is
   `<file>.md#<anchor>` naming a real file in `references/` and a real
   heading in it — the validator opens the file and checks the anchor, so a
@@ -240,8 +257,9 @@ Non-negotiable rules the validator enforces, and why they exist:
   — e.g. a security PASS backed only by "the button is hidden," or a `qa`
   PASS backed only by a suite-level green with no mention of what data it ran
   against.
-- A `DEFERRED` with no `owner` or no `closingCondition` — or one for a
-  criterion outside the plugin's closed deferrable list.
+- A `DEFERRED` with no `owner`, no `closingCondition` or no
+  `deferredCriterion` — or one naming a criterion outside the plugin's
+  closed deferrable list.
 - A `review` verdict that agrees with a builder's conclusion you were not
   supposed to have been given in the first place.
 - Auditing `design` from source alone when a rendered artifact (component

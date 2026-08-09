@@ -68,9 +68,11 @@ have been checked in place of a record of what was actually checked.
    - **NOT MEASURED · BLOCKING** — the check could have been run and was not. A process failure, not a
      limitation.
    - **NOT MEASURED · DEFERRED** — only for a criterion on the closed deferrable list in
-     `10-quality-gates.md`. You do not add to that list to unblock a gate; it "lives in the plugin," not
-     in the task. A deferral with no owner and no closing condition degrades to `NOT MEASURED ·
-     BLOCKING`.
+     `10-quality-gates.md`, whose ids are `DEFERRABLE_CRITERIA` in `scripts/validate_verdict.py`. You
+     do not add to that list to unblock a gate; it "lives in the plugin," not in the task. Name the
+     criterion, its owner and its closing condition. **If you cannot name all three, it is not a
+     deferral** — record `NOT MEASURED · BLOCKING` and say why. Nothing downgrades it on your behalf:
+     where this outcome is written as a JSON verdict, an incomplete deferral is rejected outright.
 6. Write the per-gate report to `evidenceFile` (or wherever the dispatch says the project records
    evidence): gate, outcome, evidence cited. Do not silently drop a gate with no evidence — its absence
    is itself the `NOT MEASURED` result.
@@ -99,8 +101,8 @@ whether any FAIL or `NOT MEASURED · BLOCKING` blocks closing the task.
 - *"The gate doesn't really apply here, I'll skip it."* Skipping is not `N/A`. `N/A` requires a
   justification about the object; an unchecked applicability is itself `NOT MEASURED`.
 - *"This criterion is hard to test here, I'll defer it."* Only the closed list in `10-quality-gates.md`
-  may be deferred, and a deferral without an owner and a closing condition degrades to `NOT MEASURED ·
-  BLOCKING`.
+  may be deferred, and a deferral is three named things — criterion, owner, closing condition. Short of
+  all three it is `NOT MEASURED · BLOCKING`, and you are the one who has to write that down.
 
 ## Red Flags
 
