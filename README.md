@@ -62,7 +62,7 @@ wrong direction.
 | `scripts/` | Four modules: `validate_verdict.py`, `lint_skills.py`, `n2_interface_tree.py`, `n3_process_layout.py` |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
 
-The Python carries its own tests — 75 for `scripts/`, 40 for `hooks/`, standard
+The Python carries its own tests — 84 for `scripts/`, 40 for `hooks/`, standard
 library only:
 
 ```
@@ -574,17 +574,71 @@ active task it prints `"ask"` and appends a line to `gate-decisions.jsonl`.
 Substitute `closure-gate` and a payload of `{"cwd":"..."}` to exercise the stop
 path, and add `"stop_hook_active":true` to see the second attempt approve.
 
-Two traps when running this by hand rather than through Claude Code, neither of
-which is a fault in the plugin:
+**`cwd` is read by Python**, so on Windows it must be a native path (`C:/…`),
+not an MSYS `/c/…` one. Given the latter, the gate finds no config and the
+probe looks like an unconfigured project. That is a trap of probing by hand,
+not a fault in the plugin.
 
-- **`cwd` is read by Python**, so on Windows it must be a native path (`C:/…`),
-  not an MSYS `/c/…` one. Given the latter, the gate finds no config and the
-  probe looks like an unconfigured project.
-- **`CLAUDE_PLUGIN_ROOT` is set by Claude Code, not by your shell.** Without it
-  the gate gets as far as the verdict and then answers `ask` with
-  `cannot validate practices-design: no pluginRoot configured` — which is the
-  hook refusing to accept a verdict it cannot check, not a problem with the
-  verdict. Export it to the checkout when probing manually.
+### Driving the scope gate all the way to `allow`
+
+The one-liner above stops at the first missing thing, which is the point of it.
+To see the whole chain — including the `CLAUDE_PLUGIN_ROOT` trap below, which
+only appears once a verdict exists for the gate to refuse to validate — build a
+scratch project. Set `HARNESS` to your checkout and run this as written:
+
+```sh
+HARNESS=/abs/path/to/appian-harness
+PROJ=/abs/path/to/scratch-project     # on Windows write C:/… , not /c/…
+
+mkdir -p "$PROJ/.claude" "$PROJ/tasks" "$PROJ/evidence/TASK-3"
+printf '{}' > "$PROJ/.claude/appian-harness.json"
+printf '{"id":"TASK-3","allowedObjects":["Foo"]}' > "$PROJ/tasks/current.json"
+
+cat > "$PROJ/evidence/TASK-3/practices-design.json" <<'JSON'
+{
+  "task": "TASK-3",
+  "phase": "design",
+  "verdict": "PASS",
+  "referencesApplied": ["10-quality-gates.md#three-outcomes-not-two"],
+  "findings": [
+    {
+      "criterion": "three outcomes are used, and N/A is not a fourth",
+      "verdict": "PASS",
+      "evidence": "the proposed design records PASS, FAIL or NOT MEASURED per gate",
+      "reference": "10-quality-gates.md#three-outcomes-not-two"
+    }
+  ]
+}
+JSON
+
+PAYLOAD='{"tool_name":"mcp__x__createInterface","tool_input":{"name":"Foo"},"cwd":"'"$PROJ"'"}'
+printf '%s' "$PAYLOAD" | sh "$HARNESS/hooks/run_hook.sh" "$HARNESS" scope-gate
+```
+
+That last line prints `"ask"`, with the reason
+`cannot validate practices-design: no pluginRoot configured`. **This is the
+`CLAUDE_PLUGIN_ROOT` trap, and it is not a problem with the verdict**: the
+variable is set by Claude Code, not by your shell, and without it the gate
+cannot resolve the references the verdict cites, so it refuses to accept a
+verdict it cannot check. Export it and run the same line again:
+
+```sh
+printf '%s' "$PAYLOAD" | CLAUDE_PLUGIN_ROOT="$HARNESS" sh "$HARNESS/hooks/run_hook.sh" "$HARNESS" scope-gate
+```
+
+Now it prints `"permissionDecision":"allow"` with `scope and design audit check
+out` — the whole chain: active task, object in `allowedObjects`, task within the
+atomicity budget, and a design verdict that is present, structurally valid, about
+this task and this phase, and passing.
+
+The verdict above is also the **minimal passing example** of the schema. Every
+field in it is required: `task` and `phase` have to match the path the gate
+opens (`<evidenceDir>/TASK-3/practices-design.json`), `referencesApplied` must be
+non-empty with each entry resolving to a real file and heading under
+`skills/appian-best-practices/references/`, and each finding needs a
+`criterion`, a `verdict` and non-empty `evidence`. The full schema, including
+the fields a `NOT_MEASURED` verdict needs, is in
+`agents/appian-practices-auditor.md`.
 
 ### The validator rejects my citation
 
