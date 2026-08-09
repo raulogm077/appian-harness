@@ -94,11 +94,13 @@ central parts of it hold whether or not the agent agrees:
   and tells an agent not to retry a failed write blind.
 
 The write gate never answers *deny* — the strongest thing it says is *ask* — and
-the closure gate blocks once but never twice, approving a second stop attempt
-and writing down what went unverified. Both shapes come from the same reasoning:
-a guardrail with no way past it gets switched off, and then it protects nothing.
-When a hook cannot inspect something — an unreadable config, malformed JSON —
-it asks or blocks rather than letting it through.
+when the closure gate blocks for missing verdicts it blocks once, approving a
+second stop attempt and writing down what went unverified. Both shapes come from
+the same reasoning: a guardrail with no way past it gets switched off, and then
+it protects nothing. That escape is for missing verdicts only: a hook that
+cannot inspect something at all — an unreadable config, malformed JSON — asks or
+blocks every time, with no second-attempt release, because a hook that cannot
+see is not a hook that should be waved through.
 
 ## The verification pyramid
 

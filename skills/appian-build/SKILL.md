@@ -94,9 +94,9 @@ for this task that passes, at `<evidenceDir>/<task>/practices-design.json`,
 where `evidenceDir` is the project's root from `.claude/appian-harness.json`.
 Judging whether this is a good way to solve the problem — before the first
 write, while changing the answer is still cheap — is what that half of the gate
-protects. So a task that reaches step 3 with no design verdict gets stopped
-there, and the way past it is to have the design audited, not to approve around
-the prompt.
+protects. Preflight is all reads, so it passes untouched; the stop lands on the
+first create or update in step 4, and the way past it is to have the design
+audited, not to approve around the prompt.
 
 The gate logs every question it asks — task, tool and reason — and the write log
 records what actually got written afterward. Read together, they turn "do we
