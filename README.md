@@ -93,9 +93,12 @@ central parts of it hold whether or not the agent agrees:
 - **write log** and **failure notice** — the harness records what was written,
   and tells an agent not to retry a failed write blind.
 
-No hook ever returns *deny*: the strongest answer is *ask*. And when it cannot
-inspect something — an unreadable config, malformed JSON — it asks rather than
-letting it through.
+The write gate never answers *deny* — the strongest thing it says is *ask* — and
+the closure gate blocks once but never twice, approving a second stop attempt
+and writing down what went unverified. Both shapes come from the same reasoning:
+a guardrail with no way past it gets switched off, and then it protects nothing.
+When a hook cannot inspect something — an unreadable config, malformed JSON —
+it asks or blocks rather than letting it through.
 
 ## The verification pyramid
 
@@ -188,9 +191,13 @@ no-ops, so the plugin installed in a project that does not use it stays out of
 the way.
 
 `activeTaskFile` holds the task the gates enforce against — its `id` and its
-`allowedObjects`. Your project chooses the root; the plugin fixes the shape
-under it, and a file written to any other shape is one the gates report as
-missing:
+`allowedObjects`. `maxAllowedObjects` is the atomicity budget: past it, the
+scope gate asks.
+
+`evidenceDir` works differently, and the distinction is the whole contract:
+**your project chooses that root, and the plugin fixes the shape underneath
+it.** A file written to any other shape is one the gates report as missing —
+which reads as evidence to a person and as an absence to the gate.
 
 | Path | Written by | Read by |
 |---|---|---|
