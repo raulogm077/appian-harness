@@ -8,6 +8,30 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.2.1 — 2026-08-10
+
+### Fixed
+
+The launcher's no-interpreter branch decided "is this the repeat Stop attempt?"
+with `cat`, `tr` and `grep` — three external commands, in the one branch that
+runs only when the environment is already too broken to start Python. On a PATH
+stripped bare they are missing as readily as `python3` is, so the test read
+false and *block once, then approve loudly* became **block forever** — the
+deadlock that branch exists to prevent. It now uses shell builtins only.
+
+Found by CI on Linux, on the first push that ran it. A Windows-only run could
+not have found it: Git for Windows ships those commands in the same directory
+as `sh.exe`, so there, the shell being findable means they are too.
+
+### Why this is 0.2.1 and not part of 0.2.0
+
+0.2.0 was pushed before CI reported. Shipping this fix under the same version
+number would leave an installation made from that commit answering "already at
+the latest version" forever — which is precisely the drift `0.1.1` was released
+to fix, and which this file was created to stop happening again. The rule costs
+one line in two manifests; not following it costs an installation that never
+updates and never says so.
+
 ## 0.2.0 — 2026-08-10
 
 ### Read this before upgrading
@@ -122,13 +146,6 @@ on one if you call it trivial, and needs four if you call it high.
   is documented, and could not see `maxAllowedObjects`, which reaches the config
   through a helper. It was documented by luck while the checker reported
   agreement.
-- The launcher's no-interpreter branch decided "is this the repeat Stop?" with
-  `cat`, `tr` and `grep` — three external commands, in the one branch that runs
-  only when the environment is too broken to start Python. On a stripped PATH
-  they are missing as readily as `python3` is, so the test read false and
-  *block once, then approve* became block forever. It now uses shell builtins
-  only. Found by CI on Linux; a Windows-only run could not have found it,
-  because Git for Windows ships those commands in the same directory as `sh`.
 
 ## 0.1.1 — 2026-08-09
 
