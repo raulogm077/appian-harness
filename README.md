@@ -393,20 +393,80 @@ them any other way would be the overclaim this plugin exists to argue against.
 
 ## Installing
 
-Add the plugin to a marketplace your Claude Code installation trusts, then:
+This repository **is its own marketplace** — the manifest at
+`.claude-plugin/marketplace.json` lists the plugin with `"source": "./"` under
+the marketplace name `appian-harness-local` — and installing from a checkout is
+the only path that exists today. Nothing public carries `appian-harness`, which
+is what makes the order of these three steps load-bearing:
+
+**1. Register the checkout as a marketplace.** This makes the catalog known and
+installs nothing.
 
 ```
-/plugin install appian-harness
+/plugin marketplace add "C:\Users\you\My Projects\appian-harness"
 ```
 
-To try it from a local checkout, this repository is its own marketplace — the
-manifest at `.claude-plugin/marketplace.json` lists the plugin with `"source":
-"./"`. Point Claude Code at the checkout, then install:
+**2. Install the plugin from that marketplace, by its full name.**
 
 ```
-/plugin marketplace add /path/to/appian-harness
 /plugin install appian-harness@appian-harness-local
 ```
+
+The command opens the plugin's details and asks which scope to install into —
+user, project or local. That prompt is the command working, not a failure.
+
+**3. Restart Claude Code** — or run `/reload-plugins`, if the install summary
+reports `Run /reload-plugins to activate.` rather than `Plugin is now active.`
+Restarting works on every version. Until one or the other happens the plugin is
+installed and doing nothing, because its hooks and agents only take effect once
+a session has loaded it: an install that appears to succeed and then gates
+nothing is the ordinary appearance of a skipped step 3.
+
+**Skipping step 1 is the failure this section is written around.** Running
+`/plugin install appian-harness` on its own — no marketplace registered, no
+`@appian-harness-local` suffix — answers:
+
+```
+Plugin "appian-harness" not found in any marketplace
+```
+
+That message is accurate and reads like a missing plugin. It is a missing
+*marketplace*: a plugin name given with no `@` is looked up across the
+marketplaces already registered with your installation, and this one is not
+among them until step 1 runs.
+
+**The path in step 1, and what to do about spaces.** `/plugin marketplace add`
+takes a directory containing `.claude-plugin/marketplace.json`, a direct path to
+a `marketplace.json`, a GitHub `owner/repo`, or a git URL. The documented
+local-path examples are all relative and none of them contains a space, so
+**there is no documented quoting rule** for the case that matters if your
+checkout lives under `My Projects` or `Documents and Settings`. Try the
+double-quoted absolute path first, as written above. If the argument was split
+on the space, the error names a path truncated at the first one —
+`C:\Users\you\My` rather than the folder you meant — which is how that failure
+is told apart from a path that is simply wrong.
+
+Two routes avoid the question instead of answering it, and either beats guessing
+twice:
+
+- **Type a relative path with no space in it.** Start Claude Code in the
+  directory that *contains* the checkout and add it as `./appian-harness`. That
+  is the shape the documentation shows, and the argument stays space-free
+  however many spaces the ancestors of the path have.
+- **Use the shell commands rather than the slash commands**, where the quoting
+  rule is your shell's and you already know it:
+
+  ```sh
+  claude plugin marketplace add "/path/with spaces/appian-harness"
+  claude plugin install appian-harness@appian-harness-local
+  ```
+
+  These do not run inside a session, so what they install loads at the next
+  start — which is step 3 either way.
+
+If this plugin is ever published to a marketplace your installation already
+trusts, only step 1 changes: add that marketplace instead of this checkout, and
+name it after the `@` in step 2.
 
 The skills carry no runtime dependencies. The hooks and the validators under
 `scripts/` need Python 3 on the `PATH` and nothing beyond the standard library.
@@ -430,8 +490,8 @@ message names what was tried. In a project without `.claude/appian-harness.json`
 it stays out of the way exactly as the hooks themselves do.
 
 **How far the above was checked, and where it stops.** Both manifests exist and
-parse, and the marketplace's name is the `appian-harness-local` that the second
-command names. The hooks were exercised directly, by feeding `run_hook.sh` a
+parse, and the marketplace's name is the `appian-harness-local` that step 2
+names. The hooks were exercised directly, by feeding `run_hook.sh` a
 payload the way Claude Code does — the command is under *Troubleshooting* — and
 they answered correctly in six cases, including the whole chain ending in
 `allow`: allow in an unconfigured project; ask with a config present and no
@@ -451,10 +511,20 @@ file. `n2_interface_tree.py` and `n3_process_layout.py` were run from the
 command line over sample inputs, each returning findings with exit 1, a usage
 message with exit 2, 0 on a clean input, and **3 on an input neither of them
 understands** — a component tree of unrecognised types for N2, a layout naming
-no nodes for N3. Both of those returned 0 until 2026-08-09. The two
-`/plugin` commands themselves are **unverified**: they are Claude Code commands
-rather than shell commands, and installing a plugin only means anything after a
-restart, so nobody has run them for this repository.
+no nodes for N3. Both of those returned 0 until 2026-08-09.
+
+The three installation steps are **not verified by running them**: `/plugin
+marketplace add` and `/plugin install` are Claude Code commands rather than
+shell commands, so nobody here can execute them, and the sequence above is
+written from the current Claude Code documentation on adding marketplaces and
+installing plugins. What is no longer hypothetical is the failure mode. This
+section used to open with a bare `/plugin install appian-harness`; the first
+person to follow it copied that first code block, and it answered `Plugin
+"appian-harness" not found in any marketplace` (field experience). Hence the
+order, stated as steps. The quoting of a path containing spaces is unverified in
+a different way — the documentation does not address it at all, which is why the
+section names a form to try first and two routes that do not depend on the
+answer, rather than presenting one as settled.
 
 ## What the plugin asks of your project
 
@@ -539,6 +609,19 @@ often did this gate stop something, and did anyone answer yes?" — and "who
 wrote this verdict?" — are questions with answers.
 
 ## Troubleshooting
+
+### `Plugin "appian-harness" not found in any marketplace`
+
+The marketplace was never added. A plugin name given with no `@` is looked up
+across the marketplaces already registered with your installation, and nothing
+public carries this one — so on a fresh installation that lookup has nowhere to
+succeed. It is not a corrupt manifest and not a misspelled plugin name.
+
+Run the commands in the order *Installing* gives them: `/plugin marketplace add`
+pointed at this checkout **first**, then `/plugin install
+appian-harness@appian-harness-local`, then restart Claude Code. If it is the
+first of those that failed rather than the install, the path is the thing to
+look at — see the note there on paths containing spaces.
 
 ### The hooks do nothing
 
