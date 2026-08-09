@@ -55,16 +55,29 @@ wrong direction.
 
 This repository **is its own marketplace** — the manifest at
 `.claude-plugin/marketplace.json` lists the plugin with `"source": "./"` under
-the marketplace name `appian-harness` — and installing from a checkout is
-the only path that exists today. Nothing public carries `appian-harness`, which
-is what makes the order of these three steps load-bearing:
+the marketplace name `appian-harness`. A marketplace has to be registered before
+the plugin inside it can be named, and registration is per installation rather
+than something a public repository grants you, which is what makes the order of
+these three steps load-bearing:
 
-**1. Register the checkout as a marketplace.** This makes the catalog known and
-installs nothing.
+**1. Register the marketplace.** This makes the catalog known and installs
+nothing.
+
+```
+/plugin marketplace add raulogm077/appian-harness
+```
+
+**From a local checkout instead**, which is the route to take while working on
+the plugin itself:
 
 ```
 /plugin marketplace add "C:\Users\you\My Projects\appian-harness"
 ```
+
+Those two differ in more than the argument. A GitHub source installs what is
+committed; a directory source copies the working tree **as it stands, including
+files `.gitignore` excludes** — see *The installed copy carries files that are
+not in git*.
 
 **2. Install the plugin from that marketplace, by its full name.**
 
@@ -100,7 +113,9 @@ That message is accurate and reads like a missing plugin. It is a missing
 marketplaces already registered with your installation, and this one is not
 among them until step 1 runs.
 
-**The path in step 1, and what to do about spaces.** `/plugin marketplace add`
+**The checkout path, and what to do about spaces.** This applies to the local
+route only — a GitHub `owner/repo` argument has no spaces to lose.
+`/plugin marketplace add`
 takes a directory containing `.claude-plugin/marketplace.json`, a direct path to
 a `marketplace.json`, a GitHub `owner/repo`, or a git URL. The documented
 local-path examples are all relative and none of them contains a space, so
@@ -619,12 +634,14 @@ them any other way would be the overclaim this plugin exists to argue against.
 ### `Plugin "appian-harness" not found in any marketplace`
 
 The marketplace was never added. A plugin name given with no `@` is looked up
-across the marketplaces already registered with your installation, and nothing
-public carries this one — so on a fresh installation that lookup has nowhere to
-succeed. It is not a corrupt manifest and not a misspelled plugin name.
+across the marketplaces already registered with your installation, and
+registration is something each installation does for itself — a public
+repository does not put itself in your catalog, so on a fresh installation that
+lookup has nowhere to succeed. It is not a corrupt manifest and not a misspelled
+plugin name.
 
 Run the commands in the order *Installing* gives them: `/plugin marketplace add`
-pointed at this checkout **first**, then `/plugin install
+pointed at `raulogm077/appian-harness`, or at your checkout, **first**, then `/plugin install
 appian-harness@appian-harness`, then restart Claude Code. If it is the
 first of those that failed rather than the install, the path is the thing to
 look at — see the note there on paths containing spaces.
@@ -671,6 +688,28 @@ Migrate rather than let them coexist:
    ```
 
 4. **Restart Claude Code** (or `/reload-plugins`), same as *Installing* step 3.
+
+### The installed copy carries files that are not in git
+
+`/plugin marketplace add` pointed at a directory copies that directory as it
+stands. It does not consult `.gitignore` and it does not ask git what is
+tracked: a copy installed that way on 2026-08-09 carried `.pytest_cache/` and
+two `__pycache__/` trees whose `.pyc` files `.gitignore` excludes. Nothing
+breaks — the skills, agents and hooks are the same files — but the plugin being
+run is no longer the plugin the repository describes, and the gap widens every
+time the tests are run before an install.
+
+Two ways out, and the first is the one to prefer:
+
+- **Install from GitHub.** A remote source can only carry what was committed, so
+  the question does not arise.
+- **Clean the tree before a directory install.** `git status --porcelain
+  --ignored` lists everything that would travel; it is clean when it prints
+  nothing.
+
+Either way the repair is to fix the source and install again — installing
+replaces the cached copy, so there is nothing to go and delete inside
+`~/.claude/plugins/cache`.
 
 ### The hooks do nothing
 
