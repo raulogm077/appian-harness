@@ -1,6 +1,6 @@
 ---
 name: appian-review
-description: Runs an independent review of one Appian change, graduated by risk, handing the reviewer the artifact and the contract but never the builder's conclusion. Use when a change creates an object, writes data, exposes information, changes authorization, queries at volume, or touches a screen a user sees.
+description: Runs an independent review of one Appian change, graduated by risk, handing the reviewer the artifact and the contract while withholding the builder's conclusion — and closes the task, clearing the active task file as its last act. Use when a change creates an object, writes data, exposes information, changes authorization, queries at volume, or touches a screen a user sees. Use equally when a change looks small or cosmetic enough to be exempt — judging that against the four exemption conditions, recording who made the call, and then clearing the active task file is this phase's own work. Use before closing any task, on either path.
 ---
 
 ## Overview
