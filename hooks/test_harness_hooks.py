@@ -94,6 +94,73 @@ class TestScopeGate(unittest.TestCase):
             d = scope_gate({"tool_name": "mcp__appian-dev__createInterface", "tool_input": {}}, cfg(t))
             self.assertNotEqual(d["permissionDecision"], "deny")
 
+class TestScopeMatchesEitherIdentifier(unittest.TestCase):
+    """`allowedObjects` was compared against one identifier, chosen by
+    preferring `name` and falling back to `uuid`. Real MCP schemas do not
+    cooperate: `updateInterface` takes a uuid and usually no name,
+    `addRecordTypeField(uuid, fieldName)` has no name at all, and
+    `updateProcessModelNode(processModelUuid, nodeId, name)` has a `name`
+    that belongs to the node rather than the object. So most post-create
+    writes compared the wrong string and asked -- noise the README then
+    misread as evidence of oversized tasks.
+
+    A task is scoped by whichever identifier its plan could know, so the
+    write is in scope when ANY identifier in the call matches. The keys
+    collected are alternative spellings of the same target, not a list of
+    distinct objects, which is what makes any-match the right rule rather
+    than a loosening."""
+
+    def _gate(self, root, allowed, tool, tool_input):
+        make_plugin_root(root)
+        c = cfg(root, activeTask={"id": "T-1", "allowedObjects": allowed})
+        write_design_verdict(root, "T-1")
+        return scope_gate({"tool_name": tool, "tool_input": tool_input}, c)
+
+    def test_a_task_scoped_by_uuid_admits_a_write_that_carries_only_a_uuid(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = self._gate(t, ["_a-0000-uuid"], "mcp__appian-dev__updateInterface",
+                           {"uuid": "_a-0000-uuid", "definition": "a!x()"})
+            self.assertEqual(d["permissionDecision"], "allow")
+
+    def test_a_field_write_matches_on_its_record_type_uuid(self):
+        # addRecordTypeField(uuid, fieldName): no `name` key exists at all.
+        with tempfile.TemporaryDirectory() as t:
+            d = self._gate(t, ["_a-0000-uuid"], "mcp__appian-dev__addRecordTypeField",
+                           {"uuid": "_a-0000-uuid", "fieldName": "status"})
+            self.assertEqual(d["permissionDecision"], "allow")
+
+    def test_a_node_name_is_not_the_object_and_does_not_have_to_match(self):
+        # updateProcessModelNode's `name` is the node's. Under the old
+        # "prefer name" rule this asked on every layout fix.
+        with tempfile.TemporaryDirectory() as t:
+            d = self._gate(t, ["_pm-0000-uuid"], "mcp__appian-dev__updateProcessModelNode",
+                           {"processModelUuid": "_pm-0000-uuid", "nodeId": 4,
+                            "name": "Send notification"})
+            self.assertEqual(d["permissionDecision"], "allow")
+
+    def test_a_task_scoped_by_name_still_admits_a_write_that_carries_a_name(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = self._gate(t, ["APP_openRequests"], "mcp__appian-dev__createInterface",
+                           {"name": "APP_openRequests", "definition": "a!x()"})
+            self.assertEqual(d["permissionDecision"], "allow")
+
+    def test_no_identifier_in_the_call_matches_and_the_gate_asks(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = self._gate(t, ["APP_openRequests"], "mcp__appian-dev__updateInterface",
+                           {"uuid": "_somebody-elses-uuid", "name": "APP_closedRequests"})
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("allowedObjects", d["permissionDecisionReason"])
+            self.assertIn("_somebody-elses-uuid", d["permissionDecisionReason"])
+            self.assertIn("APP_closedRequests", d["permissionDecisionReason"])
+
+    def test_a_call_carrying_no_identifier_at_all_still_asks(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = self._gate(t, ["APP_openRequests"], "mcp__appian-dev__createInterface",
+                           {"definition": "a!x()"})
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("could not identify", d["permissionDecisionReason"])
+
+
 class TestScopeGateOutcome(unittest.TestCase):
     """validate_verdict only checks that a verdict is well-formed and its
     citations are real; it deliberately says nothing about whether the audit

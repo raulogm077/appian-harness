@@ -77,8 +77,9 @@ not something this skill hardcodes; if the project has not said where its plan
 and operational state live, ask rather than guess a path.
 
 - **`allowedObjects`** — the exhaustive list of objects this task may create or
-  modify. Anything else, however related it looks, is out of scope for this
-  invocation.
+  modify, each entry a **name or a UUID** (see *The active task, written where
+  the gates can read it*). Anything else, however related it looks, is out of
+  scope for this invocation.
 - **`acceptanceCriteria`** — an observable statement that proves the task is
   done. Not "the interface was created" but what a reviewer can check without
   trusting the executor's word for it.
@@ -167,10 +168,22 @@ that nearly matches does:
 `id` is also what the verdict path is built from, so it has to be the same
 string the design audit was dispatched with:
 `<evidenceDir>/<id>/practices-design.json` is one path assembled from two
-places, and they have to agree. `allowedObjects` is the contract's list,
-written the way the write call will actually name each object — the gate reads
-the target out of the tool's own arguments and compares strings, so an entry
-that describes an object instead of naming it never matches.
+places, and they have to agree.
+
+`allowedObjects` is the contract's list, and **each entry may be a name or a
+UUID.** The gate collects every identifier the write call carries — `name`,
+`uuid`, `recordTypeUuid`, `processModelUuid` and the rest — and lets the
+write through when *any* of them matches an entry. Both spellings are needed
+because neither covers the task on its own: a UUID cannot be written at plan
+time, since it does not exist until the object does, while a name is often
+absent from the call that updates an existing object (`updateInterface` takes
+a uuid; `addRecordTypeField` takes a uuid and a field name and no object name
+at all). So plan the task with the names, and once preflight has read the
+real identifiers back, adding those UUIDs to the list is what stops the
+update calls from asking.
+
+What still never matches is an entry that *describes* an object instead of
+identifying it: the comparison is between strings, not meanings.
 
 **When step 7 stops, leave that file exactly where it is.** This skill stopping
 does not mean the task is finished — it stops *so that* verification and review

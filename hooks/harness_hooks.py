@@ -63,8 +63,18 @@ WRITE_TOOL_RE = re.compile(
 )
 
 # Candidate keys for the object a write tool targets. Appian MCP tools don't
-# share one argument name for "the object", so this tries the common ones in
-# order and takes the first string it finds.
+# share one argument name for "the object", so every one of these is read and
+# they are treated as alternative spellings of the SAME target rather than as
+# a list of different objects -- which is what makes "in scope if any of them
+# matches" the correct rule and not a loosening of the gate.
+#
+# Preferring one key over the others was wrong against the real schemas.
+# `updateInterface` takes a `uuid` and usually carries no `name`;
+# `addRecordTypeField(uuid, fieldName)` has no `name` at all; and
+# `updateProcessModelNode(processModelUuid, nodeId, name)` has a `name` that
+# belongs to the *node*, not to the object the task scoped. So most
+# post-create writes compared a string that was never going to be in
+# allowedObjects, and asked.
 OBJECT_KEYS = (
     "name", "uuid", "id",
     "recordTypeUuid", "interfaceUuid", "processModelUuid", "expressionRuleUuid",
@@ -83,14 +93,30 @@ def _is_write_tool(tool_name):
     return bool(WRITE_TOOL_RE.match(tool_name or ""))
 
 
-def _object_name(tool_input):
+def _object_candidates(tool_input):
+    """Every identifier in this call that could name the object it targets.
+
+    A task can only be scoped by an identifier its plan could know, and at
+    plan time a UUID does not exist yet -- it appears once the object does.
+    So allowedObjects legitimately carries names, UUIDs, or both, and the
+    gate compares the whole set rather than picking one and hoping.
+    """
     if not isinstance(tool_input, dict):
-        return None
+        return []
+    found = []
     for key in OBJECT_KEYS:
         val = tool_input.get(key)
-        if isinstance(val, str) and val:
-            return val
-    return None
+        if isinstance(val, str) and val and val not in found:
+            found.append(val)
+    return found
+
+
+def _object_name(tool_input):
+    """The single identifier written to the operations log. The log records
+    what was touched for a person reading afterwards, so one representative
+    identifier is what it wants; the gate uses _object_candidates."""
+    candidates = _object_candidates(tool_input)
+    return candidates[0] if candidates else None
 
 
 def _verdict_path(config, task_id, phase):
@@ -184,13 +210,13 @@ def scope_gate(payload, config):
         task_id = active_task["id"]
         allowed_objects = active_task.get("allowedObjects") or []
 
-        obj_name = _object_name(payload.get("tool_input", {}))
-        if obj_name is None:
+        candidates = _object_candidates(payload.get("tool_input", {}))
+        if not candidates:
             reasons.append("could not identify the target object from tool_input; "
                             "cannot check it against allowedObjects")
-        elif obj_name not in allowed_objects:
-            reasons.append("object %r is not in the task's allowedObjects %r" %
-                            (obj_name, allowed_objects))
+        elif not any(c in allowed_objects for c in candidates):
+            reasons.append("no identifier in this call %r is in the task's allowedObjects %r" %
+                            (candidates, allowed_objects))
 
         max_allowed = config.get("maxAllowedObjects", DEFAULT_MAX_ALLOWED_OBJECTS)
         if len(allowed_objects) > max_allowed:
