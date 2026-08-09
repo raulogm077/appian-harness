@@ -19,10 +19,14 @@ def make_plugin_root(root):
     with open(os.path.join(d, "06-security.md"), "w", encoding="utf-8") as f:
         f.write("# Security\n\n## Record level security\nBody.\n\n## Field level security\nBody.\n")
 
-def write_design_verdict(root, task_id, **over):
+def write_verdict(root, task_id, phase, filename=None, **over):
+    """Writes one verdict under <root>/evidence/<task_id>/.
+
+    `filename` is separate from `phase` on purpose: the tests that matter
+    here are the ones where the document and the path disagree."""
     v = {
         "task": task_id,
-        "phase": "design",
+        "phase": phase,
         "verdict": "PASS",
         "referencesApplied": ["06-security.md#record-level-security"],
         "findings": [],
@@ -30,8 +34,13 @@ def write_design_verdict(root, task_id, **over):
     v.update(over)
     d = os.path.join(root, "evidence", task_id)
     os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, "practices-design.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(d, filename or ("practices-%s.json" % phase)), "w",
+              encoding="utf-8") as f:
         json.dump(v, f)
+
+
+def write_design_verdict(root, task_id, **over):
+    write_verdict(root, task_id, "design", **over)
 
 class TestScopeGate(unittest.TestCase):
     def test_no_active_task_asks(self):
@@ -118,6 +127,81 @@ class TestScopeGateOutcome(unittest.TestCase):
             d = self._gate(t, c)
             self.assertEqual(d["permissionDecision"], "ask")
             self.assertIn("BLOCKING", d["permissionDecisionReason"])
+
+class TestVerdictMustAgreeWithItsPath(unittest.TestCase):
+    """The gates open one exact path per phase. Until they also told the
+    validator *which* task and phase they were opening, the document could
+    say anything: one audit copied into four filenames satisfied the whole
+    four-phase guarantee."""
+
+    def _config(self, root):
+        make_plugin_root(root)
+        return cfg(root, activeTask={"id": "TASK-3", "allowedObjects": ["A"]})
+
+    def _write_call(self, config):
+        return scope_gate({"tool_name": "mcp__appian-dev__updateInterface",
+                            "tool_input": {"name": "A"}}, config)
+
+    def test_verdict_naming_another_task_does_not_satisfy_the_scope_gate(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_verdict(t, "TASK-3", "design", task="TASK-999")
+            d = self._write_call(c)
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("TASK-999", d["permissionDecisionReason"])
+
+    def test_verdict_naming_another_phase_does_not_satisfy_the_scope_gate(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_verdict(t, "TASK-3", "qa", filename="practices-design.json")
+            d = self._write_call(c)
+            self.assertEqual(d["permissionDecision"], "ask")
+            self.assertIn("design", d["permissionDecisionReason"])
+
+    def test_agreeing_verdict_still_satisfies_the_scope_gate(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            write_verdict(t, "TASK-3", "design")
+            self.assertEqual(self._write_call(c)["permissionDecision"], "allow")
+
+    def test_one_audit_copied_to_four_names_does_not_close_a_task(self):
+        """The probe, end to end: a single `{"task":"TASK-999","phase":"qa"}`
+        document placed under all four filenames used to open every gate."""
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            for name in ("design", "implementation", "review", "qa"):
+                write_verdict(t, "TASK-3", "qa", filename="practices-%s.json" % name,
+                              task="TASK-999")
+            self.assertEqual(self._write_call(c)["permissionDecision"], "ask")
+            d = closure_gate({}, c)
+            self.assertEqual(d["decision"], "block")
+            for phase in ("implementation", "review", "qa"):
+                self.assertIn("practices-%s" % phase, d["reason"])
+
+    def test_four_genuine_verdicts_still_close_the_task(self):
+        with tempfile.TemporaryDirectory() as t:
+            c = self._config(t)
+            for phase in ("implementation", "review", "qa"):
+                write_verdict(t, "TASK-3", phase)
+            self.assertEqual(closure_gate({}, c)["decision"], "approve")
+
+
+class TestVerdictLookupIsCaseSensitive(unittest.TestCase):
+    """`practices-QA.json` is documented as a verdict the gate reports
+    missing. On a case-insensitive filesystem it was found and the task
+    closed, so the harness behaved differently on a laptop than in CI."""
+
+    def test_verdict_named_with_the_wrong_case_is_reported_missing(self):
+        with tempfile.TemporaryDirectory() as t:
+            make_plugin_root(t)
+            c = cfg(t, activeTask={"id": "TASK-3", "allowedObjects": ["A"]})
+            write_verdict(t, "TASK-3", "implementation")
+            write_verdict(t, "TASK-3", "review")
+            write_verdict(t, "TASK-3", "qa", filename="practices-QA.json")
+            d = closure_gate({}, c)
+            self.assertEqual(d["decision"], "block")
+            self.assertIn("practices-qa", d["reason"])
+
 
 class TestClosureGate(unittest.TestCase):
     def test_missing_phase_audit_blocks(self):

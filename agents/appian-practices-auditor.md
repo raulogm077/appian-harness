@@ -260,8 +260,15 @@ Before you are done, both of these must hold:
       `0`:
 
   ```
-  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/validate_verdict.py" <evidenceDir>/<task>/practices-<phase>.json "${CLAUDE_PLUGIN_ROOT}"
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/validate_verdict.py" <evidenceDir>/<task>/practices-<phase>.json "${CLAUDE_PLUGIN_ROOT}" <task> <phase>
   ```
+
+  **Pass `<task>` and `<phase>`** — the same two strings the path is built
+  from. That is exactly what the gates do when they open this file, so
+  running it without them checks less than the gate will and can exit `0` on
+  a verdict the gate then rejects. With them, a document that names a
+  different task or a different phase than the path it sits at fails here
+  first, which is where you can still fix it.
 
   (Use `python` where that is the name Python 3 answers to — on Windows it
   usually is, while on macOS and most Linux distributions `python3` is the

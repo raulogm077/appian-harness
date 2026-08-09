@@ -48,7 +48,7 @@ import time
 # Inserted unconditionally so this module is self-sufficient whether it's
 # imported by the test suite or run directly as the hook's entry point.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-from validate_verdict import load_verdict, validate_verdict
+from validate_verdict import isfile_exact, load_verdict, validate_verdict
 
 # Covers the same verbs as hooks.json's PreToolUse/PostToolUse matcher, so
 # scope_gate still recognises a write tool when called directly (as the unit
@@ -102,11 +102,18 @@ def _phase_errors(config, task_id, phase):
     """Names what's wrong with a phase's verdict; empty list means valid AND
     passing. Both halves matter and neither is optional:
 
-    - validate_verdict answers "is this a well-formed audit whose citations
-      resolve?" -- a document-shape question. It deliberately says nothing
-      about the outcome, and that separation is correct: it is not this
-      function's job to duplicate validate_verdict's citation-resolution
-      logic, only to add the outcome check on top of it.
+    - validate_verdict answers "is this a well-formed audit of THIS task and
+      THIS phase, whose citations resolve?" -- a document-shape question,
+      plus the one thing shape alone cannot answer: whether the document is
+      about the work whose gate is opening it. Both gates assemble the path
+      from a task id and a phase, so both can say what they are opening, and
+      they do. Before they did, a verdict reading
+      {"task": "TASK-999", "phase": "qa"} satisfied every one of the four
+      filenames, and one audit copied four times was indistinguishable from
+      four independent ones. It deliberately still says nothing about the
+      outcome, and that separation is correct: it is not this function's job
+      to duplicate validate_verdict's citation-resolution logic, only to add
+      the outcome check on top of it.
     - A phase audit only SATISFIES a gate when verdict == PASS, or
       verdict == NOT_MEASURED with notMeasuredClass == DEFERRED (which
       validate_verdict already guarantees carries an owner and a
@@ -122,12 +129,17 @@ def _phase_errors(config, task_id, phase):
     message as "there is no audit".
     """
     path = _verdict_path(config, task_id, phase)
-    if not os.path.isfile(path):
+    # isfile_exact rather than os.path.isfile: the documented contract is that
+    # a verdict named `practices-QA.json` is one the gate reports as missing,
+    # and on Windows or macOS plain isfile finds it and closes the task. The
+    # evidence root is the bound -- the project chose that path's case, the
+    # agent chose everything below it.
+    if not isfile_exact(path, config.get("evidenceDir", DEFAULT_EVIDENCE_DIR)):
         return ["no practices-%s verdict found at %s" % (phase, path)]
     plugin_root = config.get("pluginRoot")
     if not plugin_root:
         return ["cannot validate practices-%s: no pluginRoot configured" % phase]
-    errors = validate_verdict(path, plugin_root)
+    errors = validate_verdict(path, plugin_root, expected_task=task_id, expected_phase=phase)
     if errors:
         return ["practices-%s verdict is invalid: %s" % (phase, "; ".join(errors))]
 
