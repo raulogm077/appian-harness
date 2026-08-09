@@ -11,7 +11,9 @@ the byte count; and some API surfaces fail to serialize certain component
 types, so pick the surface that answers correctly, not the one that answers
 first.
 """
+import json
 import re
+import sys
 
 DESTRUCTIVE = re.compile(r"\b(delete|remove|discard|revoke|purge|erase|cancel account)\b", re.I)
 TECHNICAL = re.compile(r"\[L?java|^null$|^\{.*\}$|[0-9a-f]{8}-[0-9a-f]{4}-|recordType!", re.I)
@@ -93,3 +95,53 @@ def check_tree(tree, empty_path=False):
                                  "detail": "no emptyGridMessage on the empty path"})
 
     return findings
+
+
+USAGE = """usage: n2_interface_tree.py TREE_JSON [--empty-path]
+
+TREE_JSON     a file holding the EVALUATED component tree a rendered-interface
+              test returns -- the tree with data already resolved, not the
+              interface's source. Any JSON shape is accepted: the checks walk
+              it looking for component nodes, which are the objects carrying a
+              "#t" type key.
+--empty-path  say this when the render under inspection was the one against the
+              identifier the project guarantees does not exist. It turns on the
+              empty-state checks, which are meaningless against populated data.
+
+Exit codes match the plugin's other checkers: 0 clean, 1 findings (or an input
+that cannot be read), 2 usage."""
+
+
+def main(argv):
+    args = argv[1:]
+    empty_path = False
+    if "--empty-path" in args:
+        empty_path = True
+        args = [a for a in args if a != "--empty-path"]
+    if len(args) != 1:
+        print(USAGE, file=sys.stderr)
+        return 2
+
+    path = args[0]
+    try:
+        with open(path, encoding="utf-8") as f:
+            tree = json.load(f)
+    except ValueError as e:
+        print("ERROR %s: cannot parse the component tree as JSON: %s" % (path, e))
+        return 1
+    except OSError as e:
+        print("ERROR %s: cannot read the component tree: %s" % (path, e))
+        return 1
+
+    findings = check_tree(tree, empty_path=empty_path)
+    for f in findings:
+        print("FINDING %s: %s at %s -- %s" % (path, f["check"], f["where"], f["detail"]))
+    if findings:
+        print("\n%d finding(s)." % len(findings))
+        return 1
+    print("OK %s" % path)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

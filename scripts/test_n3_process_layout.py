@@ -1,5 +1,6 @@
-import unittest
-from n3_process_layout import check_layout
+import io, json, os, tempfile, unittest
+from contextlib import redirect_stdout, redirect_stderr
+from n3_process_layout import check_layout, main
 
 # Coordinates in the shape the layout API returns them.
 GOOD = {"s": [100, 200], "a": [300, 200], "b": [500, 200], "c": [700, 200]}
@@ -33,6 +34,59 @@ class TestLayout(unittest.TestCase):
     def test_orphan_node_is_C5(self):
         nodes = dict(GOOD, z=[900, 600])
         self.assertTrue(any(f["check"] == "C5" for f in check_layout(nodes, EDGES)))
+
+class TestCLI(unittest.TestCase):
+    """The entry point is the whole point of these checks being reachable:
+    an importable module with no `main` is a check nothing can run."""
+
+    def run_main(self, args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(["n3_process_layout.py"] + args)
+        return code, out.getvalue(), err.getvalue()
+
+    def layout_file(self, root, nodes, edges):
+        p = os.path.join(root, "layout.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump({"nodes": nodes, "edges": edges}, f)
+        return p
+
+    def test_clean_layout_exits_zero(self):
+        with tempfile.TemporaryDirectory() as t:
+            code, out, _ = self.run_main([self.layout_file(t, GOOD, EDGES)])
+            self.assertEqual(code, 0)
+            self.assertIn("OK", out)
+
+    def test_overlap_exits_nonzero_and_names_both_nodes(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = self.layout_file(t, dict(GOOD, b=[300, 200]), EDGES)
+            code, out, _ = self.run_main([p])
+            self.assertEqual(code, 1)
+            self.assertIn("C1", out)
+            self.assertIn("a, b", out)
+
+    def test_no_argument_is_a_usage_error_on_stderr(self):
+        code, _out, err = self.run_main([])
+        self.assertEqual(code, 2)
+        self.assertIn("usage", err)
+        self.assertIn("node coordinates", err)
+
+    def test_malformed_layout_is_reported_not_raised(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = os.path.join(t, "layout.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({"nodes": {"s": [100]}, "edges": []}, f)
+            code, out, _ = self.run_main([p])
+            self.assertEqual(code, 1)
+            self.assertIn("ERROR", out)
+
+    def test_unreadable_input_is_reported_not_raised(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = os.path.join(t, "layout.json")
+            open(p, "w", encoding="utf-8").write("{not json")
+            code, out, _ = self.run_main([p])
+            self.assertEqual(code, 1)
+            self.assertIn("ERROR", out)
 
 if __name__ == "__main__":
     unittest.main()

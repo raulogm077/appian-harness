@@ -1,5 +1,6 @@
-import unittest
-from n2_interface_tree import check_tree, contrast_ratio
+import io, json, os, tempfile, unittest
+from contextlib import redirect_stdout, redirect_stderr
+from n2_interface_tree import check_tree, contrast_ratio, main
 
 def node(t, **kw):
     d = {"#t": t}
@@ -48,6 +49,60 @@ class TestChecks(unittest.TestCase):
     def test_nested_children_are_walked(self):
         tree = node("Column", children=[node("Text", text="null")])
         self.assertTrue(any(f["check"] == "technical-text" for f in check_tree(tree)))
+
+class TestCLI(unittest.TestCase):
+    """The entry point is the whole point of these checks being reachable:
+    an importable module with no `main` is a check nothing can run."""
+
+    def run_main(self, args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(["n2_interface_tree.py"] + args)
+        return code, out.getvalue(), err.getvalue()
+
+    def tree_file(self, root, tree):
+        p = os.path.join(root, "tree.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(tree, f)
+        return p
+
+    def test_clean_tree_exits_zero(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = self.tree_file(t, node("Text", text="Pending", color="#000000",
+                                       backgroundColor="#FFFFFF"))
+            code, out, _ = self.run_main([p])
+            self.assertEqual(code, 0)
+            self.assertIn("OK", out)
+
+    def test_findings_exit_nonzero_and_are_printed(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = self.tree_file(t, node("Text", text="Pending", color="#FFC107",
+                                       backgroundColor="#FFFFFF"))
+            code, out, _ = self.run_main([p])
+            self.assertEqual(code, 1)
+            self.assertIn("contrast", out)
+
+    def test_empty_path_flag_turns_on_the_empty_state_check(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = self.tree_file(t, node("Grid", label="Rows", rowHeader=1, columns=[]))
+            self.assertEqual(self.run_main([p])[0], 0)
+            code, out, _ = self.run_main([p, "--empty-path"])
+            self.assertEqual(code, 1)
+            self.assertIn("empty-state", out)
+
+    def test_no_argument_is_a_usage_error_on_stderr(self):
+        code, _out, err = self.run_main([])
+        self.assertEqual(code, 2)
+        self.assertIn("usage", err)
+        self.assertIn("EVALUATED component tree", err)
+
+    def test_unreadable_input_is_reported_not_raised(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = os.path.join(t, "tree.json")
+            open(p, "w", encoding="utf-8").write("{not json")
+            code, out, _ = self.run_main([p])
+            self.assertEqual(code, 1)
+            self.assertIn("ERROR", out)
 
 if __name__ == "__main__":
     unittest.main()

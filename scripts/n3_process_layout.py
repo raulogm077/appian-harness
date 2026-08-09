@@ -5,6 +5,9 @@ neither node dimensions nor connection waypoints. So the thresholds below are
 a proxy for "these do not overlap", not a proof, and this tells you where every
 node sits -- never where any arrow goes.
 """
+import json
+import sys
+
 MIN_DX = 150
 MIN_DY = 100
 LANE_DY = 150
@@ -63,3 +66,74 @@ def check_layout(nodes, edges):
             findings.append({"check": "C5", "nodes": [n], "detail": "node is not connected"})
 
     return findings
+
+
+USAGE = """usage: n3_process_layout.py LAYOUT_JSON
+
+LAYOUT_JSON  a file holding one process model's node coordinates and its
+             connections, as the layout API returns them:
+
+               {"nodes": {"<node name>": [x, y], ...},
+                "edges": [["<from>", "<to>"], ...]}
+
+             Coordinates only. This says where every node sits and nothing
+             about where a connection routes -- the API exposes no waypoints
+             (field experience) -- so a clean run is not a clean diagram.
+
+Exit codes match the plugin's other checkers: 0 clean, 1 findings (or an input
+that cannot be read), 2 usage."""
+
+
+def _shape_errors(data):
+    """Rejects a malformed layout with a named reason instead of letting
+    check_layout raise a TypeError three frames down."""
+    if not isinstance(data, dict):
+        return "layout must be a JSON object with 'nodes' and 'edges'"
+    nodes, edges = data.get("nodes"), data.get("edges")
+    if not isinstance(nodes, dict):
+        return "'nodes' must be an object mapping each node name to [x, y]"
+    for name, xy in nodes.items():
+        if (not isinstance(xy, (list, tuple)) or len(xy) != 2
+                or not all(isinstance(c, (int, float)) and not isinstance(c, bool) for c in xy)):
+            return "node %r must map to [x, y] with two numbers, got %r" % (name, xy)
+    if not isinstance(edges, list):
+        return "'edges' must be a list of [from, to] pairs"
+    for edge in edges:
+        if not isinstance(edge, (list, tuple)) or len(edge) != 2:
+            return "edge %r must be a [from, to] pair" % (edge,)
+    return None
+
+
+def main(argv):
+    if len(argv) != 2:
+        print(USAGE, file=sys.stderr)
+        return 2
+
+    path = argv[1]
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except ValueError as e:
+        print("ERROR %s: cannot parse the layout as JSON: %s" % (path, e))
+        return 1
+    except OSError as e:
+        print("ERROR %s: cannot read the layout: %s" % (path, e))
+        return 1
+
+    shape_error = _shape_errors(data)
+    if shape_error:
+        print("ERROR %s: %s" % (path, shape_error))
+        return 1
+
+    findings = check_layout(data["nodes"], data["edges"])
+    for f in findings:
+        print("FINDING %s: %s at %s -- %s" % (path, f["check"], ", ".join(f["nodes"]), f["detail"]))
+    if findings:
+        print("\n%d finding(s)." % len(findings))
+        return 1
+    print("OK %s" % path)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
