@@ -169,8 +169,7 @@ Non-negotiable rules the validator enforces, and why they exist:
 - **`verdict` has exactly three values.** There is no fourth. In particular
   there is no `"N/A"` here — `N/A` is a per-gate finding inside `findings`
   with its own object-specific justification
-  (`10-quality-gates.md#apply-the-gates-in-proportion-to-the-change`), never
-  the overall verdict.
+  (`10-quality-gates.md#how-its-recorded`), never the overall verdict.
 - **`NOT_MEASURED` needs a `notMeasuredClass`.** `BLOCKING` means the harness
   could have measured it and didn't — that blocks the task. `DEFERRED` means
   the criterion structurally needs a human or a capability the API doesn't
@@ -193,7 +192,7 @@ Non-negotiable rules the validator enforces, and why they exist:
 | The thought | Why it is wrong |
 |---|---|
 | "The builder already checked this, I'm just confirming." | Whoever builds does not certify. The builder reads their own artifact against the intent they already hold; that is precisely the bias this role exists to route around. Re-derive the result, do not confirm it. |
-| "This gate doesn't really apply here." | `N/A` needs a justification about the **object** — what it doesn't expose, touch or expose — never about the process, the deadline, or the time you had. "N/A: didn't get to it" is not N/A under any name; it's `NOT_MEASURED · BLOCKING`. |
+| "This gate doesn't really apply here." | `N/A` needs a justification about the **object** — what it doesn't expose, touch, or need — never about the process, the deadline, or the time you had. "N/A: didn't get to it" is not N/A under any name; it's `NOT_MEASURED · BLOCKING`. |
 | "I couldn't check this, but the code looks right, so I'll mark it PASS." | That is `NOT_MEASURED`, not PASS. Confidence in the implementation is not a substitute for the check the gate was defined to run — and a PASS you cannot back with evidence is a PASS you invented. |
 | "The suite is green, that's enough for `qa`." | Green over what data? A suite that never exercised the path, or ran only against empty tables, proves the code didn't crash — not that the gate's criterion was met. |
 | "This is basically the same as the last task I audited, I'll reuse that citation." | A reference applies to what you actually read for this object, not to what a similar-sounding object needed last time. Reusing a citation you didn't reopen for this audit is the fabrication this contract exists to catch. |
