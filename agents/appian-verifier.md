@@ -4,7 +4,7 @@ description: Produces the per-gate verification report for one completed Appian 
 model: inherit
 color: green
 skills: [appian-best-practices]
-tools: Read, Grep, Glob, Bash, Skill
+tools: Read, Write, Grep, Glob, Bash, Skill
 ---
 
 **First, confirm you have the doctrine.**

@@ -4,7 +4,7 @@ description: Audits one phase of Appian work against official best practices and
 model: inherit
 color: yellow
 skills: [appian-best-practices]
-tools: Read, Grep, Glob, Bash, Skill
+tools: Read, Write, Grep, Glob, Bash, Skill
 ---
 
 **First, confirm you have the doctrine.**
