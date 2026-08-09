@@ -221,10 +221,20 @@ The write gate never answers *deny* — the strongest thing it says is *ask* —
 when the closure gate blocks for missing verdicts it blocks once, approving a
 second stop attempt and writing down what went unverified. Both shapes come from
 the same reasoning: a guardrail with no way past it gets switched off, and then
-it protects nothing. That escape is for missing verdicts only: a hook that
-cannot inspect something at all — an unreadable config, malformed JSON — asks or
-blocks every time, with no second-attempt release, because a hook that cannot
-see is not a hook that should be waved through.
+it protects nothing. That escape is for missing verdicts only: a running hook
+that cannot inspect something — an unreadable config, malformed JSON — asks or
+blocks **every** time, with no second-attempt release, because a hook that
+cannot see is not a hook that should be waved through. (Verified both ways: an
+unparseable config blocks the repeat `Stop` exactly as it blocks the first.)
+
+One case sits outside that rule, and it is worth naming rather than letting a
+reader discover it. When **no Python interpreter can be found at all**, the hook
+never starts, and `run_hook.sh` answers in its place from shell — where a `Stop`
+hook has only *approve* and *block*, no *ask*. It therefore mirrors the
+block-once shape rather than the block-always one, because blocking forever with
+no way to satisfy the gate is the deadlock that gets guardrails switched off.
+What it does not do is go quiet: it approves loudly, saying in the message that
+no verdict was checked and that the task must not be treated as verified.
 
 ## How the best-practices guarantee actually works
 
