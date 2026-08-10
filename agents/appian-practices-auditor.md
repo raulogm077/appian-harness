@@ -211,6 +211,7 @@ certifies does not close.
 {
   "task": "<the task id — required>",
   "phase": "design | implementation | review | qa | risk",
+  "recordedAt": "<UTC, exactly YYYY-MM-DDThh:mm:ssZ — when you finished this audit>",
   "verdict": "PASS | FAIL | NOT_MEASURED",
   "notMeasuredClass": "BLOCKING | DEFERRED",
   "owner": "<required only when notMeasuredClass is DEFERRED>",
@@ -229,6 +230,18 @@ certifies does not close.
 ```
 
 Non-negotiable rules the validator enforces, and why they exist:
+
+- **`recordedAt` is your claim about your own verdict, and the closure gate
+  uses it to decide whether the verdict has expired.** A verdict judges a
+  version of the work; if the task wrote to Appian after this moment, the
+  verdict certifies something that no longer exists and the gate says so.
+  Until this field existed the gate used the file's mtime, which meant
+  `touch` cleared an expiry without re-running a single audit, and a clone or
+  a restore from backup silently refreshed every verdict at once. Write the
+  time you finished the audit, in UTC, in exactly `YYYY-MM-DDThh:mm:ssZ` —
+  any other spelling falls back to mtime and buys nothing. Never copy it from
+  an older verdict, and never write a time you did not audit at: that is the
+  one field in this document a reader cannot check against anything else.
 
 - **`verdict` has exactly three values.** There is no fourth. In particular
   there is no `"N/A"` here — `N/A` is a per-gate finding inside `findings`

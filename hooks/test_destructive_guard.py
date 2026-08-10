@@ -179,7 +179,13 @@ class TestConfigNullsDoNotSilenceTheAuditTrail(unittest.TestCase):
             here = os.getcwd()
             os.chdir(t)
             try:
-                HH.log_write({}, {"evidenceDir": None})  # must not raise
+                # A real write tool, not an empty payload: since log_write
+                # started filtering reads out of the log, `{}` is no longer a
+                # write and would leave nothing to find. What this test is
+                # about is the null evidenceDir, so it has to get past that
+                # filter to reach the thing under test.
+                HH.log_write({"tool_name": "mcp__appian-dev__updateRecordType",
+                              "tool_input": {}}, {"evidenceDir": None})  # must not raise
                 self.assertTrue(os.path.isdir(os.path.join(t, HH.DEFAULT_EVIDENCE_DIR)),
                                 "the fallback should write somewhere, just not here")
             finally:

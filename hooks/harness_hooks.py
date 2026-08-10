@@ -375,6 +375,32 @@ def _latest_write_epoch(config, task_id):
     return latest
 
 
+def _verdict_recorded_epoch(verdict_path):
+    """When a verdict says it was recorded, in epoch seconds, or None.
+
+    Prefers the verdict's own `recordedAt` over the file's mtime. See
+    `_staleness_error` for why the filesystem was the wrong witness. Returns
+    None only when the file cannot be read at all -- an absent or malformed
+    `recordedAt` falls back to mtime rather than skipping the check, so a bad
+    value is never worth more than no value.
+    """
+    try:
+        with open(verdict_path, encoding="utf-8") as f:
+            recorded = json.load(f).get("recordedAt")
+    except (OSError, ValueError, AttributeError):
+        recorded = None
+    if isinstance(recorded, str) and recorded.strip():
+        try:
+            return calendar.timegm(
+                time.strptime(recorded.strip(), "%Y-%m-%dT%H:%M:%SZ"))
+        except ValueError:
+            pass
+    try:
+        return os.path.getmtime(verdict_path)
+    except OSError:
+        return None
+
+
 def _staleness_error(config, task_id, phase, verdict_path, last_write=_UNSET):
     """Whether this verdict certifies an artifact that has since changed.
 
@@ -401,6 +427,20 @@ def _staleness_error(config, task_id, phase, verdict_path, last_write=_UNSET):
     Equal timestamps count as fresh: the log has one-second resolution, and
     a verdict written in the same second as the write it judges is the
     normal case, not a violation.
+
+    When the verdict was recorded is read from the verdict, not from the
+    filesystem. It used to be `getmtime`, which made the file's mtime *be*
+    the claim, and mtime is not a claim anyone made: `touch` cleared an
+    expiry without re-running a single audit -- the rubber stamp this check
+    exists to prevent -- and a clone, a copy or a restore from backup rewrote
+    every mtime at once, so freshness did not survive moving the project.
+    `recordedAt` is the auditor's own statement about its own verdict.
+
+    mtime stays as the fallback, and deliberately: every verdict written
+    before this field existed is on disk without it, and treating those as
+    undatable would either expire all of them or exempt all of them. Falling
+    back is also what an unparseable value does -- a malformed `recordedAt`
+    must not buy a pass it could never buy by being absent.
     """
     if phase in STALENESS_EXEMPT_PHASES:
         return []
@@ -411,9 +451,8 @@ def _staleness_error(config, task_id, phase, verdict_path, last_write=_UNSET):
         last_write = _latest_write_epoch(config, task_id)
     if last_write is None:
         return []
-    try:
-        written = os.path.getmtime(verdict_path)
-    except OSError:
+    written = _verdict_recorded_epoch(verdict_path)
+    if written is None:
         return []
     if last_write <= written:
         return []
@@ -1114,7 +1153,24 @@ def _write_result(payload):
 
 def log_write(payload, config):
     """PostToolUse: the harness logs writes, not the agent -- an agent asked
-    to log its own writes forgets exactly when it matters."""
+    to log its own writes forgets exactly when it matters.
+
+    It logs *writes*, and it used to log whatever the JSON matcher handed it.
+    That matcher routes a bare `invoke|start|execute|run|test` on purpose:
+    it is the net that keeps a real write from escaping the scope gate, and
+    `test_the_write_log_receives_them_too` holds that direction. Narrowing it
+    there would trade a false entry for a missed write, which is the wrong
+    trade. So the line gets drawn here, where the plugin already draws it --
+    `WRITE_TOOL_RE` has always said an expression rule has no side effects.
+
+    What it cost while missing: three `appian_invoke_expression_rule` calls
+    made during an unrelated investigation were recorded as writes of the
+    task that happened to be in flight, which expired all three of its
+    verdicts and left its closure gate unsatisfiable -- the task could not
+    close without re-running audits against an artifact nobody had touched.
+    """
+    if not _is_write_tool(payload.get("tool_name")):
+        return {}
     active_task = config.get("activeTask") or {}
     entry = {
         "timestamp": _now(),
@@ -1206,6 +1262,40 @@ def _now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _read_jsonl(path):
+    """Every well-formed object in a JSONL register, skipping the rest.
+
+    A half-written line -- an interrupted session, a disk that filled -- must
+    not make a register unreadable.
+
+    Which way this fails matters, because `_record_deferred_debt` decides
+    whether to append from what comes back. An unreadable register returns
+    `[]`, no prior entry is found, and the entry is appended: repeats start
+    accumulating again. That is the direction to fail in -- the cost is noise
+    in a register a human reads, not a silently missing debt record. Failing
+    the other way would suppress a real entry on the strength of a read
+    error, which is the kind of silence this plugin exists to refuse.
+    """
+    if not os.path.isfile(path):
+        return []
+    out = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(entry, dict):
+                    out.append(entry)
+    except OSError:
+        return []
+    return out
+
+
 def _append_jsonl(path, entry):
     d = os.path.dirname(path)
     if d and not os.path.isdir(d):
@@ -1278,16 +1368,44 @@ def _record_deferral(config, task_id, phase, verdict):
 def _record_deferred_debt(config, task_id, missing_phases):
     """Writes one entry to the project's deferred-debt register when the
     closure gate is forced to approve a task it cannot verify. Returns the
-    register's path so the caller can point a human at it."""
+    register's path so the caller can point a human at it.
+
+    Two corrections, both about saying only what is true:
+
+    The entry used to read "closed via a repeated Stop". It never was a
+    close. `activeTask` is re-read from the task file on every invocation,
+    so a task that had really closed would have approved at the top of
+    `closure_gate` and never reached here -- arriving here *means* the task
+    is still in flight. `closure_gate`'s own docstring already separates the
+    two cases ("that block is not a failure report"); this now matches it.
+
+    And it appended unconditionally, so a task that sits in flight across
+    sessions -- waiting on a human decision, which is the normal reason -- got
+    one identical line per session. Measured on a real project: eleven
+    entries, ten of them the same sentence, burying the only one that carried
+    an owner and a closing condition. Repeats of the same omission are
+    therefore skipped. Not deduplicated in place: this register is
+    append-only, and rewriting history to keep it tidy is the failure mode it
+    exists to prevent. A *different* set of missing phases is new information
+    and is still appended.
+    """
     debt_path = _debt_register(config)
+    phases = list(missing_phases)
+    for prior in _read_jsonl(debt_path):
+        if (prior.get("task") == task_id
+                and prior.get("missingPhases") == phases
+                and prior.get("verdict") == "NOT_MEASURED"):
+            return debt_path
     entry = {
         "timestamp": _now(),
         "task": task_id,
-        "missingPhases": missing_phases,
+        "missingPhases": phases,
         "verdict": "NOT_MEASURED",
         "notMeasuredClass": "BLOCKING",
-        "reason": "task %r closed via a repeated Stop without valid verdicts for: %s" %
-                   (task_id, ", ".join(missing_phases)),
+        "reason": "task %r remains in flight and unverified after a repeated Stop; the gate "
+                  "approved so the session could hand off rather than deadlock. Still missing: "
+                  "%s. This is a handoff, not a close: the task file is still there." %
+                   (task_id, ", ".join(phases)),
     }
     _append_jsonl(debt_path, entry)
     return debt_path

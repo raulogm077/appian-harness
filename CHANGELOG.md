@@ -8,6 +8,68 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.2.2 — 2026-08-10
+
+Three defects, found on a real project where one task sat in flight for two
+days. They share a root: each states something the harness cannot actually
+know, in a file a human is meant to trust later. None is a crash, which is why
+all three survived 167 passing tests.
+
+### Fixed
+
+**Reads were recorded as writes.** `hooks.json` routes a bare
+`invoke|start|execute|run|test` on purpose — it is the net that keeps a real
+write from escaping the scope gate — and the Python half narrows it with
+`WRITE_TOOL_RE`, which has always said an expression rule has no side effects.
+`log_write` never asked. Three `appian_invoke_expression_rule` calls made
+during an unrelated investigation were logged as writes of the task that
+happened to be in flight, which expired all three of its verdicts and left its
+closure gate unsatisfiable. The filter now runs where the plugin already draws
+the line; the JSON matcher stays broad, and
+`test_the_write_log_receives_them_too` still holds `JSON ⊇ WRITE_TOOL_RE`.
+Narrowing the JSON matcher instead would trade a false entry for a missed
+write — the wrong trade, worth stating because the shape invites that fix.
+
+**`test_reads_and_replays_stay_free_on_both_sides` only checked one side.** Its
+name promised two; its body asserted `WRITE_TOOL_RE` and stopped. The other
+side is not the JSON matcher — it is what the hooks do with what the matcher
+hands them. The missing assertion is the one that would have caught the above.
+
+**Handoffs were recorded as closes.** The debt register said `task 'X' closed
+via a repeated Stop`. It never was a close: `activeTask` is re-read from the
+task file on every invocation, so a task that had really closed approves at the
+top of `closure_gate` and never reaches the debt path — arriving there *means*
+the task is still in flight. `closure_gate`'s own docstring already separated
+the two cases ("that block is not a failure report"); the register now matches
+it. And it appended unconditionally, so a task waiting on a human decision
+collected one identical line per session: measured on the project that found
+this, eleven entries, ten of them the same sentence, burying the only one that
+carried an owner and a closing condition. Repeats of the same omission are now
+skipped — skipped, not deduplicated in place, because this register is
+append-only and rewriting history to keep it tidy is the failure mode it exists
+to prevent. A different set of missing phases is new information and is still
+appended.
+
+**Verdict freshness rode on the file's mtime.** So the mtime *was* the claim,
+and mtime is not a claim anyone made: `touch` cleared an expiry without
+re-running a single audit — the rubber stamp the check exists to prevent — and
+a clone, a copy or a restore from backup rewrote every mtime at once, so
+freshness did not survive moving the project. Verdicts now carry `recordedAt`,
+the auditor's own statement about its own verdict.
+
+### Changed
+
+`appian-practices-auditor` writes `recordedAt` (UTC, `YYYY-MM-DDThh:mm:ssZ`).
+**Backward compatible:** the field is optional and every verdict already on
+disk lacks it, so `_staleness_error` falls back to mtime when it is absent or
+unparseable — a malformed value must never buy a pass an absent one could not.
+`validate_verdict` checks the shape when present, so a misspelling fails loudly
+instead of silently degrading to the old behaviour.
+
+### Tests
+
+167 → 178 in `hooks/`, 132 → 135 in `scripts/`.
+
 ## 0.2.1 — 2026-08-10
 
 ### Fixed

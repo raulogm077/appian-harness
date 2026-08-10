@@ -9,7 +9,7 @@ This does not prove the auditor read the section. It proves the section exists
 and is locatable by a third party -- which is the failure mode that actually
 occurs: the plausible citation that turns out not to exist.
 """
-import json, os, re, sys
+import json, os, re, sys, time
 
 # `risk` is the fifth and it is not a stricter `review`. Review asks "does
 # this meet its contract"; risk asks "how does this fail" -- a different
@@ -236,6 +236,24 @@ def validate_verdict(path, plugin_root, expected_task=None, expected_phase=None)
                               "list: %s. The list lives in the plugin, not in the task -- a "
                               "criterion cannot be declared deferrable in order to unblock a "
                               "task" % (criterion, ", ".join(DEFERRABLE_CRITERIA)))
+
+    # Checked for shape, not for presence. Every verdict written before this
+    # field existed is on disk without one, and the closure gate falls back
+    # to the file's mtime for those on purpose. What must not happen is a
+    # value that LOOKS like a timestamp and silently falls back anyway --
+    # that is a verdict claiming a freshness nothing enforces.
+    recorded = v.get("recordedAt")
+    if recorded is not None:
+        ok = isinstance(recorded, str)
+        if ok:
+            try:
+                time.strptime(recorded.strip(), "%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                ok = False
+        if not ok:
+            errors.append("'recordedAt' must be UTC in exactly 'YYYY-MM-DDThh:mm:ssZ', not %r. "
+                          "Any other spelling is ignored and the closure gate silently falls "
+                          "back to the file's modification time" % (recorded,))
 
     refs = v.get("referencesApplied")
     if not isinstance(refs, list) or not refs:

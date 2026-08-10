@@ -18,11 +18,11 @@ that session whose tool name carries a write verb. The point of using the
 real catalogue rather than invented names is that the last two defects here
 were both found by measuring against it and neither by reasoning.
 """
-import json, os, re, sys, unittest
+import json, os, re, sys, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-from harness_hooks import WRITE_TOOL_RE, DESTRUCTIVE_TOOL_RE
+from harness_hooks import WRITE_TOOL_RE, DESTRUCTIVE_TOOL_RE, log_write
 
 HOOKS_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hooks.json")
 
@@ -290,12 +290,28 @@ class TestHooksJsonRoutesEverythingThePatternGates(unittest.TestCase):
         # Gating discovery and verification is how a harness gets switched
         # off. An expression rule has no side effects and stored test cases
         # are what a verification step is supposed to replay freely.
+        #
+        # "On both sides" is the name, and for a long time the body checked
+        # only one: `WRITE_TOOL_RE`. The other side is not the JSON matcher
+        # -- that one routes a bare `invoke|run|test` deliberately, so a real
+        # write cannot escape the scope gate -- it is what the hooks DO with
+        # what the matcher hands them. `log_write` never asked, and recorded
+        # three expression-rule invocations as writes of a task that was
+        # merely in flight, expiring every one of its verdicts. The missing
+        # assertion is the one that would have caught it.
         for name in ("mcp__appian__appian_invoke_expression_rule",
                      "mcp__appian-dev__testRule",
                      "mcp__appian-dev__runAllInterfaceTestCases",
                      "mcp__appian-dev__getObjectDependents",
                      "mcp__appian-dev__listRecordTypes"):
             self.assertIsNone(WRITE_TOOL_RE.match(name), name)
+            with tempfile.TemporaryDirectory() as root:
+                log_write({"tool_name": name, "tool_input": {}},
+                          {"evidenceDir": os.path.join(root, "evidence"),
+                           "activeTask": {"id": "T-1", "allowedObjects": ["A"]}})
+                self.assertFalse(
+                    os.path.isfile(os.path.join(root, "evidence", "operations.jsonl")),
+                    "%s is a read: it must not land in the write log" % name)
 
     def test_another_vendors_write_tools_are_not_measured_against_appian_scope(self):
         # Before the server name had to carry `appian`, a Supabase branch

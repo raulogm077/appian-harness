@@ -34,6 +34,31 @@ class TestValidateVerdict(unittest.TestCase):
             make_plugin(t)
             self.assertEqual(validate_verdict(write_verdict(t), t), [])
 
+    def test_a_verdict_without_recordedAt_is_still_valid(self):
+        """Every verdict written before the field existed is on disk without
+        one, and the closure gate falls back to mtime for those."""
+        with tempfile.TemporaryDirectory() as t:
+            make_plugin(t)
+            self.assertEqual(validate_verdict(write_verdict(t), t), [])
+
+    def test_a_well_formed_recordedAt_is_accepted(self):
+        with tempfile.TemporaryDirectory() as t:
+            make_plugin(t)
+            p = write_verdict(t, recordedAt="2026-08-10T14:05:00Z")
+            self.assertEqual(validate_verdict(p, t), [])
+
+    def test_a_misspelled_recordedAt_is_rejected_rather_than_ignored(self):
+        """The dangerous case is not a missing field, it is one that looks
+        like a timestamp and silently degrades to mtime -- a verdict claiming
+        a freshness nothing enforces."""
+        for bad in ("2026-08-10 14:05:00", "2026-08-10T14:05:00+00:00",
+                    "10/08/2026", "whenever", 1754835900):
+            with tempfile.TemporaryDirectory() as t:
+                make_plugin(t)
+                p = write_verdict(t, recordedAt=bad)
+                self.assertTrue(any("recordedAt" in e for e in validate_verdict(p, t)),
+                                "accepted %r" % (bad,))
+
     def test_unknown_reference_file_is_rejected(self):
         with tempfile.TemporaryDirectory() as t:
             make_plugin(t)
