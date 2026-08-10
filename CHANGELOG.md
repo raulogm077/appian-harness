@@ -8,6 +8,56 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.2.3 — 2026-08-10
+
+The three defects in `0.2.2` were found by the one person who can also fix them.
+That is not the normal case, and this release is about the normal case: someone
+using this plugin hits a defect they cannot fix, on a Thursday evening, and has
+to decide what to do next. The dangerous answer — edit the installed copy — is
+the one nothing had argued against.
+
+### Added
+
+**A written boundary, in the README: a project consumes this plugin, it never
+modifies it.** With the reason, because "don't do that" is not an argument. The
+cache is a **copy** made at install time, one directory per version; an edit
+there works until the next update replaces the directory and silently reverts
+it. Nothing records that the edit existed or that a project depended on it, so
+one machine ends up behaving differently from every other machine running the
+same declared version — and the declared version is the only thing anyone can
+compare. A per-project fork is the same problem with more steps.
+
+The section also states the constraint the boundary forces, which was already
+true and never written down: **a tool its users cannot patch must never
+hard-block, and must be conservative about what it asserts.** No gate here
+refuses — the scope gate asks, the closure gate blocks once and then approves
+with recorded debt — so a defect in this plugin costs a confusing message, never
+an afternoon. A gate that traps someone with no way through is itself the bug,
+and it outranks whatever they were doing.
+
+And what to record meanwhile, in the project's own evidence: what the harness
+claimed, what was done instead, and **the version it happened on**. The third is
+the one people skip and the one that matters — without it a workaround outlives
+its cause and nobody can tell whether it is still needed.
+
+**A reporting path.** There was none, so the only in-band response to a defect
+was to improvise, and what someone improvises is editing the cache.
+
+### Changed
+
+**The session-start line now names the running version** — `appian-harness
+0.2.3: …`. Installed is not loaded: the component inventory is fixed when the
+process starts, so an update applies only after a restart, and a plugin can be
+installed, enabled and validated while the running session has never heard of
+it. Every check on disk green, and the answer to "is the fix in?" still no. The
+plugin root is the cache directory of the version in use, so this hook is the
+one place that can answer, and it now does — falling back to the bare name if it
+cannot, because the version is a courtesy and the requirements report is not.
+
+### Tests
+
+178 → 180 in `hooks/`.
+
 ## 0.2.2 — 2026-08-10
 
 Three defects, found on a real project where one task sat in flight for two

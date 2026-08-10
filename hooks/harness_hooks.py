@@ -893,6 +893,40 @@ def requirements_errors(config):
     return missing
 
 
+def _loaded_version(config):
+    """The version actually running, from the plugin root, or None.
+
+    Not the installed version -- the *loaded* one. The component inventory
+    is fixed when the process starts, so a plugin can be installed, enabled
+    and validated, with every check on disk green, and still not exist in
+    the running session; and after an update the session keeps running the
+    old copy until it restarts. From inside there was no way to tell, which
+    turns "that was fixed two releases ago" into a lost afternoon.
+
+    `CLAUDE_PLUGIN_ROOT` is the cache directory of the version in use --
+    the cache keeps one directory per version -- so this is the one place
+    that can answer. Returns None rather than raising: the version is a
+    courtesy, the requirements report is not, and a session must never lose
+    the second to get the first.
+    """
+    root = config.get("pluginRoot")
+    if not root:
+        return None
+    try:
+        with open(os.path.join(root, ".claude-plugin", "plugin.json"),
+                  encoding="utf-8") as f:
+            version = json.load(f).get("version")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return version if isinstance(version, str) and version.strip() else None
+
+
+def _banner(config):
+    """`appian-harness` plus the running version when it can be read."""
+    version = _loaded_version(config)
+    return "appian-harness %s" % version if version else "appian-harness"
+
+
 def session_start(payload, config):
     """SessionStart: report the three links up front, once.
 
@@ -907,7 +941,7 @@ def session_start(payload, config):
     missing = requirements_errors(config)
     if not missing:
         return {"additionalContext": (
-            "appian-harness: all three requirements are present (design MCP, official "
+            "%s: all three requirements are present (design MCP, official " % _banner(config) +
             "Appian skill, documentation MCP). Configured is not the same as answering: "
             "before the first write of this session, confirm the design MCP really "
             "responds with `validateExpression(\"1 + 1\")` -- listing tools proves "
@@ -916,11 +950,12 @@ def session_start(payload, config):
             "appian-review, consulting `appian-best-practices` for the domains each "
             "change touches, and loading the official Appian skill before every build.")}
     return {"additionalContext": (
-        "appian-harness: WRITING TO APPIAN IS NOT SAFE IN THIS SESSION. %d of the three "
+        "%s: WRITING TO APPIAN IS NOT SAFE IN THIS SESSION. %d of the three "
         "requirements %s missing:\n\n- %s\n\nReading, specifying and planning are fine. "
         "Do not issue create or update calls against Appian until this is resolved -- and "
         "say so plainly rather than working around it." % (
-            len(missing), "is" if len(missing) == 1 else "are", "\n- ".join(missing)))}
+            _banner(config), len(missing), "is" if len(missing) == 1 else "are",
+            "\n- ".join(missing)))}
 
 
 def scope_gate(payload, config):

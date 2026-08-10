@@ -708,6 +708,32 @@ class TestSessionStartChecksTheThreeRequirements(unittest.TestCase):
             # Configured is not answering. Only a real call tells them apart.
             self.assertIn("validateExpression", ctx)
 
+    def test_the_session_says_which_version_is_actually_loaded(self):
+        """Installed is not loaded, and the gap is invisible from the disk.
+
+        The component inventory is fixed when the process starts, so a
+        plugin can be installed, enabled, validated -- every check on disk
+        green -- and simply not exist in the running session. Someone
+        chasing a bug that was fixed two releases ago has no way to tell
+        from inside. `CLAUDE_PLUGIN_ROOT` points at the cache directory of
+        the version that is running, so this is the one place that knows.
+        """
+        with tempfile.TemporaryDirectory() as t:
+            os.makedirs(os.path.join(t, ".claude-plugin"))
+            with open(os.path.join(t, ".claude-plugin", "plugin.json"), "w",
+                      encoding="utf-8") as f:
+                json.dump({"name": "appian-harness", "version": "9.9.9"}, f)
+            self.assertIn("9.9.9", session_start({}, self._cfg(t))["additionalContext"])
+
+    def test_an_unreadable_version_does_not_cost_the_session_its_warning(self):
+        """The version is a courtesy; the requirements report is not. A
+        plugin root that cannot be read must lose the first, never the
+        second."""
+        with tempfile.TemporaryDirectory() as t:
+            c = self._cfg(t, pluginRoot=None)
+            self.assertIn("all three requirements are present",
+                          session_start({}, c)["additionalContext"])
+
     def test_a_ready_session_is_reminded_of_the_phases_and_the_doctrine(self):
         with tempfile.TemporaryDirectory() as t:
             ctx = session_start({}, self._cfg(t))["additionalContext"]
