@@ -38,7 +38,8 @@ as passing. These hooks are where that stops being advice:
   harness config, the active task file. Every one of them is writable by
   the agent the gates constrain, so this exists to make that visible. It
   logs rather than gates, for the reason argued in its own docstring.
-- failure_notice (PostToolUseFailure): tells the agent not to retry blindly.
+- failure_notice (PostToolUseFailure): tells the agent not to retry a failed
+  write blindly. Says nothing about a failed read, which wants retrying.
 
 Four rules, non-negotiable:
 
@@ -1156,12 +1157,31 @@ def failure_notice(payload):
     A failed write leaves the agent guessing whether it landed. This tells
     it not to guess: read first, record the partial state, then resume from
     the first thing it never confirmed.
+
+    That advice is only true of a write, and this hook used to give it to
+    every failed call. Both halves of the matcher were wrong here and
+    neither had been corrected the way the other paths were: the JSON routed
+    a bare `mcp__.*`, so a failed call to any MCP server in the session --
+    Figma, Supabase, Drive -- came back described as an Appian write, the
+    same over-reach `WRITE_TOOL_RE` was narrowed to fix; and nothing on this
+    side asked whether the name was a write at all, the same omission that
+    put reads in the write log.
+
+    What it cost: a failed READ was announced as a failed write, and the
+    remedy handed to the agent was actively wrong for one. There is nothing
+    to have persisted, nothing partial to record, and "do not retry" is the
+    opposite of the fix -- a read that fails on a stale table name or a
+    misspelled field wants exactly one thing, which is to be issued again
+    with the name corrected. So the line gets drawn where the plugin already
+    draws it, and a failed read gets no notice: its own error says more than
+    this hook can.
     """
-    tool_name = payload.get("tool_name", "unknown tool")
+    if not _is_write_tool(payload.get("tool_name")):
+        return {}
     message = (
         "The write via %s failed. Do not retry this write; check with a read "
         "whether it persisted, record what did and did not, and resume from "
-        "the first unverified result." % tool_name
+        "the first unverified result." % payload.get("tool_name")
     )
     return {"additionalContext": message}
 

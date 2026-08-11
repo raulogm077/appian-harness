@@ -8,6 +8,46 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.2.4 — 2026-08-11
+
+### Fixed
+
+**A failed read is no longer announced as a failed write.** `0.2.3` taught the
+write *log* to ask whether a tool was a write before recording it. The failure
+notice was the same defect in the same file and did not get the same fix, and it
+is the louder of the two: the log is a file someone reads later, while this
+speaks straight into the agent's context in the same turn.
+
+Both halves of its matcher were wrong, and each in a way the plugin had already
+corrected somewhere else:
+
+- `hooks.json` routed it a bare `mcp__.*`. Not "any Appian tool" — **any MCP
+  server in the session**. A failed Figma, Supabase or Drive call came back
+  described as a failed Appian write. This is the identical over-reach
+  `WRITE_TOOL_RE` was narrowed to fix; this path never received it.
+- Nothing on the Python side asked whether the name was a write at all, which is
+  the omission `0.2.3` fixed for `log_write` and only for `log_write`.
+
+The advice it gave is what makes this more than cosmetic. *"Do not retry this
+write; check with a read whether it persisted"* is right for a write and
+**backwards for a read**: nothing persisted, there is no partial state to
+record, and a read that failed on a stale table name or a misspelled field wants
+exactly one thing — to be issued again, corrected. It was observed doing
+precisely that to a session whose next step was a corrected re-read.
+
+A failed read now gets no notice at all. Its own error says more than this hook
+can, and narrating another vendor's tools was never this plugin's job.
+
+Also gone: the `"unknown tool"` fallback, which substituted a placeholder into a
+sentence asserting a write had failed — a claim about an event it could not
+identify, which is the habit the `0.2.3` tests exist to break.
+
+Five tests in `test_logging_and_handoff_debt.py`, beside the `log_write` ones
+they mirror, including one that reads the matcher back out of `hooks.json` so
+that narrowing only the Python half fails. Verified by reverting the fix: four
+of the five fail, and the fifth is the regression guard that must pass either
+way.
+
 ## 0.2.3 — 2026-08-10
 
 The three defects in `0.2.2` were found by the one person who can also fix them.

@@ -9,18 +9,39 @@ closed when it had not. The staleness check said a verdict was recorded when
 the file was last modified. None of the three is a crash, and that is exactly
 why they survived 167 passing tests.
 """
-import json, os, sys, time, unittest, tempfile
+import json, os, re, sys, time, unittest, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-from harness_hooks import closure_gate, log_write, scope_gate, CLOSURE_PHASES
+from harness_hooks import (closure_gate, failure_notice, log_write, scope_gate,
+                           CLOSURE_PHASES)
 from test_harness_hooks import cfg, make_plugin_root, write_verdict, write_skill_record
 from test_verdict_freshness import log_write_at, age_file
+from test_matcher_parity import matcher_for
 
 
 READS = (
     "mcp__appian__appian_invoke_expression_rule",
     "mcp__appian-dev__testRule",
     "mcp__appian-dev__runAllInterfaceTestCases",
+)
+
+# Reads carrying no write verb at all, so they never reach the write log --
+# but which the failure path described as writes anyway, because it asked no
+# question before answering. Taken from calls a real session made and saw
+# misreported.
+PLAIN_READS = (
+    "mcp__appian-dev__getRecordTypeField",
+    "mcp__appian__appian_data_fabric_sql_query",
+    "mcp__appian-dev__listRecordTypes",
+    "mcp__appian-dev__validateExpression",
+)
+
+# Other vendors' servers. The failure path was routed a bare `mcp__.*`, so a
+# failed call to any of these came back described as an Appian write.
+FOREIGN = (
+    "mcp__claude_ai_Figma__get_metadata",
+    "mcp__claude_ai_Supabase__create_branch",
+    "mcp__claude_ai_Google_Drive__create_file",
 )
 
 
@@ -200,6 +221,48 @@ class TestFreshnessSurvivesATouch(unittest.TestCase):
             c = self._setup(root, write_epoch=now - 1800,
                             recorded_at="whenever", mtime=now - 3600)
             self.assertEqual(closure_gate({}, c)["decision"], "block")
+
+
+class TestAFailedReadIsNotAFailedWrite(unittest.TestCase):
+    """The fourth of the same family, found the same way and fixed last.
+
+    `log_write` was taught to ask `_is_write_tool` before recording. The
+    failure path was not, and it is the louder of the two: the write log is
+    a file someone reads later, while this speaks directly into the agent's
+    context in the same turn. It told a session that two reads were failed
+    writes, and told it not to retry them -- for a read whose only defect
+    was a stale table name, that instruction is precisely backwards.
+    """
+
+    WRITE = "mcp__appian-dev__createInterface"
+
+    def test_a_failed_write_is_still_announced(self):
+        out = failure_notice({"tool_name": self.WRITE})
+        self.assertIn("do not retry", out["additionalContext"].lower())
+        self.assertIn(self.WRITE, out["additionalContext"])
+
+    def test_a_failed_read_is_not_called_a_write(self):
+        for name in READS + PLAIN_READS:
+            self.assertEqual(failure_notice({"tool_name": name}), {}, name)
+
+    def test_another_vendors_server_is_not_this_plugins_business(self):
+        for name in FOREIGN:
+            self.assertEqual(failure_notice({"tool_name": name}), {}, name)
+
+    def test_a_nameless_payload_says_nothing_rather_than_guessing(self):
+        """It used to substitute the string "unknown tool" into a sentence
+        asserting a write had failed -- a claim about an event it could not
+        identify, which is the habit this whole file exists to break."""
+        self.assertEqual(failure_notice({}), {})
+
+    def test_the_json_matcher_no_longer_routes_every_mcp_server(self):
+        """Both halves had to move. Narrowing only Python would leave the
+        hook process woken by every failed Figma or Supabase call to decide
+        it had nothing to say."""
+        matcher = re.compile(matcher_for("PostToolUseFailure", "failure-notice"))
+        for name in FOREIGN + PLAIN_READS:
+            self.assertIsNone(matcher.match(name), name)
+        self.assertTrue(matcher.match(self.WRITE))
 
 
 if __name__ == "__main__":

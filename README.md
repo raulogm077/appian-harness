@@ -456,7 +456,7 @@ on one object.
 | `CHANGELOG.md` | What each release changed for a project that upgrades and edits nothing. Read it before upgrading: a gate that *stops* firing announces nothing, so that is the only place it is announced |
 | `.github/workflows/` | The checks, on Linux and Windows × Python 3.9 and 3.13 |
 
-The Python carries its own tests — 135 for `scripts/`, 180 for `hooks/`, standard
+The Python carries its own tests — 135 for `scripts/`, 185 for `hooks/`, standard
 library only:
 
 ```
@@ -1229,7 +1229,7 @@ stays forever.
 ### Which version is actually running?
 
 The line this plugin writes at session start begins with it — `appian-harness
-0.2.3: …`. That is the **loaded** version, which is not the installed one: the
+0.2.4: …`. That is the **loaded** version, which is not the installed one: the
 component inventory is fixed when the process starts, so an update applies only
 after a restart, and a plugin can be installed, enabled and validated while the
 running session has never heard of it. Every check on disk can be green while
