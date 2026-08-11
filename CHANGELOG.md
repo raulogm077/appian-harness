@@ -48,6 +48,16 @@ that narrowing only the Python half fails. Verified by reverting the fix: four
 of the five fail, and the fifth is the regression guard that must pass either
 way.
 
+### Changed
+
+**The routing invariant now covers all three consumers, not two.** The write
+matcher is spelled out verbatim in three `hooks.json` entries and JSON cannot
+say it once, so editing one copy and not the others is the standing failure
+mode. `test_matcher_parity.py` asserted `JSON ⊇ WRITE_TOOL_RE` for the scope
+gate and the write log; the failure notice was the third copy and had no such
+assertion, which is exactly how it sat at a bare `mcp__.*` unnoticed — broader
+than the invariant rather than narrower, so nothing downstream ever failed.
+
 ## 0.2.3 — 2026-08-10
 
 The three defects in `0.2.2` were found by the one person who can also fix them.

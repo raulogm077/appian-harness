@@ -1176,12 +1176,13 @@ def failure_notice(payload):
     draws it, and a failed read gets no notice: its own error says more than
     this hook can.
     """
-    if not _is_write_tool(payload.get("tool_name")):
+    tool_name = payload.get("tool_name")
+    if not _is_write_tool(tool_name):
         return {}
     message = (
         "The write via %s failed. Do not retry this write; check with a read "
         "whether it persisted, record what did and did not, and resume from "
-        "the first unverified result." % payload.get("tool_name")
+        "the first unverified result." % tool_name
     )
     return {"additionalContext": message}
 

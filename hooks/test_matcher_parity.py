@@ -246,6 +246,8 @@ class TestHooksJsonRoutesEverythingThePatternGates(unittest.TestCase):
         # at the start the way `re.match` anchors.
         self.scope = re.compile(matcher_for("PreToolUse", "scope-gate"))
         self.log = re.compile(matcher_for("PostToolUse", "log-write"))
+        self.failure = re.compile(matcher_for("PostToolUseFailure",
+                                              "failure-notice"))
 
     def _unrouted_by(self, matcher):
         return [n for n in self.ALL if WRITE_TOOL_RE.match(n) and not matcher.match(n)]
@@ -260,6 +262,16 @@ class TestHooksJsonRoutesEverythingThePatternGates(unittest.TestCase):
         # log, so a write that is gated but not logged makes every later
         # verdict look fresh.
         self.assertEqual(self._unrouted_by(self.log), [])
+
+    def test_the_failure_notice_receives_them_too(self):
+        # Third consumer, and the reason this assertion is here rather than
+        # trusted: the pattern is now spelled out verbatim in three
+        # hooks.json entries, and JSON has no way to say it once. Editing
+        # one copy and not the others is the whole failure mode, so every
+        # copy is held to the same invariant instead of the two that
+        # happened to have a test. This one was a bare `mcp__.*` until
+        # 0.2.4 -- broader, not narrower, which is why nothing caught it.
+        self.assertEqual(self._unrouted_by(self.failure), [])
 
     def test_destructive_is_a_subset_of_write(self):
         # `scope_gate` returns early for anything `_is_write_tool` rejects,
