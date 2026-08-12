@@ -53,16 +53,29 @@ class AgentFrontmatter(unittest.TestCase):
         errs = L.lint_agent(path, {"appian-best-practices"})
         self.assertTrue(any("nope" in e for e in errs))
 
-    def test_a_yaml_block_list_of_skills_is_rejected_not_misread(self):
-        # parse_frontmatter folds continuation lines into one space-joined
-        # string, so a block list arrives as "- a - b" and every reading of
-        # it is wrong. Saying so is the only honest option: silently
-        # accepting the first entry would report a skill nobody declared.
+    def test_a_yaml_block_list_of_skills_is_read_not_refused(self):
+        # A block sequence is valid YAML. It is read from the raw frontmatter
+        # lines rather than from parse_frontmatter's space-joined fold, which
+        # would deliver "- a - b" and recover neither name.
         path = self.write("appian-reviewer.md",
                           GOOD.replace("skills: [appian-best-practices]",
                                        "skills:\n  - appian-best-practices"))
+        self.assertEqual(L.lint_agent(path, {"appian-best-practices"}), [])
+
+    def test_a_bad_entry_in_a_block_list_of_skills_is_still_caught(self):
+        # The half of the block-list reader that matters: reading it must not
+        # mean waving it through, and the second entry is the one a fold
+        # would have destroyed.
+        path = self.write("appian-reviewer.md",
+                          GOOD.replace("skills: [appian-best-practices]",
+                                       "skills:\n  - appian-best-practices\n  - nope"))
         errs = L.lint_agent(path, {"appian-best-practices"})
-        self.assertTrue(any("block-list" in e for e in errs))
+        # The quotes are the assertion. A folded read reports the whole
+        # sequence as one name -- "'- appian-best-practices - nope'" -- which
+        # contains "nope" and would pass a looser check while naming a skill
+        # nobody wrote and blaming a good entry alongside the bad one.
+        self.assertEqual(len(errs), 1, errs)
+        self.assertTrue(any("'nope'" in e for e in errs))
 
     def test_missing_tools_is_rejected(self):
         path = self.write("appian-reviewer.md",
@@ -89,6 +102,65 @@ class AgentFrontmatter(unittest.TestCase):
                           GOOD.replace("tools: Read, Grep, Glob, Skill", "tools: *"))
         errs = L.lint_agent(path, {"appian-best-practices"})
         self.assertTrue(any("Write" in e for e in errs))
+
+    def test_a_flow_list_of_tools_does_not_hide_write(self):
+        # The defect an independent review found: `tools: [Write]` is valid
+        # YAML, and splitting it on commas yields the single token "[Write]",
+        # which is not the string "Write". The read-only rule was satisfied
+        # by two square brackets -- the same hole as `tools: *`, in the
+        # spelling that looks most like a list.
+        path = self.write("appian-reviewer.md",
+                          GOOD.replace("tools: Read, Grep, Glob, Skill", "tools: [Write]"))
+        errs = L.lint_agent(path, {"appian-best-practices"})
+        self.assertTrue(any("Write" in e for e in errs))
+
+    def test_a_multi_entry_flow_list_of_tools_does_not_hide_write(self):
+        # Where the brackets land on the first and last entries only, so a
+        # reader that strips them from the whole string still has to split
+        # correctly to see the middle.
+        path = self.write("appian-reviewer.md",
+                          GOOD.replace("tools: Read, Grep, Glob, Skill",
+                                       "tools: [Read, Write, Glob]"))
+        errs = L.lint_agent(path, {"appian-best-practices"})
+        self.assertTrue(any("Write" in e for e in errs))
+
+    def test_a_block_list_of_tools_does_not_hide_write(self):
+        path = self.write("appian-reviewer.md",
+                          GOOD.replace("tools: Read, Grep, Glob, Skill\n",
+                                       "tools:\n  - Read\n  - Write\n"))
+        errs = L.lint_agent(path, {"appian-best-practices"})
+        self.assertTrue(any("Write" in e for e in errs))
+
+    def test_a_trailing_comment_does_not_hide_write(self):
+        # The third spelling in the same family: YAML allows a comment after
+        # a scalar, so "Write # temporary" is a grant of Write, and a reader
+        # that keeps the comment compares against a token that is not the
+        # string "Write". A temporary grant is exactly the one that gets
+        # written this way and then stays.
+        path = self.write("appian-reviewer.md",
+                          GOOD.replace("tools: Read, Grep, Glob, Skill",
+                                       "tools: Read, Write # temporary, remove me"))
+        errs = L.lint_agent(path, {"appian-best-practices"})
+        self.assertTrue(any("Write" in e for e in errs))
+
+    def test_a_commented_skill_resolves_without_its_comment(self):
+        # The same strip, in the direction that produces a false alarm rather
+        # than a miss: the comment must not become part of the skill name.
+        path = self.write("appian-reviewer.md",
+                          GOOD.replace("skills: [appian-best-practices]",
+                                       "skills:\n  - appian-best-practices # the doctrine"))
+        self.assertEqual(L.lint_agent(path, {"appian-best-practices"}), [])
+
+    def test_a_block_list_of_tools_counts_as_a_tools_line(self):
+        # The other direction, and the one a stricter reader gets wrong: a
+        # legitimate block list must satisfy the tools requirement rather
+        # than read as an agent that declared none. appian-verifier is not
+        # read-only, so Write here is exactly what it ships with.
+        path = self.write("appian-verifier.md",
+                          GOOD.replace("name: appian-reviewer", "name: appian-verifier")
+                              .replace("tools: Read, Grep, Glob, Skill\n",
+                                       "tools:\n  - Read\n  - Write\n  - Bash\n"))
+        self.assertEqual(L.lint_agent(path, {"appian-best-practices"}), [])
 
     def test_zero_agents_is_not_measured(self):
         empty = tempfile.mkdtemp()

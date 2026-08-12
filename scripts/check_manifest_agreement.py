@@ -23,7 +23,8 @@ absent-gate problem the launcher exists to prevent.
 
     python3 scripts/check_manifest_agreement.py [root]
 
-Exit 0 agreement, 1 disagreement, 3 nothing to compare.
+Exit 0 agreement, 1 disagreement or a manifest this cannot read, 3 nothing
+to compare.
 """
 import json
 import os
@@ -32,9 +33,38 @@ import sys
 EXIT_NOT_MEASURED = 3
 
 
-def _load(path):
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+# Python's type names are not the ones the file is written in. A reader
+# staring at `[...]` in a .json is looking at an array, and telling them it is
+# a "list" sends them to translate before they can act.
+JSON_SHAPE = {dict: "an object", list: "an array", str: "a string",
+              bool: "a boolean", type(None): "null"}
+
+
+def _shape(value):
+    return JSON_SHAPE.get(type(value), "a number")
+
+
+def _read_manifest(path, label):
+    """Return (mapping, problem); exactly one of the two is None.
+
+    Two failure modes, not one. `json.load` raising means the file will not
+    parse; a file that parses to an array is perfectly readable and still
+    cannot be asked for a name. That second one used to leave here as an
+    AttributeError -- in a step CONTRIBUTING places immediately before
+    `claude plugin tag`, where a traceback halts a release without naming
+    which of the two manifests is malformed. That is the one question this
+    file exists to answer, and it already answered it for the unparseable
+    case, so crashing on the other was an asymmetry rather than a boundary.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            loaded = json.load(f)
+    except ValueError as exc:
+        return None, "%s is not valid JSON: %s" % (label, exc)
+    if not isinstance(loaded, dict):
+        return None, ("%s must be a JSON object; its root is %s"
+                      % (label, _shape(loaded)))
+    return loaded, None
 
 
 def check(root):
@@ -45,10 +75,9 @@ def check(root):
 
     if not os.path.isfile(plugin_path):
         return 1, ["no .claude-plugin/plugin.json under %s" % root]
-    try:
-        plugin = _load(plugin_path)
-    except ValueError as exc:
-        return 1, ["plugin.json is not valid JSON: %s" % exc]
+    plugin, problem = _read_manifest(plugin_path, "plugin.json")
+    if problem:
+        return 1, [problem]
 
     name = plugin.get("name")
     version = plugin.get("version")
@@ -64,12 +93,23 @@ def check(root):
         return EXIT_NOT_MEASURED, [
             "no .claude-plugin/marketplace.json; no entry was compared against "
             "plugin.json's %s %s" % (name, version)]
-    try:
-        market = _load(market_path)
-    except ValueError as exc:
-        return 1, ["marketplace.json is not valid JSON: %s" % exc]
+    market, problem = _read_manifest(market_path, "marketplace.json")
+    if problem:
+        return 1, [problem]
 
+    # A missing key means no entries, which the "declares no entry" branch
+    # below reports properly. A key present and holding null is a different
+    # thing -- someone wrote it and got it wrong -- and `get`'s default never
+    # fires for it, so it reached the loop as None and raised there.
     declared = market.get("plugins", [])
+    if not isinstance(declared, list):
+        return 1, ["marketplace.json 'plugins' must be an array; it is %s"
+                   % _shape(declared)]
+    malformed = [i for i, e in enumerate(declared) if not isinstance(e, dict)]
+    if malformed:
+        return 1, ["marketplace.json plugins[%d] must be an object; it is %s"
+                   % (i, _shape(declared[i])) for i in malformed]
+
     entries = [e for e in declared if e.get("name") == name]
     if not entries:
         # Naming what IS declared, because the usual cause is a rename that

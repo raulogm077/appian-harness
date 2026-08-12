@@ -28,8 +28,9 @@ silent, and it never invokes anything else.
 
 `harness_hooks.py` imports `calendar`, `json`, `os`, `re`, `sys` and `time` from
 the standard library, plus `scripts/validate_verdict.py` from this repository,
-which imports the same set. **There are no third-party dependencies**, so
-installing this plugin installs no packages.
+which imports `json`, `os`, `re`, `sys` and `time` — the same list without
+`calendar`. **There are no third-party dependencies**, so installing this plugin
+installs no packages.
 
 ## What runs, and when
 
@@ -79,14 +80,20 @@ In a **configured** project, from the project root the hook payload reports as
 **`~/.claude.json` deserves the emphasis.** That file commonly holds MCP server
 definitions including `env` blocks with API tokens, and the requirements check
 parses the whole file to answer one question: which MCP servers are declared.
-It reads the **keys** of `mcpServers`, and of the `mcpServers` block under the
-entry for this project only — never the values, never a token. What leaves that
+Parsing it deserializes everything in it, tokens included, into the hook
+process's memory. What the code then takes is the **keys** of `mcpServers`, and
+of the `mcpServers` block under the entry for this project only. No value is
+read, nothing from that file is written to any register, and what leaves the
 read is a yes/no per configured server name in the session-start message. If you
 would rather it did not open the file at all, there is no switch for that today;
 the alternative is not configuring the plugin for that project.
 
 Environment variables read: `CLAUDE_PLUGIN_ROOT`, and in the launcher
-`CLAUDE_PROJECT_DIR`, `OS` and `PWD`. The launcher sets
+`CLAUDE_PROJECT_DIR`, `OS` and `PWD`. Two more are read indirectly and matter
+here: `os.path.expanduser("~")` resolves through `HOME` on POSIX and
+`USERPROFILE`, or `HOMEDRIVE` and `HOMEPATH`, on Windows — that is how
+`~/.claude.json` and the skill's default location are found — and the
+interpreter search depends on `PATH`. The launcher sets
 `PYTHONDONTWRITEBYTECODE=1` so the installed copy does not grow `__pycache__`
 directories and stays comparable with `git ls-files`.
 
@@ -119,14 +126,20 @@ Verified in the source, not assumed:
   GitHub, or anything else.
 - **No telemetry.** Nothing is reported anywhere. The registers above are files
   in your project and stay there.
-- **No credential reads.** No hook opens a keychain, a `.env`, a token store, or
-  an MCP server's credentials. `~/.claude.json` is the one file it opens that
-  commonly *contains* credentials, and it takes only server names from it — see
-  above.
+- **No credential is extracted or used.** No hook opens a keychain, a `.env` or a
+  token store, and nothing here authenticates as you to anything. State it
+  precisely, though: `~/.claude.json` is parsed in full by `json.load`, so if
+  that file holds MCP `env` blocks with tokens, those values are deserialized
+  into the hook process's memory for the life of the call. What the code does
+  with them is nothing — it reads server *names* and discards the rest. "Not
+  extracted" is the true claim; "not read" would not be.
 - **No subprocesses beyond the interpreter probe.** `run_hook.sh` runs the
   Python candidates and nothing else; `harness_hooks.py` never spawns a process.
-- **No `eval`, no `exec`, no dynamic import** of anything outside this
-  repository.
+- **No `eval()` or `exec()` over data, and no dynamic import** from outside this
+  repository. One `exec` does appear, at `hooks/run_hook.sh:54`: it is the
+  shell's, which replaces the launcher with the Python interpreter it just
+  probed rather than leaving a shell waiting on a child. It executes the
+  interpreter, never a string built from input.
 
 ## The activation switch
 

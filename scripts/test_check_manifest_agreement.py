@@ -70,10 +70,10 @@ class VersionAgreement(unittest.TestCase):
 
 
 class SilenceIsNotAgreement(unittest.TestCase):
-    """The three ways this could report agreement while comparing nothing.
+    """The two ways this could report agreement while comparing nothing.
 
-    Each is a branch the checker already handles; none was exercised, and an
-    unexercised branch in a checker is the same unverified claim the plugin
+    Each is a branch the checker already handles; neither was exercised, and
+    an unexercised branch in a checker is the same unverified claim the plugin
     spends a README arguing against.
     """
 
@@ -100,6 +100,22 @@ class SilenceIsNotAgreement(unittest.TestCase):
                   '{"name": "m", "plugins": [{"name": "p", "source": "./"}]}')
         self.assertEqual(C.check(self.root)[0], 1)
 
+
+class ReportedRatherThanRaised(unittest.TestCase):
+    """A manifest can parse cleanly and still be unusable.
+
+    CI runs this checker, and CONTRIBUTING puts it at step 3 of the release,
+    immediately before `claude plugin tag`. A traceback there halts a release
+    without naming which of the two manifests is malformed -- the one question
+    this file can answer. It already answered it for a file that will not
+    parse; these are the same case one layer in, where the JSON is valid and
+    the shape is not.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, True)
+
     def test_unparseable_json_is_reported_rather_than_raised(self):
         # A traceback out of CI names a line of this file; a message names the
         # manifest that is broken. Only one of those tells the reader what to fix.
@@ -108,6 +124,31 @@ class SilenceIsNotAgreement(unittest.TestCase):
         code, msgs = C.check(self.root)
         self.assertEqual(code, 1)
         self.assertTrue(any("marketplace.json" in m for m in msgs))
+
+    def test_a_manifest_whose_root_is_an_array_is_reported(self):
+        # `[]` parses. Asking it for a name raised AttributeError.
+        write_raw(self.root, "plugin.json", "[]")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("plugin.json" in m and "array" in m for m in msgs))
+
+    def test_a_plugins_key_holding_null_is_reported(self):
+        # `get("plugins", [])` never returns its default here: the key is
+        # present, so None came back and the comprehension raised on it.
+        write_raw(self.root, "plugin.json", '{"name": "p", "version": "1.0.0"}')
+        write_raw(self.root, "marketplace.json", '{"name": "m", "plugins": null}')
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("plugins" in m and "null" in m for m in msgs))
+
+    def test_a_null_entry_inside_plugins_is_reported_with_its_index(self):
+        # The index matters: "one of your entries is wrong" in a marketplace
+        # listing several plugins is a message that still requires a search.
+        write_raw(self.root, "plugin.json", '{"name": "p", "version": "1.0.0"}')
+        write_raw(self.root, "marketplace.json", '{"name": "m", "plugins": [null]}')
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("plugins[0]" in m and "null" in m for m in msgs))
 
 
 if __name__ == "__main__":
