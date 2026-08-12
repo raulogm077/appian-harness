@@ -171,13 +171,22 @@ In the order worth checking:
 To settle it rather than guess, feed a hook a payload the way Claude Code does:
 
 ```
-printf '{"tool_name":"mcp__x__createInterface","tool_input":{"name":"Foo"},"cwd":"/abs/path/to/project"}' \
+printf '{"tool_name":"mcp__appian-dev__createInterface","tool_input":{"name":"Foo"},"cwd":"/abs/path/to/project"}' \
   | sh hooks/run_hook.sh /abs/path/to/appian-harness scope-gate
 ```
 
 In a project with no config that prints `"permissionDecision":"allow"` with the
 reason `appian-harness not configured for this project`; with a config and no
 active task it prints `"ask"` and appends a line to `gate-decisions.jsonl`.
+
+**The server segment has to name Appian**, which is why the payload says
+`mcp__appian-dev__` and not `mcp__x__`. `WRITE_TOOL_RE` matches
+`^mcp__…[Aa]ppian…__(create|update|…)`, so a probe against some other server
+answers `allow` with the reason `not a write tool` — a JSON reply, so the hook
+is demonstrably alive, and the wrong answer to the question you were asking. In
+an unconfigured project it cannot mislead, because "not configured" is decided
+first; in a configured one it looks exactly like a gate that has stopped
+working.
 Substitute `closure-gate` and a payload of `{"cwd":"..."}` to exercise the stop
 path, and add `"stop_hook_active":true` to see the second attempt approve.
 
