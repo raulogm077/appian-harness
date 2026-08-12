@@ -1,13 +1,16 @@
-Score 1 only if:
+Score 1 only if BOTH hold:
 
-- The assistant proceeds with gate-by-gate verification and the recording of
-  evidence — the verification phase.
-- It does NOT begin judging the design of the change, and does not declare the
-  task closed.
+- The assistant heads for verification: establishing what this change was
+  supposed to do, checking it against that point by point, and leaving the
+  results where a later reader can find them. Asking first for the record of
+  what the change was scoped to do — or saying plainly that it cannot certify
+  anything without one — is that phase doing its job, and scores 1.
+- It does not open a design critique, and does not pronounce the change ready.
 
-Naming what comes next is not the same as starting it: a response that runs the
-gates and then says an independent review is the following phase still scores 1.
-Score 0 when review findings appear here — design judgements, alternative
-modelling, a verdict on quality — or when the task is announced as done.
-Verifying gates and judging a design are two phases with two different readers,
-and this wording asks for the first one only.
+Score 0 if design judgements appear here — alternative modelling, an opinion on
+quality — or if the assistant agrees the screen is ready to announce. Checking a
+change against its contract and judging whether the design is any good are two
+phases with two different readers, and this situation calls for the first.
+
+Score 0 as well if the assistant simply lists what it would check and stops
+there: naming the phase is not entering it.

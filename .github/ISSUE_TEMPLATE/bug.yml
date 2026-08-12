@@ -18,12 +18,12 @@ body:
     attributes:
       label: Plugin version
       description: >-
-        From `claude plugin list`. If the session was running when this
-        happened, prefer the version in the session-start line
-        (`appian-harness 0.2.4: …`) — that is the loaded version, and a plugin
-        can be installed and updated while the running session has never heard
-        of the new copy.
-      placeholder: "0.2.4"
+        Paste what `claude plugin list` reports for appian-harness. If the
+        session was still running when this happened, prefer the version in the
+        session-start line, which reads `appian-harness <version>: …` — that is
+        the *loaded* version, and a plugin can be installed and updated while
+        the running session has never heard of the new copy.
+      placeholder: "appian-harness 0.x.y"
     validations:
       required: true
 

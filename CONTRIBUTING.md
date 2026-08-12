@@ -19,7 +19,7 @@ named `practices-QA.json` closes a task on a laptop and blocks it in CI.
 
 ## Checking your work locally
 
-All eight, before you push. They are what CI runs, in the order CI runs them:
+All nine, before you push. They are what CI runs, in the order CI runs them:
 
 ```bash
 python -m unittest discover -s hooks -v
@@ -30,10 +30,22 @@ python scripts/check_readme_claims.py
 python scripts/check_manifest_agreement.py
 python scripts/check_package_integrity.py
 python scripts/check_evals.py
+python -c "import os, sys; leaked = [p for p in (os.path.join('.claude', 'appian-harness.json'), 'evidence', 'tasks') if os.path.exists(p)]; sys.exit('harness project state leaked into the plugin: %s' % leaked) if leaked else print('plugin/project separation intact')"
 ```
+
+The ninth has no script of its own — in `ci.yml` it is a `shell: python` block,
+transcribed here so you can run the same check rather than discover it in CI. It
+is the one that catches what *testing in a real session* leaves behind, which is
+why running it locally matters more than its size suggests. See the next section.
 
 On a POSIX machine where `python` is absent or is a Python 2, use `python3` —
 the launcher makes the same substitution at runtime.
+
+The six checker scripts do not share one calling convention, and the list above
+hides that because every line runs them on this repository: the four newer
+checkers take the root **positionally** (`check_evals.py ../elsewhere`), while
+`check_readme_claims.py` takes `--root <path>` and exits **2** on a usage error.
+Worth knowing the first time you point one at a directory that is not this one.
 
 **Exit 3 is not a pass.** The checkers use `EXIT_NOT_MEASURED = 3` for "nothing
 was inspected": zero skills linted, no marketplace entry to compare, no eval
@@ -87,6 +99,15 @@ installed one, because the component inventory is fixed when the process starts.
 The session-start line reports the version actually running — check it before
 concluding a fix did not work.
 
+**Drive the test session from a scratch project, not from this checkout.** The
+gates only activate where `.claude/appian-harness.json` exists, so exercising
+them means creating one — and `appian-init` writes it along with `evidence/` and
+`tasks/`. Do that inside this repository and you have just produced the three
+paths the ninth check fails on, by following these instructions. It is the
+plugin governing itself, which is exactly the separation the check defends. If
+you did test in place, delete `.claude/appian-harness.json`, `evidence/` and
+`tasks/` before you push.
+
 ## Releasing
 
 ```bash
@@ -108,8 +129,9 @@ release. Step 3 is that becoming a command you can run.
 Two refusals, both observed against a throwaway repository rather than inferred
 from the documentation.
 
-**Disagreeing manifests.** With `plugin.json` at 0.2.4 and the marketplace entry
-at 0.2.1, `claude plugin tag` exits 1 and prints:
+**Disagreeing manifests.** The versions below are that probe's, not this
+release's. With `plugin.json` at 0.2.4 and the marketplace entry at 0.2.1,
+`claude plugin tag` exits 1 and prints:
 
 ```
 ✘ Version mismatch: plugin.json says "0.2.4" but .claude-plugin\marketplace.json plugins[0].version says "0.2.1". plugin.json wins at install time, so update the marketplace entry to "0.2.4" (or remove it) before tagging.
@@ -144,5 +166,5 @@ Questions about using the plugin belong in Discussions, not issues. Security
 reports go to the address in [SECURITY.md](SECURITY.md) and never to a public
 issue.
 
-Pull requests: one change per branch, the eight commands above green, and a
+Pull requests: one change per branch, the nine commands above green, and a
 description that says what was broken rather than what was added.

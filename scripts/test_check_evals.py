@@ -34,22 +34,29 @@ class EvalShape(unittest.TestCase):
         case(self.root, "a", prompt="   \n")
         self.assertEqual(C.check(self.root)[0], 1)
 
-    def test_a_grader_that_only_restates_the_prompt_fails(self):
+    def test_a_grader_that_only_restates_the_prompt_warns(self):
         # The theatre trap: a grader that rewards the vocabulary of the prompt
-        # scores high while the task goes undone.
+        # scores high while the task goes undone. Reported, not fatal --
+        # measured, the same copy with one sentence appended scores 0.72 on the
+        # sequence and 0.64 on the vocabulary, clean past both thresholds. A
+        # gate that stops verbatim paste and nothing else promises more than it
+        # delivers, so this says what it sees and lets the build through.
         case(self.root, "a", prompt="Use appian-verify to check the task.\n",
              grader="Use appian-verify to check the task.\n")
         code, msgs = C.check(self.root)
-        self.assertEqual(code, 1)
-        self.assertTrue(any("restates" in m for m in msgs))
+        self.assertEqual(code, 0, msgs)
+        self.assertTrue(any(m.startswith(C.WARNING_PREFIX) and "restates" in m
+                            for m in msgs), msgs)
 
-    def test_a_copy_with_the_punctuation_changed_still_fails(self):
-        # Near-exact, not exact: the duplication check normalises case and
-        # punctuation first, so retyping the prompt in lower case does not
-        # buy a pass.
+    def test_a_copy_with_the_punctuation_changed_is_still_seen(self):
+        # Normalisation earns its keep whichever severity the finding carries:
+        # retyping the prompt in lower case with different punctuation is the
+        # same copy, and the sequence ratio still sees it.
         case(self.root, "a", prompt="Use appian-verify to check the task.\n",
              grader="use appian-verify to check the task!!\n")
-        self.assertEqual(C.check(self.root)[0], 1)
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 0, msgs)
+        self.assertTrue(any(m.startswith(C.WARNING_PREFIX) for m in msgs), msgs)
 
     def test_a_reordered_copy_warns_without_failing(self):
         # Every word of this grader comes from its prompt, so the fuzzy
@@ -108,6 +115,49 @@ class EvalShape(unittest.TestCase):
         # word, overlapped with nothing, and passed.
         case(self.root, "a", grader="!!!")
         self.assertEqual(C.check(self.root)[0], 1)
+
+    def test_a_prompt_quoting_a_skill_description_warns(self):
+        # The axis this checker was not watching: it was built to catch a grader
+        # copied from its prompt, while a prompt copied from the skill's own
+        # description went unchecked. `routing-verify-not-review` asked to "run
+        # the gates" -- one of the four phrases appian-verify advertises -- so
+        # substring matching alone scored the case and nothing measured routing.
+        os.makedirs(os.path.join(self.root, "skills", "appian-verify"))
+        with open(os.path.join(self.root, "skills", "appian-verify", "SKILL.md"), "w",
+                  encoding="utf-8") as f:
+            f.write('---\nname: appian-verify\ndescription: Verifies one built task. Use '
+                    'when asked to "run the gates" or "check the evidence".\n---\nbody\n')
+        case(self.root, "a", prompt="The task is built. Run the gates on it.\n",
+             grader="Score 1 if each requirement is checked and what was found is "
+                    "written down where a later reader can see it.\n")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 0, msgs)
+        self.assertTrue(any(m.startswith(C.WARNING_PREFIX) and "run the gates" in m
+                            for m in msgs), msgs)
+
+    def test_grammar_alone_is_not_an_echo(self):
+        # "the task is" is three words of English, not a trigger. A check that
+        # fired on it would be noise, and noise is how a warning becomes a line
+        # people scroll past.
+        os.makedirs(os.path.join(self.root, "skills", "appian-verify"))
+        with open(os.path.join(self.root, "skills", "appian-verify", "SKILL.md"), "w",
+                  encoding="utf-8") as f:
+            f.write("---\nname: appian-verify\ndescription: Use when the task is "
+                    "finished.\n---\nbody\n")
+        case(self.root, "a", prompt="I think the task is probably fine now.\n",
+             grader="Score 1 if it asks what was checked before agreeing.\n")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 0, msgs)
+        self.assertEqual([m for m in msgs if m.startswith(C.WARNING_PREFIX)], [])
+
+    def test_the_shipped_prompts_do_not_echo_a_skill_description(self):
+        # Regression guard for a content fix that otherwise had no test: the
+        # prompts were rewritten to describe the user's situation rather than
+        # the vocabulary of the skill meant to catch them.
+        root = os.path.join(os.path.dirname(__file__), "..")
+        code, msgs = C.check(root)
+        self.assertEqual(code, 0, "\n".join(msgs))
+        self.assertEqual([m for m in msgs if m.startswith(C.WARNING_PREFIX)], [], msgs)
 
     def test_no_evals_directory_is_not_measured(self):
         self.assertEqual(C.check(self.root)[0], C.EXIT_NOT_MEASURED)

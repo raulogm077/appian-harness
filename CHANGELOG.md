@@ -84,7 +84,48 @@ already failed silently at least once.
 
 All three answer `3`, not `0`, when handed nothing to inspect.
 
-`scripts/` goes from 135 tests to 178. `hooks/` is unchanged at 186.
+### The gates were reviewed, and they had the defect they were written to catch
+
+Three independent reviews ran over this branch — an outside model reading the
+PR, a four-angle cleanup pass, and a full code review. Between them they found
+more than twenty real defects in code that had already passed 321 tests and CI
+on four platform-and-interpreter combinations. That is worth stating plainly,
+because it is the argument this whole plugin makes, turned on the plugin: a
+green run is evidence that the checks that exist passed, and nothing else.
+
+The two worst were the same mistake at two altitudes, and both were **a gate
+reporting that it was closed when it was not**:
+
+- `appian-reviewer` declared with `tools: Read, Grep, Glob, Skill, Bash`
+  **passed** the rule that exists to stop a reviewer editing what it reviews.
+  `Bash` writes any file in the repository with one redirect. The rule
+  enumerated four forbidden tool names, so it only ever protected against what
+  its author had thought of — which is why it took four rounds of patches
+  (`tools: *`, then `[Write]`, then a trailing `# comment`, then six block-YAML
+  spellings) before anyone asked the right question. It now checks the raw
+  declaration region against a **permitted** set, so a name nobody has invented
+  yet is a finding: `Task`, an MCP write tool and a made-up `Frobnicate` are all
+  caught, and a legitimate read-only agent still passes.
+- Deleting `hooks/harness_hooks.py` left `check_package_integrity.py`
+  answering `OK every declared path resolves`, exit 0. The launch chain is
+  `hooks.json → run_hook.sh → harness_hooks.py → validate_verdict.py` and only
+  the first link is named by any manifest. Worse at the fourth: `harness_hooks`
+  imports `validate_verdict` at module level, so losing it is not a degraded
+  closure gate — it is an `ImportError` before any subcommand runs, taking all
+  six hooks down at once and just as quietly. Both are now required referents,
+  each carrying the reason it is one.
+
+Also fixed: a hook declared in exec/`args` form contributed zero referents and
+zero warnings; `exists_exact` never called `os.path.exists`, so a dangling link
+counted as present; a stale key in the read-only map stopped protecting
+silently; and two functions named `isfile_exact` existed in this repository with
+their arguments in opposite orders — the unused one is gone.
+
+`scripts/` leaves this release with well over half again the tests it came in
+with; `hooks/` is untouched. The exact totals are in the README and not here,
+because `check_readme_claims.py` holds the README's numbers to the tree and
+holds nothing in this file — and a release that adds three gates for unchecked
+claims should not close by writing one.
 
 ## 0.2.4 — 2026-08-11
 

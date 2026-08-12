@@ -38,12 +38,14 @@ The ablation arm matters more than the absolute score. These cases are all
 things a competent agent might do anyway; what the suite has to show is that
 the plugin makes it **more likely**, and only a no-plugin baseline says that.
 
-Until then, `scripts/check_evals.py` runs in CI and checks what does not need
-the runner: that every directory here is a case with a prompt, that every case
-has a grader, that the grader says something a judge could apply, and that it is
-not a retyped copy of its prompt.
+Until then, `scripts/check_evals.py` runs in CI on one principle: **shape fails,
+judgement warns.** That every directory here is a case with a prompt, that every
+case has a grader, and that the grader says something a judge could apply are
+facts, and a build fails on them.
 
-It also reports, without failing the build, a grader that draws most of its
-vocabulary from its prompt. That measure compares word sets — blind to order,
-frequency and negation — and nothing has calibrated it against labelled
-examples, so it gets to speak and not to veto.
+Whether a grader is "really just the prompt again", and whether a prompt is
+built out of the phrases its target skill advertises, are opinions held by blunt
+numbers — so they print and let the build through. Both are worth reading and
+neither is worth obeying: a verbatim copy of a prompt scores 1.00 on the
+similarity check and the same copy with one sentence added scores 0.72, which is
+clean. It catches carelessness, not intent, and says so where it prints.
