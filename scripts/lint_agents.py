@@ -9,6 +9,12 @@ again here would be that defect with a new name. `MAX_DESCRIPTION` and
 `EXIT_NOT_MEASURED` come across for the same reason: a limit raised in one
 file and not the other is two linters disagreeing about one contract.
 
+This file owns what an agent's frontmatter MEANS -- `name`, `description`,
+`skills`, `tools`. `check_package_integrity.py` owns the physical inventory:
+that declared paths exist, that each skills/<dir> holds a SKILL.md, that the
+agent files are readable. It does not interpret frontmatter, so the list
+reader that used to live in both lives here.
+
 What is checked beyond the shared rule:
 
 - `name` matches the filename, or the agent is addressable under a name that
@@ -42,11 +48,77 @@ READ_ONLY_AGENTS = {
 }
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 
+# `  - Read` — one entry of a YAML block sequence.
+BLOCK_ITEM = re.compile(r"^\s*-\s*(.+?)\s*$")
+
+# ` # anything` — a YAML trailing comment. Stripped because leaving it on
+# turns "Write # temporary" into a token that is not the string "Write", and
+# the read-only rule compares strings: the same bypass `tools: [Write]` was,
+# in the spelling that announces itself. No skill or tool name contains `#`,
+# so cutting at the first one costs nothing.
+TRAILING_COMMENT = re.compile(r"\s+#.*$")
+
+
+def frontmatter_list(text, key):
+    """The values `key` lists, in every YAML spelling, or None if absent.
+
+    `parse_frontmatter` folds a key's continuation lines into one space-joined
+    string, which is right for a description that wraps and wrong for a list:
+    a block sequence arrives as "- a - b" and no reading of that recovers two
+    names. So lists are read from the raw frontmatter lines instead.
+
+    Reading only the inline form is worse than it looks. `tools: [Write]` is
+    valid YAML and a comma-split of it yields the single token "[Write]",
+    which is not the string "Write" -- so a read-only agent handed write
+    access passes the check written to stop exactly that. The reported
+    agreement is about a list that was never read, which is the silent pass
+    this plugin exists to argue against.
+
+    None rather than [] when the key is absent: "declared nothing" and "did
+    not declare" are different findings, and the tools rule needs to tell
+    them apart.
+
+    Not a YAML parser, and the limits are worth naming: a quoted entry
+    containing a comma (`skills: ["a,b"]`) is split in two, and a nested
+    sequence is not understood. Both fail loudly toward a name that does not
+    resolve, so they produce a confusing finding rather than a silent pass --
+    which is why they are documented instead of half-fixed. Trailing comments
+    are stripped rather than tolerated, because that one failed the other
+    way.
+    """
+    if not text.startswith("---"):
+        return None
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return None
+
+    lines = parts[1].splitlines()
+    declaration = re.compile(r"^%s:\s*(.*)$" % re.escape(key))
+    for index, line in enumerate(lines):
+        match = declaration.match(line)
+        if not match:
+            continue
+        inline = TRAILING_COMMENT.sub("", match.group(1)).strip()
+        if inline:
+            return [v for v in (item.strip().strip("'\"")
+                                for item in inline.strip("[]").split(",")) if v]
+        found = []
+        for following in lines[index + 1:]:
+            item = BLOCK_ITEM.match(following)
+            if not item:
+                break
+            entry = TRAILING_COMMENT.sub("", item.group(1)).strip().strip("'\"")
+            if entry:
+                found.append(entry)
+        return found
+    return None
+
 
 def lint_agent(path, known_skills):
     errors = []
     with open(path, encoding="utf-8") as f:
-        meta, body = parse_frontmatter(f.read())
+        text = f.read()
+    meta, body = parse_frontmatter(text)
     stem = os.path.splitext(os.path.basename(path))[0]
 
     name = meta.get("name", "")
@@ -71,27 +143,16 @@ def lint_agent(path, known_skills):
                           "agent should be dispatched (needs 'use when' / 'use before' "
                           "in a sentence that is not itself an exclusion)")
 
-    raw_skills = meta.get("skills", "").strip()
-    if raw_skills.startswith("-"):
-        # parse_frontmatter folds a key's continuation lines into one
-        # space-joined string, so `skills:\n  - a\n  - b` arrives here as
-        # "- a - b" and there is no reading of that which recovers two names.
-        # Refusing it beats guessing: a linter that silently took the first
-        # entry would report a skills list nobody wrote.
-        errors.append("'skills' uses YAML block-list form; this frontmatter parser reads "
-                      "the inline form only, so write it as [a, b]")
-    elif raw_skills:
-        for skill in [s.strip().strip("'\"[]") for s in raw_skills.strip("[]").split(",")]:
-            if skill and skill not in known_skills:
-                errors.append("lists skill %r, which is not a directory under skills/; the "
-                              "agent would start without it and say nothing" % skill)
+    for skill in frontmatter_list(text, "skills") or []:
+        if skill not in known_skills:
+            errors.append("lists skill %r, which is not a directory under skills/; the "
+                          "agent would start without it and say nothing" % skill)
 
-    tools = meta.get("tools", "").strip()
-    if not tools:
+    granted = frontmatter_list(text, "tools")
+    if not granted:
         errors.append("no 'tools' line; the agent silently inherits every tool in the "
                       "session, which is never what a scoped agent wants")
     elif name in READ_ONLY_AGENTS:
-        granted = [t.strip() for t in tools.split(",")]
         if "*" in granted:
             # `tools: *` grants Write and Edit without naming either, so a
             # check that only reads the named tools waves through in one

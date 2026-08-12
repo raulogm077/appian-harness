@@ -14,6 +14,7 @@ and red here, and the plugin quietly becomes author-machine-only.
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -45,10 +46,42 @@ def scaffold(root, with_launcher=True, plugin_extra=None, hooks=MINIMAL_HOOKS):
         json.dump(manifest, f)
 
 
+def link_dir(link, target):
+    """Point `link` at directory `target`, however this platform will allow.
+
+    A symlink first, then a Windows junction. The fallback is what makes the
+    dangling and escaping cases testable *here*: os.symlink needs a privilege
+    this account does not have, and `mklink /J` needs none, and both produce
+    the condition under test -- a name that appears in a directory listing
+    whether or not anything is on the other end of it.
+
+    Falling back rather than skipping is deliberate. These are precisely the
+    cases an author cannot reason about from their own machine, which is how
+    they survived review in the first place; a test that quietly skips on the
+    developer's platform and runs only in CI is the absent gate again.
+    """
+    try:
+        os.symlink(target, link, target_is_directory=True)
+        return True
+    except (AttributeError, NotImplementedError, OSError):
+        pass
+    if os.name != "nt":
+        return False
+    return subprocess.call(["cmd", "/c", "mklink", "/J", link, target],
+                           stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL) == 0
+
+
 class TempTree(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.root, True)
+
+    def elsewhere(self):
+        """A directory outside self.root, cleaned up separately."""
+        outside = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside, True)
+        return outside
 
 
 class ReferencedFilesExist(TempTree):
@@ -128,38 +161,90 @@ class ComponentsResolve(TempTree):
         self.assertEqual(code, 1)
         self.assertTrue(any("ghost" in m for m in msgs), msgs)
 
-    def test_an_agent_frontmatter_naming_a_missing_skill_fails(self):
+    def test_an_agent_file_that_does_not_decode_is_reported(self):
+        # The whole of what this file asks of an agent now: that the bytes are
+        # there and are text. Whether the frontmatter inside means anything is
+        # lint_agents.py's question, and asking it in two places is how the
+        # two answers drifted apart the first time.
+        scaffold(self.root)
+        os.makedirs(os.path.join(self.root, "agents"))
+        with open(os.path.join(self.root, "agents", "a.md"), "wb") as f:
+            f.write(b"---\nname: a\ndescription: \xff\xfe not utf-8\n---\nbody\n")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("cannot be read as UTF-8" in m for m in msgs), msgs)
+
+    def test_a_readable_agent_naming_anything_at_all_passes(self):
+        # Including a skill that does not exist: that is a real defect and it
+        # is lint_agents.py's to report, not this file's to report twice.
         scaffold(self.root)
         os.makedirs(os.path.join(self.root, "agents"))
         with open(os.path.join(self.root, "agents", "a.md"), "w", encoding="utf-8") as f:
             f.write("---\nname: a\ndescription: Use when x.\nskills: [nope]\n---\nbody\n")
         code, msgs = C.check(self.root)
-        self.assertEqual(code, 1)
-        self.assertTrue(any("nope" in m for m in msgs), msgs)
-
-    def test_a_block_style_skills_list_is_read_too(self):
-        # YAML accepts both spellings, and the checker that only knows the
-        # inline one reports agreement about a list it never read -- the
-        # silent pass this repository treats as worse than a loud failure.
-        scaffold(self.root)
-        os.makedirs(os.path.join(self.root, "agents"))
-        with open(os.path.join(self.root, "agents", "a.md"), "w", encoding="utf-8") as f:
-            f.write("---\nname: a\ndescription: Use when x.\nskills:\n"
-                    "  - nope\n  - alsonope\ntools: Read\n---\nbody\n")
-        code, msgs = C.check(self.root)
-        self.assertEqual(code, 1)
-        self.assertTrue(any("nope" in m for m in msgs), msgs)
-        self.assertTrue(any("alsonope" in m for m in msgs), msgs)
-
-    def test_an_agent_naming_a_skill_that_exists_passes(self):
-        scaffold(self.root)
-        os.makedirs(os.path.join(self.root, "skills", "real"))
-        open(os.path.join(self.root, "skills", "real", "SKILL.md"), "w").close()
-        os.makedirs(os.path.join(self.root, "agents"))
-        with open(os.path.join(self.root, "agents", "a.md"), "w", encoding="utf-8") as f:
-            f.write("---\nname: a\ndescription: Use when x.\nskills: [real]\n---\nbody\n")
-        code, msgs = C.check(self.root)
         self.assertEqual(code, 0, msgs)
+
+
+class WhereTheNameActuallyLeads(TempTree):
+    """A name in a listing is evidence of spelling and of nothing else."""
+
+    def test_a_dangling_referent_is_not_a_present_one(self):
+        # The defect a reviewer found: exists_exact never asked the
+        # filesystem anything. os.listdir reports the name of a link whose
+        # target does not exist, so a declared component directory that
+        # pointed at nothing counted as present, raised the tally, emitted no
+        # finding, and the checker could exit 0 over it.
+        scaffold(self.root, plugin_extra={"skills": "./components"})
+        if not link_dir(os.path.join(self.root, "components"),
+                        os.path.join(self.root, "no-such-target")):
+            self.skipTest("this platform allows neither symlink nor junction")
+        self.assertIn("components", os.listdir(self.root))
+        self.assertFalse(os.path.exists(os.path.join(self.root, "components")))
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("dangling" in m for m in msgs), msgs)
+
+    def test_a_referent_leading_outside_the_plugin_root_fails(self):
+        # Spelled right, exists, and still not part of the package: an
+        # install copies the tree, not whatever the tree points at. The
+        # launcher is really there, so every check but containment passes.
+        outside = self.elsewhere()
+        open(os.path.join(outside, "run_hook.sh"), "w").close()
+        with open(os.path.join(outside, "hooks.json"), "w", encoding="utf-8") as f:
+            json.dump(MINIMAL_HOOKS, f)
+        os.makedirs(os.path.join(self.root, ".claude-plugin"))
+        with open(os.path.join(self.root, ".claude-plugin", "plugin.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"name": "p", "version": "1.0.0"}, f)
+        if not link_dir(os.path.join(self.root, "hooks"), outside):
+            self.skipTest("this platform allows neither symlink nor junction")
+        self.assertTrue(os.path.isfile(os.path.join(self.root, "hooks", "run_hook.sh")))
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("outside the plugin root" in m for m in msgs), msgs)
+
+
+class MalformedDeclarations(TempTree):
+    def test_an_absolute_path_is_rejected_not_reinterpreted(self):
+        # Silently dropping the leading slash would look up hooks/hooks.json
+        # under the root, find it, and report OK about a declaration that on
+        # a real install points at the filesystem root.
+        scaffold(self.root, plugin_extra={"hooks": "/hooks/hooks.json"})
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("absolute path" in m for m in msgs), msgs)
+
+    def test_a_windows_drive_letter_is_rejected_too(self):
+        scaffold(self.root, plugin_extra={"commands": "C:/cmds"})
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("absolute path" in m for m in msgs), msgs)
+
+    def test_a_declaration_climbing_out_with_dotdot_is_rejected(self):
+        scaffold(self.root, plugin_extra={"commands": "../cmds"})
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("climbs out" in m for m in msgs), msgs)
 
 
 class ManifestDeclaredPaths(TempTree):
