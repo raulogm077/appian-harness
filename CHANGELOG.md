@@ -8,6 +8,84 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.3.0 — 2026-08-12
+
+Nothing the harness *does* to your project changed in this release. It is here
+under a minor rather than a patch because the package gains a document you
+should actually read before upgrading, and a patch number says "nothing to look
+at".
+
+### Added
+
+**`SECURITY.md` — what this plugin executes on your machine.** A plugin that
+installs six hook entries is asking for execution in every session, and nothing
+here said so plainly or offered anywhere to report a problem. It was written
+from the source rather than from memory, and one thing came back the opposite of
+how it had been assumed:
+
+> The requirements check opens **`~/.claude.json`** — the file that commonly
+> carries MCP `env` blocks with API tokens. It parses the whole file and takes
+> the **keys** of `mcpServers`, and of the block for this project only. Never a
+> value, never a token. What leaves that read is a yes/no per configured server
+> name in the session-start message.
+
+Not a defect. In a project with no `.claude/appian-harness.json` the file is
+never opened at all, because `_build_config` returns first. But it is not
+something a reader would guess, so it is stated in bold, with the honest coda
+that there is no switch to opt out of it today. The negative claims beside it
+were verified before being written, not asserted: no network, no telemetry, no
+subprocess in `harness_hooks.py`, no `eval` or `exec`.
+
+**`CONTRIBUTING.md`, with the release procedure the manifest drift needed.** A
+checker that catches drift without a documented procedure that runs it only
+moves the gap. Both facts in that procedure were probed against a throwaway
+repository rather than inferred from documentation: `claude plugin tag` exits 1
+and refuses when the two manifests disagree, and **also** refuses on a dirty
+working tree — the second costs a confusing minute, because the version message
+disappears from that failure and a manifest pair that does agree looks like the
+mismatch case failing anyway.
+
+**`evals/` — six cases that have never been executed.** `claude plugin eval` is
+in early access and does not respond on the account this plugin is developed on,
+neither `init` nor the runner. Six and not forty: forty unexecuted cases would
+be more impressive and exactly as unverified, and the trap in prompt evals is
+not too few cases — it is graders that reward the vocabulary of the prompt while
+the task goes undone. Three routing, three safety, one of them the `0.2.4`
+regression. `evals/README.md` says "never been executed" in its first sentence
+and a test asserts the caveat is still there.
+
+**Issue templates**, which ask for the four things every hook report needs and
+nobody sends unprompted: plugin version, OS, the Python the launcher found, and
+the hook's output.
+
+### Changed
+
+**Three new gates in CI, for three things nothing was checking.** Each had
+already failed silently at least once.
+
+- `check_manifest_agreement.py`. `marketplace.json` sat at `0.2.1` while
+  `plugin.json` said `0.2.4`, stale across three consecutive releases, because
+  nothing at install time reads the entry — `plugin.json` wins and the entry is
+  ignored. The drift was invisible right up to the point it would have blocked
+  a release.
+- `check_package_integrity.py`. Every test in this repository imports
+  `harness_hooks.py` directly, which proves the program is correct and says
+  nothing about whether Claude Code can start it. `hooks.json` names paths, and
+  a hook whose command cannot be found does not ask and does not block: it does
+  not run, and the plugin installs, looks healthy and enforces nothing. Paths
+  are matched case-exactly, because NTFS resolves `Run_Hook.sh` to
+  `run_hook.sh` and ext4 does not.
+- `lint_agents.py`. `lint_skills.py` walks `skills/` and stops, so for four
+  releases nothing looked at the three agents, whose `description` decides
+  whether they are ever dispatched. It shares `has_trigger` and
+  `parse_frontmatter` with the skill linter **by import**, with a test asserting
+  object identity so a future copy fails — two copies of one rule is the defect
+  `test_matcher_parity` exists to catch.
+
+All three answer `3`, not `0`, when handed nothing to inspect.
+
+`scripts/` goes from 135 tests to 178. `hooks/` is unchanged at 186.
+
 ## 0.2.4 — 2026-08-11
 
 ### Fixed
