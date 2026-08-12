@@ -8,6 +8,32 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.5.1 — 2026-08-12
+
+### Fixed
+
+**The liveness check `0.5.0` put on the way in could not be run by anybody.**
+It was written as `sh "$CLAUDE_PLUGIN_ROOT/hooks/run_hook.sh"`, and
+`CLAUDE_PLUGIN_ROOT` is a placeholder Claude Code substitutes inside
+`hooks.json` — in a user's shell it is empty, so the command died as `sh:
+/hooks/run_hook.sh: No such file or directory`. It also passed `cwd` as `$PWD`,
+which under Git Bash on Windows is an MSYS `/c/…` path that the gate cannot
+resolve, and answering that is exactly the trap `docs/troubleshooting.md` had
+already written down. A check published to tell you whether your gates are alive
+that had never itself been run is this plugin's own argument, made against it.
+Both paths are now spelled out, and the two traps named where the command is.
+
+**The documented probe payload could not produce the answer the documentation
+promised.** `docs/troubleshooting.md` used `mcp__x__createInterface` and then
+said that in a configured project it prints `"ask"` and appends to
+`gate-decisions.jsonl`. It cannot: `WRITE_TOOL_RE` matches
+`^mcp__…[Aa]ppian…__(create|update|…)`, so a server segment that does not name
+Appian is classified `not a write tool` and allowed. The reply is still JSON, so
+the hook is demonstrably alive — and against a configured project the probe
+looks precisely like a gate that has stopped firing. The payload is now
+`mcp__appian-dev__createInterface` in both documents, and the rule that decides
+it is stated next to the probe.
+
 ## 0.5.0 — 2026-08-12
 
 Nothing the harness does to your project changed. It is a minor rather than a

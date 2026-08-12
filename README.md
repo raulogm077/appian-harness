@@ -198,18 +198,34 @@ walkthrough, with what each phase writes and what the gates read, is in
 
 Paths 2 and 3 rest on the hooks, and a hook that cannot be launched does not
 fail loudly — it does not run, and the plugin installs, looks healthy and
-enforces nothing. One command settles it rather than assuming, from the root of
-an adopted project:
+enforces nothing. Feed one a payload the way Claude Code does, and it stops
+being a question. Both paths are spelled out because **neither is available to
+you as a variable**:
 
-```
-printf '{"tool_name":"mcp__x__createInterface","tool_input":{"name":"Foo"},"cwd":"'"$PWD"'"}' \
-  | sh "$CLAUDE_PLUGIN_ROOT/hooks/run_hook.sh" "$CLAUDE_PLUGIN_ROOT" scope-gate
+```sh
+HARNESS=/abs/path/to/appian-harness   # your checkout, or the highest version under
+                                      # ~/.claude/plugins/cache/appian-harness/appian-harness
+PROJ=/abs/path/to/your-project        # on Windows write C:/… , never /c/…
+
+printf '{"tool_name":"mcp__appian-dev__createInterface","tool_input":{"name":"Foo"},"cwd":"%s"}' "$PROJ" \
+  | sh "$HARNESS/hooks/run_hook.sh" "$HARNESS" scope-gate
 ```
 
-A JSON answer means the gates are live. Anything else — most often `sh: command
-not found` on Windows without Git Bash, which is the one configuration where the
-hooks are genuinely silent — means you are on path 1 whether you meant to be or
-not. **[docs/troubleshooting.md](docs/troubleshooting.md)** takes it from there.
+Two traps, and the reason the paths are written out. `CLAUDE_PLUGIN_ROOT` is
+substituted by Claude Code inside `hooks.json`; in your own shell it is empty,
+and the command dies as `sh: /hooks/run_hook.sh: No such file or directory`.
+And `cwd` is read by Python, so `$PWD` under Git Bash hands it an MSYS `/c/…`
+path — the gate then finds no config and reports the project unconfigured
+whatever its real state, which is the one wrong answer that looks like a right
+one.
+
+A JSON answer means the gates are live: `"permissionDecision":"allow"` with the
+reason `appian-harness not configured for this project` if you are on path 1,
+`"ask"` once a config exists and no task is active. Anything else — most often
+`sh: command not found` on Windows without Git Bash, the one configuration where
+the hooks are genuinely silent — means you are on path 1 whether you meant to be
+or not. **[docs/troubleshooting.md](docs/troubleshooting.md)** takes it from
+there.
 
 ## What is in the box
 
