@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question about using the plugin
+    url: https://github.com/raulogm077/appian-harness/discussions
+    about: >-
+      How to configure it, why a gate asked, what a phase expects — Discussions,
+      not issues. The README's Troubleshooting section answers most of them
+      already.
+  - name: Security issue
+    url: https://github.com/raulogm077/appian-harness/blob/main/SECURITY.md
+    about: >-
+      The plugin executes code on your machine in six hook entries. Report
+      anything about that surface by email, never in a public issue — SECURITY.md
+      has the address and the response times.

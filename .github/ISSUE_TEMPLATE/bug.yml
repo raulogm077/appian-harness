@@ -1,0 +1,98 @@
+name: Bug report
+description: A hook, gate, skill or checker behaved differently from what it says it does.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Version, operating system, the Python the launcher finds and the hook's
+        message are required because those four locate a hook defect without any
+        access to your project. A report without them usually ends in a round
+        trip asking for them.
+
+        Do not report a security issue here — see
+        [SECURITY.md](https://github.com/raulogm077/appian-harness/blob/main/SECURITY.md).
+
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      description: >-
+        From `claude plugin list`. If the session was running when this
+        happened, prefer the version in the session-start line
+        (`appian-harness 0.2.4: …`) — that is the loaded version, and a plugin
+        can be installed and updated while the running session has never heard
+        of the new copy.
+      placeholder: "0.2.4"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: >-
+        Name and version. Case sensitivity and shell differ between them, and
+        several defects here have existed on one platform only.
+      placeholder: "Windows 11 Pro 26200 / Ubuntu 24.04 / macOS 15.3"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version the launcher finds
+      description: >-
+        Not the one you develop with — the first candidate that answers in the
+        shell the hooks run in. On Windows run this in Git Bash; the order is
+        the launcher's own. `python --version`, then `py -3 --version`, then
+        `python3 --version`, and report the first that works. On macOS and
+        Linux the order is `python3`, `python`, `py -3`.
+      placeholder: "python 3.9.13 (python3 is the WindowsApps alias)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: hook-output
+    attributes:
+      label: What the hook said
+      description: >-
+        The message verbatim — the permission prompt's reason, the block
+        reason, or the session-start line. Paste it rather than summarising it:
+        the wording identifies which branch produced it.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      description: And what you did about it, if you worked around it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: >-
+        The smallest sequence that shows it. Which phase you were in, which
+        tool call you issued, whether the project has
+        `.claude/appian-harness.json` (without it every hook allows and this is
+        probably not a hook defect).
+    validations:
+      required: false
+
+  - type: textarea
+    id: registers
+    attributes:
+      label: Relevant register lines
+      description: >-
+        From `evidence/operations.jsonl`, `evidence/gate-decisions.jsonl` or
+        `evidence/deferred-debt.jsonl` — whichever looks wrong. Redact object
+        names if they are confidential; the timestamps, tool names and reasons
+        are what matter.
+      render: json
+    validations:
+      required: false
