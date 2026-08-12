@@ -12,8 +12,12 @@ types, so pick the surface that answers correctly, not the one that answers
 first.
 """
 import json
+import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from exit_codes import EXIT_NOT_MEASURED  # noqa: E402
 
 DESTRUCTIVE = re.compile(r"\b(delete|remove|discard|revoke|purge|erase|cancel account)\b", re.I)
 TECHNICAL = re.compile(r"\[L?java|^null$|^\{.*\}$|[0-9a-f]{8}-[0-9a-f]{4}-|recordType!", re.I)
@@ -36,12 +40,6 @@ CONFIRM_KEYS = ("confirmMessage", "confirmHeader", "confirmButtonLabel")
 # tree comes back NOT MEASURED, the honest answer is that this checker does
 # not know those components -- not that the screen is fine.
 CHECKED_TYPES = INPUTS + ("Grid", "Button", "DynamicLink", "Text")
-
-# Exit code for "nothing was measured", shared by every checker in this
-# plugin and deliberately distinct from 1: a run that checked nothing and a
-# run that checked something and found problems are different results, and
-# collapsing them is how an absence gets read as a pass.
-EXIT_NOT_MEASURED = 3
 
 
 def _srgb(c):

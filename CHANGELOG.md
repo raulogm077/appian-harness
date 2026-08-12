@@ -8,6 +8,82 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.4.0 — 2026-08-12
+
+Nothing the harness does to your project changed. It is a minor rather than a
+patch because **every link into a section of the README now resolves somewhere
+else**, and a patch number tells someone with a bookmark there is nothing to
+look at.
+
+### Changed
+
+**The README is 369 lines instead of 1381, and nothing was cut.** It had become
+a manual and a design journal fused into one document, where the section telling
+you the plugin gates nothing without a design MCP sat with the same weight as a
+paragraph about quoting a Windows path. Six pages moved out whole:
+
+| | |
+|---|---|
+| `docs/installing.md` | the local-checkout route, paths with spaces, what the hooks need on `PATH` |
+| `docs/configuration.md` | the one file the hooks read, and every key in it |
+| `docs/workflow.md` | a task end to end, running a plan unattended, building several at once |
+| `docs/gates.md` | what each gate checks, what the best-practices guarantee is worth, the pyramid |
+| `docs/troubleshooting.md` | 341 lines of it, which is why it could not stay |
+| `docs/when-the-harness-is-wrong.md` | when the plugin itself is the problem |
+
+The README keeps what someone needs to decide whether this is for them and to
+start: what it is, the requirements chain, install, a first task, what is in the
+box, and **What this plugin does not do** — which stays in full, at full length,
+because it is the section that earns the rest of it any credit and burying it in
+`docs/` would be moving exactly the part a reader should see before installing.
+
+Verified by counting rather than by reading: every line that left the README
+appears in a `docs/` page, and the split asserted `kept + moved == original`.
+
+### Fixed
+
+**`check_readme_claims.py` raised instead of reporting.** A missing
+`hooks/hooks.json` produced a `FileNotFoundError`, and `{"hooks": []}` — which
+decodes fine — produced an `AttributeError`. A traceback out of a checker reads
+as "the checker is broken" rather than "the package has a problem", which
+collapses the 0/1/3 vocabulary the design rests on. Every read in the file now
+goes through one guarded helper.
+
+**Counts in the prose that nothing held.** `Ten modules` and the ten filenames,
+`Seven skills`, `Eleven domain references`, `Three judging agents`, `Six eval
+cases` and the three-routing/three-safety split are now checked against the tree
+— including, deliberately, *every* occurrence of a number rather than the first,
+because the references count appeared twice and only one was ever held. The
+check caught its first drift in the session that added it: `exit_codes.py`
+landed, and the module list said ten.
+
+**`commands/` was inventoried by nothing.** Deleting it left all nine CI steps
+green while the README kept promising `/appian-init` — the only component a user
+invokes by name. A `commands/` directory that ships files and registers no
+command is now a finding, walked recursively because
+`commands/<namespace>/<name>.md` is how a command gets a namespace. Absent is
+still not a finding: a plugin without commands is legitimate.
+
+**`EXIT_NOT_MEASURED = 3` had six definitions**, in the release that wrote "a
+rule spelled twice is a rule that will diverge" into `CONTRIBUTING.md`. It now
+lives in `scripts/exit_codes.py`, and the test that holds it scans the tree for
+files assigning the literal rather than comparing values — an `assertEqual`
+across six modules passes just as happily with six copies, which was the state
+it was meant to catch.
+
+Also: the `.md` entries under `agents/` and `commands/` were the only referents
+in `check_package_integrity.py` not going through `_referent_problem`, so a
+dangling link there was silently skipped — the defect a reviewer found in
+`exists_exact`, reintroduced by adding those directories after the fix.
+
+### Not fixed, and why
+
+**The eval suite still has never been executed.** `claude plugin eval` remains
+in early access on the account this plugin is developed on; both `init` and the
+runner answer the same refusal. Six authored cases, zero scores, and
+`evals/README.md` still says so in its first sentence. This is the one item of
+the known debt that no amount of work here can close.
+
 ## 0.3.0 — 2026-08-12
 
 Nothing the harness *does* to your project changed in this release. It is here

@@ -262,9 +262,21 @@ class ExecFormHooks(TempTree):
 
 
 class Commands(TempTree):
+    """The component a user invokes by name, and the one with no other reader.
+
+    lint_skills walks skills/ and lint_agents walks agents/; nothing in the
+    nine CI steps had ever opened commands/. The half of that gap which is a
+    claim about prose -- the README promising `/appian-init` when no such file
+    exists -- is check_readme_claims', not this file's. What is here is what
+    the physical inventory can contradict on its own.
+
+    The remaining half, plugin.json pointing `commands` at a path that is not
+    there, needs nothing new: `commands` is one of COMPONENT_FIELDS and
+    ManifestDeclaredPaths.test_a_component_path_plugin_json_declares_must_exist
+    is already written on exactly that fixture.
+    """
+
     def test_a_command_file_that_does_not_decode_is_reported(self):
-        # commands/ had no reader in any of the nine CI steps, and it is the
-        # one component a user invokes by name.
         scaffold(self.root)
         os.makedirs(os.path.join(self.root, "commands"))
         with open(os.path.join(self.root, "commands", "appian-init.md"), "wb") as f:
@@ -272,6 +284,82 @@ class Commands(TempTree):
         code, msgs = C.check(self.root)
         self.assertEqual(code, 1, msgs)
         self.assertTrue(any("commands/appian-init.md" in m for m in msgs), msgs)
+
+    def test_a_directory_shipping_no_md_at_all_registers_no_command(self):
+        # The shape the readability loop could not see: it selected `.md`
+        # files and there were none, so a commands/ holding a renamed or
+        # half-converted file contributed nothing to check and nothing to
+        # report. A directory Claude Code scans and takes zero commands out of
+        # is the same package-looks-healthy-and-does-nothing failure this file
+        # opens by describing, one component along.
+        scaffold(self.root)
+        os.makedirs(os.path.join(self.root, "commands"))
+        open(os.path.join(self.root, "commands", "appian-init.txt"), "w").close()
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("no command registers" in m for m in msgs), msgs)
+        self.assertTrue(any("appian-init.txt" in m for m in msgs), msgs)
+
+    def test_a_package_shipping_no_commands_directory_is_not_a_finding(self):
+        # The boundary, and the reason the rule above is not "commands/ must
+        # exist": a plugin with no commands is a normal plugin, and unlike
+        # hooks/ it leaves no orphaned code behind to contradict it. Absence
+        # is only a defect against something that promised otherwise, and the
+        # promise lives in prose.
+        scaffold(self.root)
+        self.assertFalse(os.path.exists(os.path.join(self.root, "commands")))
+        self.assertEqual(C.check(self.root)[0], 0)
+
+    def test_an_empty_commands_directory_is_not_a_finding(self):
+        # Nothing shipped, nothing contradicted -- the same guard the hooks/
+        # rule carries. An empty directory does not survive git anyway; what
+        # would reach an install is the case above, where files are there and
+        # none of them is a command.
+        scaffold(self.root)
+        os.makedirs(os.path.join(self.root, "commands"))
+        self.assertEqual(C.check(self.root)[0], 0)
+
+    def test_a_namespaced_command_counts_as_registered(self):
+        # commands/<namespace>/<name>.md is how a command gets a namespace,
+        # so a package whose commands all live one level down registers plenty
+        # of them. A top-level-only scan would have called that empty and
+        # invented a finding, which is worse than the silence it replaced.
+        scaffold(self.root)
+        os.makedirs(os.path.join(self.root, "commands", "appian"))
+        with open(os.path.join(self.root, "commands", "appian", "init.md"), "w",
+                  encoding="utf-8") as f:
+            f.write("---\nname: init\n---\nbody\n")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 0, msgs)
+
+    def test_a_namespaced_command_file_is_read_like_any_other(self):
+        # The other side of the recursion: counting a nested file as a
+        # registered command while never opening it would trade one blind spot
+        # for a narrower one.
+        scaffold(self.root)
+        os.makedirs(os.path.join(self.root, "commands", "appian"))
+        with open(os.path.join(self.root, "commands", "appian", "init.md"), "wb") as f:
+            f.write(b"---\nname: init\ndesc: \xff\xfe\n---\n")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("commands/appian/init.md" in m for m in msgs), msgs)
+
+    def test_a_command_file_that_leads_nowhere_is_reported(self):
+        # `os.path.isfile` answers False for a dangling link and the loop used
+        # to read that as "not a command file" and move on -- silence over a
+        # name that is in the listing, ends in .md, and resolves to nothing.
+        # Every other referent in this file goes through _referent_problem;
+        # these two directories were the exception, for no reason but that
+        # they were added last.
+        scaffold(self.root)
+        os.makedirs(os.path.join(self.root, "commands"))
+        if not link_dir(os.path.join(self.root, "commands", "appian-init.md"),
+                        os.path.join(self.root, "no-such-target")):
+            self.skipTest("this platform allows neither symlink nor junction")
+        self.assertIn("appian-init.md", os.listdir(os.path.join(self.root, "commands")))
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("dangling" in m for m in msgs), msgs)
 
 
 class WhereTheNameActuallyLeads(TempTree):

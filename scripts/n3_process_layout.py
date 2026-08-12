@@ -6,17 +6,21 @@ a proxy for "these do not overlap", not a proof, and this tells you where every
 node sits -- never where any arrow goes.
 """
 import json
+import os
 import sys
 
-MIN_DX = 150
-MIN_DY = 100
-
-# Same value and same meaning as n2_interface_tree.EXIT_NOT_MEASURED and
-# lint_skills: nothing was checked, which is neither a pass nor a finding.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# The comment here used to open "Same value and same meaning as
+# n2_interface_tree.EXIT_NOT_MEASURED and lint_skills" over a freshly typed
+# `= 3`, which is a copy that knows it is one and says so instead of stopping
+# being one. What survives the import is the part that is about this file:
 # N2's vacuous pass has a narrower form here -- a layout naming no nodes had
 # nothing to compare and reported OK, indistinguishable from a process model
 # that was checked and found clean.
-EXIT_NOT_MEASURED = 3
+from exit_codes import EXIT_NOT_MEASURED  # noqa: E402
+
+MIN_DX = 150
+MIN_DY = 100
 
 # The check ids jump from C3 to C5, and that gap is deliberate rather than an
 # omission to be filled later. C4 was to be a lane check -- "the nominal path

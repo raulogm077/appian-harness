@@ -30,7 +30,8 @@ import json
 import os
 import sys
 
-EXIT_NOT_MEASURED = 3
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from exit_codes import EXIT_NOT_MEASURED  # noqa: E402
 
 
 # Python's type names are not the ones the file is written in. A reader

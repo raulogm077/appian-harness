@@ -13,7 +13,14 @@ So this walks the declarations and checks the referents:
   manifest Claude Code would actually load -- which is the one plugin.json
   points at, not the conventional one, when those differ,
 - every component directory plugin.json declares exists,
-- every skills/<dir> holds a SKILL.md and every agents/<file>.md is readable.
+- every skills/<dir> holds a SKILL.md, and every .md under agents/ and
+  commands/ leads to a file that is inside the package and decodes as text,
+- a commands/ that ships files registers at least one of them as a command.
+
+That last one is the only rule here about something being ABSENT, and it is
+narrow on purpose: shipping no commands at all is a normal thing for a plugin
+to do, so the finding is not "commands/ is missing" but "commands/ is there,
+holds files, and Claude Code takes nothing out of it".
 
 The inventory is physical on purpose: does the referent exist, is it spelled
 the way the declaration spells it, does it lead anywhere, is where it leads
@@ -33,7 +40,8 @@ import os
 import re
 import sys
 
-EXIT_NOT_MEASURED = 3
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from exit_codes import EXIT_NOT_MEASURED  # noqa: E402
 
 # ${CLAUDE_PLUGIN_ROOT}/a/b -- the only path form a hook command may use,
 # because it is the only one Claude Code substitutes. A bare relative path in a
@@ -424,40 +432,93 @@ def check(root):
                 msgs.append("skills/%s/SKILL.md %s, so the directory ships and declares "
                             "nothing" % (entry, problem))
 
-    # commands/ joins agents/ here, and until now nothing looked at it at all:
-    # lint_skills walks skills/, lint_agents walks agents/, and the one
-    # component a user invokes by name had no reader in any of the nine CI
-    # steps. This closes the smaller half -- that the file is there and
-    # decodes. It does NOT close the larger half, and the boundary is the same
-    # one drawn for the hooks manifest: deleting commands/ outright is
-    # legitimate for a package that ships no commands, so the contradiction
-    # that catches it is "the README promises /appian-init and no such file
-    # exists", which is a claim about prose and belongs to
-    # check_readme_claims -- the direction opposite to the skill check it
-    # already makes.
+    # commands/ joins agents/ here, and before this loop existed nothing looked
+    # at it at all: lint_skills walks skills/, lint_agents walks agents/, and
+    # the one component a user invokes by name had no reader in any of the nine
+    # CI steps. What this closes is the file being there, leading somewhere
+    # inside the package, and decoding. It does NOT close "the README promises
+    # /appian-init and no such file exists": that is a claim about prose, it
+    # belongs to check_readme_claims, and the boundary is the same one drawn
+    # for the hooks manifest above -- a package that ships no commands
+    # legitimately has no commands/ directory at all.
+    #
+    # Walked rather than listed, because commands/<namespace>/<name>.md is how
+    # a command gets a namespace. A top-level-only scan reads a package whose
+    # commands all live one level down as a package with none, which would
+    # make the "registers nothing" finding below fire on a perfectly good tree.
     for component, noun in (("agents", "agent"), ("commands", "command")):
         directory = os.path.join(root, component)
         if not os.path.isdir(directory):
             continue
-        for entry in sorted(os.listdir(directory)):
-            path = os.path.join(directory, entry)
-            if not entry.endswith(".md") or not os.path.isfile(path):
-                continue
-            checked += 1
-            # Read, not parsed. What the frontmatter says is lint_agents.py's
-            # subject; what this file establishes is that the bytes are there
-            # and decode -- a file Claude Code cannot read is one it does not
-            # register, silently, exactly like a hook command it cannot find.
-            #
-            # Caught rather than allowed to propagate: a traceback out of a
-            # checker is a broken checker to whoever reads the CI log, and this
-            # is a finding about the package, which is what the run is for.
-            try:
-                with open(path, encoding="utf-8") as f:
-                    f.read()
-            except (OSError, UnicodeDecodeError) as exc:
-                msgs.append("%s/%s cannot be read as UTF-8 text (%s), so the %s it "
-                            "declares does not register" % (component, entry, exc, noun))
+        registered = 0
+        for parent, subdirs, entries in os.walk(directory):
+            # What gets inspected is decided by the NAME, never by os.walk's
+            # verdict on it. A dangling junction keeps its directory attribute
+            # after the target is gone, so Windows hands `appian-init.md` back
+            # in `subdirs` and a loop over `entries` alone never sees it --
+            # measured here, and it is the same blind spot in a new place: the
+            # name is in the listing, ends in .md, and resolves to nothing.
+            # Judged, then not descended into, since whatever sits under a
+            # name that cannot itself register is not registering either.
+            named = sorted(list(entries) + [d for d in subdirs if d.endswith(".md")])
+            subdirs[:] = sorted(d for d in subdirs if not d.endswith(".md"))
+            prefix = os.path.relpath(parent, root).replace(os.sep, "/")
+            for entry in named:
+                if not entry.endswith(".md"):
+                    continue
+                registered += 1
+                checked += 1
+                relative = "%s/%s" % (prefix, entry)
+                # Through _referent_problem like every other referent in this
+                # file, rather than the `os.path.isfile(...) or continue` this
+                # loop used to open with. That guard answered False for a
+                # dangling link and moved on in silence -- a name in the
+                # listing, ending in .md, resolving to nothing -- which is the
+                # precise defect a reviewer had already found in exists_exact
+                # and which these two directories reintroduced by being added
+                # after the fix.
+                problem = _referent_problem(root, relative, True)
+                if problem:
+                    msgs.append("%s %s, so the %s it names does not register"
+                                % (relative, problem, noun))
+                    continue
+                # Read, not parsed. What the frontmatter says is lint_agents.py's
+                # subject; what this file establishes is that the bytes are there
+                # and decode -- a file Claude Code cannot read is one it does not
+                # register, silently, exactly like a hook command it cannot find.
+                #
+                # Caught rather than allowed to propagate: a traceback out of a
+                # checker is a broken checker to whoever reads the CI log, and this
+                # is a finding about the package, which is what the run is for.
+                try:
+                    with open(os.path.join(parent, entry), encoding="utf-8") as f:
+                        f.read()
+                except (OSError, UnicodeDecodeError) as exc:
+                    msgs.append("%s cannot be read as UTF-8 text (%s), so the %s it "
+                                "declares does not register" % (relative, exc, noun))
+
+        # A directory that is scanned for commands and yields none. Files are
+        # there, so this is not the legitimate absence above; none of them is
+        # a command, so the directory ships and declares nothing -- the same
+        # contradiction as a skills/<dir> with no SKILL.md, and the same one
+        # the hooks rule makes about code no manifest invokes.
+        #
+        # A name ending in .md that turned out to be dangling still counts as
+        # registered for this purpose. It has already been reported precisely,
+        # one line up, and adding "and nothing registers" on top would be the
+        # same file reported twice under two descriptions.
+        #
+        # Asked of commands/ only, and not for lack of symmetry: lint_agents
+        # already answers it for agents/, exiting 3 over an agents/ that holds
+        # no .md file. Restating it here would be a second checker with an
+        # opinion about the same tree, which is how this file's agent
+        # frontmatter rule and lint_agents' drifted apart the first time.
+        if component == "commands" and registered == 0:
+            shipped = sorted(os.listdir(directory))
+            if shipped:
+                msgs.append("commands/ ships %d file(s) and none of them is a .md, so no "
+                            "command registers and the directory declares nothing: %s"
+                            % (len(shipped), ", ".join(shipped[:4])))
 
     if checked == 0 and not msgs:
         # Zero referents resolved is not an intact package, it is an

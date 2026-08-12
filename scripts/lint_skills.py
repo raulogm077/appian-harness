@@ -5,11 +5,16 @@ validator by editing its own file. Every entry needs a documented reason.
 """
 import os, re, sys
 
-MAX_DESCRIPTION = 1024
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Imported rather than restated, and re-exported rather than used through the
+# module name: lint_agents.py does `from lint_skills import EXIT_NOT_MEASURED`
+# alongside MAX_DESCRIPTION and has_trigger, and that import is what a test
+# holds. The comment this line replaced claimed the value was "shared with
+# n2_interface_tree and n3_process_layout" while all three typed it out
+# separately -- shared by assertion, not by construction.
+from exit_codes import EXIT_NOT_MEASURED  # noqa: E402
 
-# Shared with n2_interface_tree and n3_process_layout: nothing was checked,
-# which is neither a pass (0) nor a finding (1).
-EXIT_NOT_MEASURED = 3
+MAX_DESCRIPTION = 1024
 
 REQUIRED_SECTIONS = [
     "## Overview",
