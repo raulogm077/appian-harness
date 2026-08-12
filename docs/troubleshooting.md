@@ -232,9 +232,28 @@ cat > "$PROJ/evidence/TASK-3/practices-design.json" <<'JSON'
 }
 JSON
 
-PAYLOAD='{"tool_name":"mcp__x__createInterface","tool_input":{"name":"Foo"},"cwd":"'"$PROJ"'"}'
+cat > "$PROJ/evidence/TASK-3/appian-skill-loaded.json" <<'JSON'
+{
+  "task": "TASK-3",
+  "skill": "appian",
+  "source": "github.com/appian/dev-mcp-skills",
+  "appianVersion": "26.7",
+  "docsMcp": "appian-docs"
+}
+JSON
+
+PAYLOAD='{"tool_name":"mcp__appian-dev__createInterface","tool_input":{"name":"Foo"},"cwd":"'"$PROJ"'"}'
 printf '%s' "$PAYLOAD" | sh "$HARNESS/hooks/run_hook.sh" "$HARNESS" scope-gate
 ```
+
+Two things in there are load-bearing and were missing from this recipe until
+`0.5.3`, which is why it could not reach the answers below. The skill-load
+record is a second thing the gate opens before any write — the tool schemas
+carry no naming conventions and no creation order, so the gate reads a file
+rather than trusting that the skill was loaded — and without it the chain stops
+one reason earlier. And the payload names `appian-dev` because `WRITE_TOOL_RE`
+matches `^mcp__…[Aa]ppian…__`: a server segment that does not name Appian is
+`not a write tool`, and the gate allows it before looking at anything else.
 
 That last line prints `"ask"`, with the reason
 `cannot validate practices-design: no pluginRoot configured`. **This is the

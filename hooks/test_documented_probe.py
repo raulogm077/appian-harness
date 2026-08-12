@@ -238,5 +238,77 @@ class TestTheReadmeProbeRuns(unittest.TestCase):
                                             answer["permissionDecisionReason"]))
 
 
+def recipe_blocks():
+    """The two-block recipe that drives the gate all the way to `allow`.
+
+    `docs/troubleshooting.md` builds a scratch project in one block and
+    continues it in the next, which reads `$PAYLOAD` from the first. They are
+    one script split by a paragraph, so they are run as one.
+    """
+    with open(os.path.join(PLUGIN_ROOT, "docs", "troubleshooting.md"),
+              encoding="utf-8") as f:
+        blocks = FENCE_RE.findall(f.read())
+    build = [b for b in blocks if "mkdir" in b and "run_hook.sh" in b]
+    finish = [b for b in blocks if "CLAUDE_PLUGIN_ROOT=" in b and "$PAYLOAD" in b]
+    return build, finish
+
+
+@unittest.skipIf(SH is None, "no POSIX shell available to run the recipe")
+@unittest.skipIf(SKIP_SLOW, SKIP_REASON)
+class TestTheFullChainRecipeRuns(unittest.TestCase):
+    """The recipe for seeing the whole chain has to produce the chain.
+
+    It promised two answers and, followed exactly, produced neither: the
+    payload was one the gate does not treat as a write, and the fixture was
+    missing the skill-load record the gate opens before any write. Both were
+    invisible to every reader for four releases and to 468 tests, for the same
+    reason as the one-liner -- nobody ran it.
+    """
+
+    def test_the_recipe_reaches_ask_then_allow(self):
+        build, finish = recipe_blocks()
+        self.assertEqual((1, 1), (len(build), len(finish)),
+                         "expected one build block and one continuation in "
+                         "docs/troubleshooting.md; found %d and %d"
+                         % (len(build), len(finish)))
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, SPACED_PROJECT)
+            harness = spaced_copy_of_the_plugin(tmp)
+            # The references the verdict cites live under
+            # skills/appian-best-practices/, which the launcher itself does
+            # not need -- but the gate resolves them before it will accept a
+            # verdict, so the copy needs them too.
+            shutil.copytree(os.path.join(PLUGIN_ROOT, "skills"),
+                            os.path.join(harness, "skills"),
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            script, resolved = runnable(build[0] + "\n" + finish[0],
+                                        _posix(harness), _posix(project))
+            self.assertEqual({"HARNESS", "PROJ"}, resolved)
+            proc = subprocess.run([SH, "-c", script], capture_output=True,
+                                  text=True, timeout=180)
+            self.assertEqual(0, proc.returncode,
+                             "the recipe did not run: %s" % proc.stderr.strip())
+            answers = [json.loads(line)["hookSpecificOutput"]
+                       for line in proc.stdout.strip().splitlines() if line.strip()]
+            self.assertEqual(2, len(answers),
+                             "the recipe probes twice; got %d answer(s): %s"
+                             % (len(answers), proc.stdout.strip()))
+
+            # Without CLAUDE_PLUGIN_ROOT the gate cannot resolve the
+            # references the verdict cites, so it refuses to accept a verdict
+            # it cannot check. That is the documented trap, and it is only
+            # reachable once everything before it is satisfied -- which makes
+            # this assertion a check on the whole fixture, not just the tail.
+            self.assertEqual("ask", answers[0]["permissionDecision"])
+            self.assertIn("no pluginRoot configured",
+                          answers[0]["permissionDecisionReason"])
+
+            self.assertEqual("allow", answers[1]["permissionDecision"],
+                             "the recipe promises the whole chain clears; got "
+                             "%r" % answers[1]["permissionDecisionReason"])
+            self.assertIn("scope and design audit check out",
+                          answers[1]["permissionDecisionReason"])
+
+
 if __name__ == "__main__":
     unittest.main()
