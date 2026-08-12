@@ -51,9 +51,8 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from exit_codes import EXIT_NOT_MEASURED  # noqa: E402
 from lint_skills import parse_frontmatter  # noqa: E402
-
-EXIT_NOT_MEASURED = 3
 
 # Findings fail the build; warnings are printed and do not. Carried on the
 # message itself rather than in a second list beside it, so severity has one

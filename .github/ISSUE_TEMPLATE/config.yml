@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Using the plugin — read Troubleshooting first
-    url: https://github.com/raulogm077/appian-harness#troubleshooting
+    url: https://github.com/raulogm077/appian-harness/blob/main/docs/troubleshooting.md
     about: >-
       Why a gate asked, why the hooks do nothing, why the installed copy is
       behind the repository, how to drive the scope gate to allow. Most usage
