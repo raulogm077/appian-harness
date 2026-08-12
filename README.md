@@ -450,20 +450,33 @@ on one object.
 | `skills/appian-best-practices/references/` | Eleven domain references, numbered `01`–`11`. Every verdict cites into these |
 | `agents/` | Three judging agents: `appian-practices-auditor`, `appian-reviewer`, `appian-verifier` |
 | `hooks/` | One `hooks.json` declaring six hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
-| `scripts/` | Six modules: `validate_verdict.py`, `lint_skills.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `parallel_safety.py`, `check_readme_claims.py` |
+| `scripts/` | Ten modules: `validate_verdict.py`, `lint_skills.py`, `lint_agents.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `parallel_safety.py`, `check_readme_claims.py`, `check_manifest_agreement.py`, `check_package_integrity.py`, `check_evals.py` |
 | `commands/` | One command: `/appian-init`, which adopts the harness into a project |
+| `evals/` | Six eval cases in the layout `claude plugin eval` expects — three routing, three safety. **Never executed**: the runner is in early access. `evals/README.md` says so first, because a suite of unrun cases is preparation, not coverage |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
+| `SECURITY.md` | What this plugin executes on your machine, at which six hook entries, what it reads and writes — and where to report a vulnerability |
+| `CONTRIBUTING.md` | The eight local checks, in the order CI runs them, and the release procedure that keeps the two manifests from drifting again |
 | `CHANGELOG.md` | What each release changed for a project that upgrades and edits nothing. Read it before upgrading: a gate that *stops* firing announces nothing, so that is the only place it is announced |
 | `.github/workflows/` | The checks, on Linux and Windows × Python 3.9 and 3.13 |
 
-The Python carries its own tests — 135 for `scripts/`, 186 for `hooks/`, standard
+The Python carries its own tests — 178 for `scripts/`, 186 for `hooks/`, standard
 library only:
 
 ```
 python3 -m unittest discover -s scripts
 python3 -m unittest discover -s hooks
 python3 scripts/lint_skills.py
+python3 scripts/lint_agents.py
+python3 scripts/check_readme_claims.py
+python3 scripts/check_manifest_agreement.py
+python3 scripts/check_package_integrity.py
+python3 scripts/check_evals.py
 ```
+
+Five of those checkers answer `3`, not `0`, when they were handed nothing to
+inspect. Zero skills linted, zero declared paths resolved, zero eval cases read:
+none of that is a pass, and giving "not measured" its own exit code is what stops
+a green run from meaning two different things.
 
 **The launcher tests are the slow ones, and deliberately so.** They run
 `run_hook.sh` through a real shell with the interpreter search starved, because
