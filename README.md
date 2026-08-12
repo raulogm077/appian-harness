@@ -130,9 +130,49 @@ which reads like a missing plugin and is a missing *marketplace*.
 Installing from a local checkout, quoting a path that contains spaces, and what
 the hooks need on `PATH`: **[docs/installing.md](docs/installing.md)**.
 
-## Your first task
+## Which path is yours
 
-With the three requirements answering and the plugin loaded:
+Three ways to use this, in ascending order of what they cost and what they
+promise. A harness that demands the whole cycle for a label change teaches
+people to route around it, so choose by what you are about to do — not by which
+one sounds the most thorough.
+
+### 1 — Advice, with nothing adopted
+
+Install, and stop there. `appian-best-practices`, `appian-specify` and
+`appian-plan` never read `.claude/appian-harness.json`, and the first of them
+applies whether you write through an MCP server or by hand in Appian Designer.
+So this path needs no project configuration, no `/appian-init` and no MCP
+server: you get the eleven domain references, the Definition of Done, a written
+specification and a task list ordered by dependency.
+
+With no configuration file present every hook returns allow and exits 0. That
+absence **is** the activation switch, not a breakage — nothing blocks, nothing
+is logged, nothing is certified, and a project that never asked to be governed
+is never nagged. If advice was all you wanted, you are finished here.
+
+### 2 — One small change, judged small rather than assumed small
+
+```
+/appian-init          # adopt the harness into this project
+/appian-build         # build exactly one task, then stop
+/appian-verify        # run the gates, record the evidence
+/appian-review        # certify from outside — or record the exemption
+```
+
+SPECIFY and PLAN are skipped. REVIEW is not, because deciding a change is too
+small to review **is** review's work: it is weighed against four exemption
+conditions by someone who did not build it, and who made the call is written
+into the task's evidence. A task nobody routed here has not been found exempt —
+it has been left unexamined.
+
+One consequence catches everybody once. The closure gate cannot see an
+exemption; it looks for a passing `practices-review.json` and nothing else. So
+delete the active task file as soon as the exemption is recorded, or the next
+stop blocks and records debt that is accurate about the absence and misleading
+about the reason.
+
+### 3 — A whole application
 
 ```
 /appian-init          # adopt the harness into this project
@@ -146,6 +186,23 @@ With the three requirements answering and the plugin loaded:
 end mid-task without either the verdicts or a recorded reason. The full
 walkthrough, with what each phase writes and what the gates read, is in
 **[docs/workflow.md](docs/workflow.md)**.
+
+### Before you trust a gate, check that it is alive
+
+Paths 2 and 3 rest on the hooks, and a hook that cannot be launched does not
+fail loudly — it does not run, and the plugin installs, looks healthy and
+enforces nothing. One command settles it rather than assuming, from the root of
+an adopted project:
+
+```
+printf '{"tool_name":"mcp__x__createInterface","tool_input":{"name":"Foo"},"cwd":"'"$PWD"'"}' \
+  | sh "$CLAUDE_PLUGIN_ROOT/hooks/run_hook.sh" "$CLAUDE_PLUGIN_ROOT" scope-gate
+```
+
+A JSON answer means the gates are live. Anything else — most often `sh: command
+not found` on Windows without Git Bash, which is the one configuration where the
+hooks are genuinely silent — means you are on path 1 whether you meant to be or
+not. **[docs/troubleshooting.md](docs/troubleshooting.md)** takes it from there.
 
 ## What is in the box
 

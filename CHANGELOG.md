@@ -8,6 +8,49 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.5.0 — 2026-08-12
+
+Nothing the harness does to your project changed. It is a minor rather than a
+patch for the reason `0.4.0` set down: **`## Your first task` is now `## Which
+path is yours`**, so a bookmark into that section lands somewhere else, and a
+patch number would tell its owner there is nothing to look at.
+
+### Added
+
+**The README says there is more than one way to use this.** Until now it
+documented one: adopt the project, specify, plan, build, verify, review. That is
+the right path for a whole application and the wrong one for a label change, and
+a harness that demands the whole cycle for a label change teaches people to route
+around it — after which it protects nothing, which is the same failure as a gate
+that never runs.
+
+Three paths are now named where somebody first looks:
+
+| | |
+|---|---|
+| Advice, with nothing adopted | `appian-best-practices`, `appian-specify` and `appian-plan` never read `.claude/appian-harness.json`, and the first applies through an MCP server or by hand in Designer. No configuration, no `/appian-init`, no MCP server |
+| One small change | Skips SPECIFY and PLAN. REVIEW is still invoked, because judging a change exempt is review's own work — against four conditions, by somebody who did not build it |
+| A whole application | The cycle as it was already documented |
+
+The first of those was true in the code and stated nowhere. With no
+configuration file every hook returns allow and exits 0; that absence is the
+activation switch, and a reader had no way to know the plugin would sit quiet in
+a project that never asked to be governed.
+
+**A liveness check for the gates, on the way in rather than in
+`docs/troubleshooting.md`.** Paths 2 and 3 rest on the hooks, and a hook that
+cannot be launched does not fail loudly — it does not run, the plugin looks
+healthy, and it enforces nothing. The one configuration where that happens is
+Windows without Git Bash. The check that settles it was already written down; it
+was three pages away from the person who needs it, which is the wrong distance
+for the one failure this plugin cannot announce about itself.
+
+### Changed
+
+**`docs/workflow.md` says which of the three paths it is.** It opens by naming
+the other two and pointing at them, because a document titled *end to end* is
+read as the only way through.
+
 ## 0.4.0 — 2026-08-12
 
 Nothing the harness does to your project changed. It is a minor rather than a

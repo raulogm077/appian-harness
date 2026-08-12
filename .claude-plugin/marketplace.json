@@ -8,7 +8,7 @@
     {
       "name": "appian-harness",
       "description": "A quality harness for building Appian applications with coding agents: lifecycle skills, quality gates, and a verification pyramid that separates building from certifying.",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "source": "./",
       "author": {
         "name": "Raul Gomez Moya"
