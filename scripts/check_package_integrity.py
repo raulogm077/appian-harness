@@ -58,6 +58,32 @@ DRIVE_PREFIX = re.compile(r"^[A-Za-z]:")
 # inside a session is indistinguishable from never having written them.
 COMPONENT_FIELDS = ("commands", "agents", "skills", "hooks", "mcpServers")
 
+# The rest of the boot chain. hooks.json names run_hook.sh and stops; what
+# run_hook.sh starts, and what that in turn imports, no manifest mentions --
+# so a package can lose either one and every declared path still resolves.
+#
+# Written out rather than derived, and the direction of a mistake is why --
+# the argument check_readme_claims already makes for DERIVED_CONFIG_KEYS.
+# Deriving would mean being right about two more languages: shell, for the
+# `$PLUGIN_ROOT/...` that run_hook.sh names, and Python imports, for what
+# harness_hooks.py pulls out of scripts/. Wrong about either and the miss is
+# silent, which is precisely the failure this entry list exists to end. A
+# stale entry here fails loudly on the next run and is fixed in a minute.
+#
+# These are THIS package's files. Like lint_skills.SECTION_EXEMPT, the dict is
+# meant to be edited by whoever adopts the file, not inherited unread.
+REQUIRED_AT_RUNTIME = {
+    "hooks/harness_hooks.py":
+        "the program every hook command starts. run_hook.sh probes an interpreter "
+        "and execs it against this path; with the file gone Python exits with "
+        "`can't open file` and writes nothing to stdout, so the scope gate returns "
+        "no decision and the write it was gating proceeds",
+    "scripts/validate_verdict.py":
+        "imported at module level by hooks/harness_hooks.py, so losing it is not a "
+        "degraded closure gate -- it is an ImportError before any subcommand runs, "
+        "which takes down all six hooks at once and just as quietly",
+}
+
 
 def _load(path):
     with open(path, encoding="utf-8") as f:
@@ -182,22 +208,45 @@ def _referent_problem(root, relative, require_file):
     return None
 
 
-def isfile_exact(root, relative):
-    """os.path.isfile, but case-sensitive and install-contained everywhere."""
-    return _referent_problem(root, relative, True) is None
-
-
-def exists_exact(root, relative):
-    """As isfile_exact, for a referent that may legitimately be a directory."""
-    return _referent_problem(root, relative, False) is None
+# There were two wrappers here, `isfile_exact` and `exists_exact`, returning
+# `_referent_problem(...) is None`. Both are gone, and the reason is worth the
+# four lines it takes to say.
+#
+# `check()` never called them -- it calls `_referent_problem` directly, because
+# it wants the reason and not the bool. So they were public surface with one
+# caller between them, that caller being their own test. And `isfile_exact` is
+# already the name of a *different* function, in `validate_verdict.py`, with the
+# arguments the other way round: `isfile_exact(path, root=None)` against
+# `isfile_exact(root, relative)`. Two strings in, a bool out, both times --
+# so importing the wrong one does not fail, it answers wrongly and says nothing.
+# The one the rest of this repository means by that name is the other one:
+# `hooks/harness_hooks.py` imports it to decide whether a verdict file exists,
+# which is the gate that closes a task.
+#
+# A name collision costs nothing until somebody reaches for it. Deleting the
+# unused half was cheaper than making the two halves agree.
 
 
 def _iter_commands(node):
-    """Yield every command string anywhere in a hooks structure."""
+    """Yield every command string anywhere in a hooks structure.
+
+    Both spellings. A hook may carry its command as a string under `command`
+    or as an argv list under `args`, and reading only the first meant an
+    exec-form hook contributed no referents *and* no warning: the recursion
+    descended into the list, every element was a bare str, and a str node
+    yields nothing. A typo in the path of an exec-form hook was invisible --
+    not even the "names no path under ${CLAUDE_PLUGIN_ROOT}" notice fired,
+    because no command string was ever seen to notice it about.
+    """
     if isinstance(node, dict):
         for key, value in node.items():
             if key == "command" and isinstance(value, str):
                 yield value
+            elif key == "args" and isinstance(value, list):
+                # Joined rather than yielded one by one so a path split across
+                # argv elements still reads as one command to the caller, and
+                # so the no-placeholder notice judges the whole invocation.
+                yield " ".join(a for a in value if isinstance(a, str))
             else:
                 for found in _iter_commands(value):
                     yield found
@@ -282,7 +331,37 @@ def check(root):
                 msgs.append("plugin.json declares %s at %s, which %s"
                             % (field, relative, problem))
 
-    for label, declared, error in _hook_manifests(root, plugin):
+    named_a_plugin_path = False
+    manifests = _hook_manifests(root, plugin)
+    if not manifests:
+        # Nothing declared any hooks. That is legitimate -- plenty of plugins
+        # ship none -- so it is only a finding when the package contradicts
+        # itself: hooks/ full of code and no manifest naming any of it. A
+        # plugin with no hooks has no hooks/ directory; one with the launcher,
+        # the program and no hooks.json installs, looks healthy and invokes
+        # none of it, which is this file's own subject pointed one level up.
+        #
+        # Found by deleting hooks/hooks.json from a copy of this repository
+        # and watching check() return (0, []) -- the six hooks left the
+        # package and the checker whose docstring is about hooks that never
+        # run said nothing. What did fail the build was check_readme_claims,
+        # by raising FileNotFoundError, because the README happens to say
+        # "six hooks": coverage that exists by accident of the prose and
+        # arrives as a traceback rather than a finding.
+        #
+        # Deliberately not keyed on plugin.json's `hooks` field: this repo
+        # does not declare one, hooks are discovered at the conventional
+        # path, so a rule about the declaration would be a no-op on the very
+        # tree the gap was measured in.
+        hooks_dir = os.path.join(root, "hooks")
+        if os.path.isdir(hooks_dir):
+            shipped = [e for e in sorted(os.listdir(hooks_dir)) if e != "__pycache__"]
+            if shipped:
+                msgs.append("hooks/ ships %d file(s) and no hooks manifest declares any "
+                            "of them, so none is ever invoked: %s"
+                            % (len(shipped), ", ".join(shipped[:4])))
+
+    for label, declared, error in manifests:
         # Opening a manifest is deliberately NOT counted as an inspection --
         # only a referent that actually resolved is. A hooks.json declaring
         # `{"hooks": {}}` would otherwise buy a clean "OK every declared path
@@ -312,9 +391,27 @@ def check(root):
 
         for relative in referents:
             checked += 1
+            named_a_plugin_path = True
             problem = _referent_problem(root, relative, True)
             if problem:
                 msgs.append("%s invokes %s, which %s" % (label, relative, problem))
+
+    # Gated on a hook command having *named* a path under the plugin root --
+    # named, not resolved. Naming one is what makes this a package that runs
+    # hooks, and it stays true when the file it names is the missing one, so a
+    # tree that lost both run_hook.sh and the program behind it reports both.
+    #
+    # Not gated on "a manifest was walked", which was the first shape and the
+    # wrong one: `{"hooks": {}}` walks a manifest and declares nothing, and
+    # the gate would have turned that from NOT MEASURED into a finding about
+    # files a package with no hooks has no reason to carry.
+    if named_a_plugin_path:
+        for relative in sorted(REQUIRED_AT_RUNTIME):
+            checked += 1
+            problem = _referent_problem(root, relative, True)
+            if problem:
+                msgs.append("%s %s -- and it is %s"
+                            % (relative, problem, REQUIRED_AT_RUNTIME[relative]))
 
     skills_dir = os.path.join(root, "skills")
     if os.path.isdir(skills_dir):
@@ -327,16 +424,29 @@ def check(root):
                 msgs.append("skills/%s/SKILL.md %s, so the directory ships and declares "
                             "nothing" % (entry, problem))
 
-    agents_dir = os.path.join(root, "agents")
-    if os.path.isdir(agents_dir):
-        for entry in sorted(os.listdir(agents_dir)):
-            path = os.path.join(agents_dir, entry)
+    # commands/ joins agents/ here, and until now nothing looked at it at all:
+    # lint_skills walks skills/, lint_agents walks agents/, and the one
+    # component a user invokes by name had no reader in any of the nine CI
+    # steps. This closes the smaller half -- that the file is there and
+    # decodes. It does NOT close the larger half, and the boundary is the same
+    # one drawn for the hooks manifest: deleting commands/ outright is
+    # legitimate for a package that ships no commands, so the contradiction
+    # that catches it is "the README promises /appian-init and no such file
+    # exists", which is a claim about prose and belongs to
+    # check_readme_claims -- the direction opposite to the skill check it
+    # already makes.
+    for component, noun in (("agents", "agent"), ("commands", "command")):
+        directory = os.path.join(root, component)
+        if not os.path.isdir(directory):
+            continue
+        for entry in sorted(os.listdir(directory)):
+            path = os.path.join(directory, entry)
             if not entry.endswith(".md") or not os.path.isfile(path):
                 continue
             checked += 1
             # Read, not parsed. What the frontmatter says is lint_agents.py's
             # subject; what this file establishes is that the bytes are there
-            # and decode -- an agent Claude Code cannot read is one it does not
+            # and decode -- a file Claude Code cannot read is one it does not
             # register, silently, exactly like a hook command it cannot find.
             #
             # Caught rather than allowed to propagate: a traceback out of a
@@ -346,8 +456,8 @@ def check(root):
                 with open(path, encoding="utf-8") as f:
                     f.read()
             except (OSError, UnicodeDecodeError) as exc:
-                msgs.append("agents/%s cannot be read as UTF-8 text (%s), so the agent it "
-                            "declares does not register" % (entry, exc))
+                msgs.append("%s/%s cannot be read as UTF-8 text (%s), so the %s it "
+                            "declares does not register" % (component, entry, exc, noun))
 
     if checked == 0 and not msgs:
         # Zero referents resolved is not an intact package, it is an

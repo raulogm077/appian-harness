@@ -31,7 +31,8 @@ MINIMAL_HOOKS = {
                     '"${CLAUDE_PLUGIN_ROOT}" session-start'}]}]}}
 
 
-def scaffold(root, with_launcher=True, plugin_extra=None, hooks=MINIMAL_HOOKS):
+def scaffold(root, with_launcher=True, plugin_extra=None, hooks=MINIMAL_HOOKS,
+             with_boot_chain=True):
     os.makedirs(os.path.join(root, "hooks"))
     os.makedirs(os.path.join(root, ".claude-plugin"))
     if hooks is not None:
@@ -39,6 +40,15 @@ def scaffold(root, with_launcher=True, plugin_extra=None, hooks=MINIMAL_HOOKS):
             json.dump(hooks, f)
     if with_launcher:
         open(os.path.join(root, "hooks", "run_hook.sh"), "w").close()
+    if with_boot_chain:
+        # A tree that declares a hook is not complete at run_hook.sh: the
+        # launcher execs a program and that program imports another, and
+        # neither is named by any manifest. The fixture grew these when the
+        # checker learned to require them -- what "a complete tree" means
+        # changed, so the tree that stands for one had to change with it.
+        os.makedirs(os.path.join(root, "scripts"))
+        open(os.path.join(root, "hooks", "harness_hooks.py"), "w").close()
+        open(os.path.join(root, "scripts", "validate_verdict.py"), "w").close()
     manifest = {"name": "p", "version": "1.0.0"}
     manifest.update(plugin_extra or {})
     with open(os.path.join(root, ".claude-plugin", "plugin.json"), "w",
@@ -136,21 +146,24 @@ class CaseSensitivity(TempTree):
     def test_a_case_mismatch_fails_on_every_platform(self):
         # NTFS and APFS resolve Run_Hook.sh to run_hook.sh; ext4 does not. A
         # plugin that installs on a laptop and dies on Linux is the exact
-        # asymmetry isfile_exact exists to stop.
+        # asymmetry the case-exact resolution exists to stop.
         scaffold(self.root, with_launcher=False)
         open(os.path.join(self.root, "hooks", "Run_Hook.sh"), "w").close()
         code, msgs = C.check(self.root)
         self.assertEqual(code, 1, msgs)
         self.assertTrue(any("run_hook.sh" in m for m in msgs), msgs)
 
-    def test_isfile_exact_reads_the_listing_not_the_filesystem_s_opinion(self):
+    def test_resolution_reads_the_listing_not_the_filesystem_s_opinion(self):
         # Stated directly as well as through check(), so a regression points
-        # at the function rather than at whichever caller noticed first.
+        # at the function rather than at whichever caller noticed first. Aimed
+        # at `_referent_problem` because that is what check() calls: a test
+        # that exercises a wrapper nothing else uses proves the wrapper, and
+        # the shipped path is free to rot underneath it.
         os.makedirs(os.path.join(self.root, "hooks"))
         open(os.path.join(self.root, "hooks", "Run_Hook.sh"), "w").close()
-        self.assertTrue(C.isfile_exact(self.root, "hooks/Run_Hook.sh"))
-        self.assertFalse(C.isfile_exact(self.root, "hooks/run_hook.sh"))
-        self.assertFalse(C.isfile_exact(self.root, "Hooks/Run_Hook.sh"))
+        self.assertIsNone(C._referent_problem(self.root, "hooks/Run_Hook.sh", True))
+        self.assertIsNotNone(C._referent_problem(self.root, "hooks/run_hook.sh", True))
+        self.assertIsNotNone(C._referent_problem(self.root, "Hooks/Run_Hook.sh", True))
 
 
 class ComponentsResolve(TempTree):
@@ -183,6 +196,82 @@ class ComponentsResolve(TempTree):
             f.write("---\nname: a\ndescription: Use when x.\nskills: [nope]\n---\nbody\n")
         code, msgs = C.check(self.root)
         self.assertEqual(code, 0, msgs)
+
+
+class TheBootChain(TempTree):
+    """hooks.json names the launcher and stops. The chain does not."""
+
+    def test_the_program_the_launcher_starts_must_be_in_the_tree(self):
+        # Measured on a copy of this repository: delete hooks/harness_hooks.py
+        # and check() returned (0, []). run_hook.sh execs an interpreter
+        # against that path, Python exits `can't open file` writing nothing to
+        # stdout, and a scope gate that emits no decision does not gate.
+        scaffold(self.root)
+        os.remove(os.path.join(self.root, "hooks", "harness_hooks.py"))
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("harness_hooks.py" in m for m in msgs), msgs)
+
+    def test_what_that_program_imports_must_be_in_the_tree_too(self):
+        # The fourth link, and the worst of them: harness_hooks.py imports
+        # validate_verdict at module level, so its absence is not a degraded
+        # closure gate, it is an ImportError before any subcommand runs --
+        # all six hooks down at once.
+        scaffold(self.root)
+        os.remove(os.path.join(self.root, "scripts", "validate_verdict.py"))
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("validate_verdict.py" in m for m in msgs), msgs)
+
+    def test_a_package_declaring_no_hook_path_is_not_asked_for_the_chain(self):
+        # The gate. These files belong to a package that runs hooks through
+        # the plugin root; requiring them of one that does not would be this
+        # checker inventing a defect. `{"hooks": {}}` still reads NOT MEASURED.
+        scaffold(self.root, with_launcher=False, hooks={"hooks": {}},
+                 with_boot_chain=False)
+        self.assertEqual(C.check(self.root)[0], C.EXIT_NOT_MEASURED)
+
+    def test_a_tree_missing_both_the_launcher_and_the_program_reports_both(self):
+        # Gated on a plugin-root path being *named*, not resolved, which is
+        # what keeps the second finding from hiding behind the first.
+        scaffold(self.root, with_launcher=False, with_boot_chain=False)
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("run_hook.sh" in m for m in msgs), msgs)
+        self.assertTrue(any("harness_hooks.py" in m for m in msgs), msgs)
+
+
+class ExecFormHooks(TempTree):
+    def test_a_typo_in_an_exec_form_hook_is_seen(self):
+        # Reading only `command` meant an argv-form hook produced no referent
+        # AND no warning: the recursion reached the list, every element was a
+        # bare str, and a str node yields nothing. check() returned (0, []).
+        scaffold(self.root, hooks={"hooks": {"Stop": [{"hooks": [
+            {"type": "command",
+             "args": ["sh", "${CLAUDE_PLUGIN_ROOT}/hooks/TYPO.sh", "x"]}]}]}})
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("TYPO.sh" in m for m in msgs), msgs)
+
+    def test_an_exec_form_hook_naming_a_real_file_passes(self):
+        scaffold(self.root, hooks={"hooks": {"Stop": [{"hooks": [
+            {"type": "command",
+             "args": ["sh", "${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.sh", "x"]}]}]}})
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 0, msgs)
+
+
+class Commands(TempTree):
+    def test_a_command_file_that_does_not_decode_is_reported(self):
+        # commands/ had no reader in any of the nine CI steps, and it is the
+        # one component a user invokes by name.
+        scaffold(self.root)
+        os.makedirs(os.path.join(self.root, "commands"))
+        with open(os.path.join(self.root, "commands", "appian-init.md"), "wb") as f:
+            f.write(b"---\nname: appian-init\ndesc: \xff\xfe\n---\nbody\n")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("commands/appian-init.md" in m for m in msgs), msgs)
 
 
 class WhereTheNameActuallyLeads(TempTree):
@@ -257,6 +346,39 @@ class ManifestDeclaredPaths(TempTree):
         code, msgs = C.check(self.root)
         self.assertEqual(code, 1)
         self.assertTrue(any("cmds" in m for m in msgs), msgs)
+
+    def test_hook_code_with_nothing_declaring_it_fails(self):
+        # Measured against a copy of this repository: delete hooks/hooks.json
+        # and check() returned (0, []). Six hooks left the package and the
+        # checker whose whole subject is hooks that never run said nothing.
+        scaffold(self.root)
+        os.remove(os.path.join(self.root, "hooks", "hooks.json"))
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("no hooks manifest declares" in m for m in msgs), msgs)
+
+    def test_a_plugin_that_ships_no_hooks_at_all_is_not_a_failure(self):
+        # The other half, and the reason the rule is not "hooks.json must
+        # exist": shipping no hooks is a normal thing for a plugin to do. The
+        # contradiction is code with nothing invoking it, not absence.
+        os.makedirs(os.path.join(self.root, ".claude-plugin"))
+        with open(os.path.join(self.root, ".claude-plugin", "plugin.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"name": "p", "version": "1.0.0"}, f)
+        os.makedirs(os.path.join(self.root, "skills", "real"))
+        open(os.path.join(self.root, "skills", "real", "SKILL.md"), "w").close()
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 0, msgs)
+
+    def test_a_declared_hooks_manifest_that_is_absent_is_reported(self):
+        # Already true before this test existed -- `hooks` is one of
+        # COMPONENT_FIELDS, so the declared path goes through the same loop
+        # as every other declared path. Pinned here because "it happens to
+        # work" and "it is held to working" are different states.
+        scaffold(self.root, hooks=None, plugin_extra={"hooks": "./gone.json"})
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1, msgs)
+        self.assertTrue(any("gone.json" in m for m in msgs), msgs)
 
     def test_a_declared_hooks_manifest_is_the_one_that_gets_walked(self):
         # Checking hooks/hooks.json by convention while plugin.json points at
