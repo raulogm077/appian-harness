@@ -16,23 +16,34 @@ and once in `docs/troubleshooting.md` where the recipe assigns it. A rule that
 flagged those is a rule people learn to scroll past, which is the argument
 `ci.yml` makes against restating checks.
 
-So this does not inspect the command. It runs it, against a real `sh`, and
-checks both answers the README promises. Two properties fall out of doing it
-that way rather than by pattern:
+So this does not inspect the command. It runs it, against a real `sh`, in both
+documents that publish one, and checks both answers the prose promises. Four
+defects fall out of executing rather than pattern-matching, and each was
+confirmed by putting it back and watching this go red:
 
-- **A published block has to define the variables it uses.** The substitution
-  below looks for `HARNESS=` and `PROJ=` and fails when either is missing --
-  which is precisely the shape of the defect, whatever variable name a future
-  edit reaches for.
-- **The payload has to be one the gate classifies as a write.** The second
-  case asserts `ask`, and a `tool_name` whose server segment does not name
-  Appian answers `allow` / `not a write tool` instead. That was the older bug,
-  living in `docs/troubleshooting.md`: prose promising `ask` attached to a
-  payload that could never produce it.
+- **A published block has to spell out the paths it expands.** The
+  substitution looks for `HARNESS=`, `PROJ=` or the `/abs/path/to/...`
+  placeholders and fails naming whichever never resolved -- the shape of the
+  `0.5.0` bug, whatever variable a later edit reaches for.
+- **The payload has to be one the gate classifies as a write.** A `tool_name`
+  whose server segment does not name Appian answers `allow` / `not a write
+  tool`, so the `ask` case fails on it. That was the older bug in
+  `docs/troubleshooting.md`: prose promising `ask` attached to a payload that
+  could never produce it.
+- **The launcher has to be named absolutely.** That same block invoked
+  `hooks/run_hook.sh` relative, which resolves only from inside the checkout
+  -- not where a reader stands when they have a project to ask about, and the
+  surrounding text never told them to move.
+- **Both paths have to be quoted.** Unquoted, the probe splits on the first
+  space. This one is why the fixtures below build directories whose names
+  contain spaces instead of accepting whatever `tempfile` hands over: it
+  failed on the author's checkout, under `Proyecto Claude Code Cowork`, and
+  would have passed on a GitHub runner forever.
 """
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -45,10 +56,26 @@ from test_run_hook_launcher import SH, SKIP_REASON, SKIP_SLOW
 
 HOOKS = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_ROOT = os.path.dirname(HOOKS)
-README = os.path.join(PLUGIN_ROOT, "README.md")
+
+# Both documents, because the payload bug lived in the one the README copied
+# from. Two copies of a probe are two things that drift, and a regression test
+# covering one of them is the half-coverage this plugin keeps arguing against.
+PROBE_DOCS = ("README.md", os.path.join("docs", "troubleshooting.md"))
 
 FENCE_RE = re.compile(r"^```[^\n]*\n(.*?)^```", re.MULTILINE | re.DOTALL)
 ASSIGN_RE = re.compile(r"^(HARNESS|PROJ)=")
+
+# Not every block invoking the launcher is a probe, and running the rest would
+# make this cry wolf. `docs/troubleshooting.md` also holds a 26-line recipe
+# that builds a project first, and a one-liner continuing it that reads
+# `$PAYLOAD` from the block above; `SECURITY.md` quotes the hooks.json command
+# line with a literal `<subcommand>`, to describe it rather than to be run.
+# A probe is the block that asks the gate one question and carries its own
+# payload -- so: a tool_name, and no state built on the way.
+def _is_probe(block):
+    return ("run_hook.sh" in block
+            and '"tool_name"' in block
+            and "mkdir" not in block)
 
 
 def _posix(path):
@@ -62,32 +89,82 @@ def _posix(path):
     return path.replace("\\", "/")
 
 
-def documented_blocks():
-    with open(README, encoding="utf-8") as f:
-        return [b for b in FENCE_RE.findall(f.read()) if "run_hook.sh" in b]
+def documented_probes():
+    """Every liveness probe a reader could paste, keyed by the document."""
+    found = []
+    for relative in PROBE_DOCS:
+        with open(os.path.join(PLUGIN_ROOT, relative), encoding="utf-8") as f:
+            for block in FENCE_RE.findall(f.read()):
+                if _is_probe(block):
+                    found.append((relative.replace("\\", "/"), block))
+    return found
 
 
 def runnable(block, harness, proj):
     """The published block with its placeholder paths pointed at real ones.
 
-    Returns (script, defined). `defined` is what the block assigned for
-    itself; a block that assigns neither is a block the reader cannot run,
-    which is the whole failure being guarded against.
+    Two styles, because the two documents use two: the README assigns
+    `HARNESS=` and `PROJ=` on their own lines, and `docs/troubleshooting.md`
+    writes `/abs/path/to/...` inline. Returns (script, resolved), where
+    `resolved` says which paths the block made substitutable. A block that
+    resolves neither is a block the reader cannot run, which is the whole
+    failure being guarded against.
     """
-    out, defined = [], set()
+    out, resolved = [], set()
     for line in block.splitlines():
         match = ASSIGN_RE.match(line)
         if match:
             name = match.group(1)
-            defined.add(name)
+            resolved.add(name)
             out.append('%s="%s"' % (name, harness if name == "HARNESS" else proj))
-        else:
-            out.append(line)
-    return "\n".join(out), defined
+            continue
+        # Longest first: `/abs/path/to/appian-harness` contains no other
+        # placeholder, but a shorter pattern replaced first would leave the
+        # tail of a longer one behind.
+        for placeholder, value, name in (
+            ("/abs/path/to/appian-harness", harness, "HARNESS"),
+            ("/abs/path/to/scratch-project", proj, "PROJ"),
+            ("/abs/path/to/your-project", proj, "PROJ"),
+            ("/abs/path/to/project", proj, "PROJ"),
+        ):
+            if placeholder in line:
+                line = line.replace(placeholder, value)
+                resolved.add(name)
+        out.append(line)
+    return "\n".join(out), resolved
 
 
 def decision(stdout):
     return json.loads(stdout)["hookSpecificOutput"]
+
+
+# Both sides of every probe are given a directory whose name contains a space,
+# on purpose. The unquoted form in `docs/troubleshooting.md` failed here and
+# would have passed on CI forever: a GitHub runner checks out to
+# `/home/runner/work/appian-harness/appian-harness`, and the defect only
+# appears when a path has a space in it. `C:/Users/you/My Documents/…` is an
+# ordinary place to keep a checkout, so the test supplies what the runner
+# cannot.
+SPACED_HARNESS = "a harness with spaces"
+SPACED_PROJECT = "a project with spaces"
+
+
+def spaced_copy_of_the_plugin(tmp):
+    """The launcher and what it imports, under a path containing a space.
+
+    `run_hook.sh` launches `$PLUGIN_ROOT/hooks/harness_hooks.py`, which imports
+    `validate_verdict` out of `scripts/`, and the program reads its version
+    from `.claude-plugin/`. Those three, and no more: copying is what makes
+    the harness side of the quoting testable on a runner whose own checkout
+    path is well behaved.
+    """
+    root = os.path.join(tmp, SPACED_HARNESS)
+    os.makedirs(root)
+    skip_caches = shutil.ignore_patterns("__pycache__")
+    for part in ("hooks", "scripts", ".claude-plugin"):
+        shutil.copytree(os.path.join(PLUGIN_ROOT, part),
+                        os.path.join(root, part), ignore=skip_caches)
+    return root
 
 
 @unittest.skipIf(SH is None, "no POSIX shell available to run the probe")
@@ -96,26 +173,29 @@ class TestTheReadmeProbeRuns(unittest.TestCase):
     """What the README hands a reader has to work when they paste it."""
 
     def setUp(self):
-        blocks = documented_blocks()
-        # Not `[0]`. If a second runnable probe ever appears, this test is
-        # silently checking one of them and reporting on both, which is the
-        # kind of partial coverage that reads as complete.
+        self.probes = documented_probes()
+        # One per document, asserted rather than assumed. A third appearing
+        # means somebody added a probe this test is silently not running,
+        # which is the partial coverage that reads as complete.
         self.assertEqual(
-            1, len(blocks),
-            "README.md should hold exactly one fenced block invoking "
-            "run_hook.sh; found %d. Teach this test which one is the probe "
-            "before adding another." % len(blocks))
-        self.block = blocks[0]
+            [doc for doc, _ in self.probes],
+            ["README.md", "docs/troubleshooting.md"],
+            "expected exactly one liveness probe in each document; found %r. "
+            "Teach this test about the new one before adding it."
+            % [doc for doc, _ in self.probes])
 
-    def _run(self, project_root):
-        script, defined = runnable(self.block, _posix(PLUGIN_ROOT), _posix(project_root))
+    def _run(self, block, harness_root, project_root):
+        script, resolved = runnable(block, _posix(harness_root), _posix(project_root))
         self.assertEqual(
-            {"HARNESS", "PROJ"}, defined,
-            "the published probe must assign the paths it expands, because a "
-            "reader has neither in their environment: CLAUDE_PLUGIN_ROOT is "
-            "substituted inside hooks.json and is empty in a shell, and $PWD "
-            "under Git Bash is an MSYS path the gate cannot resolve. Missing: "
-            "%s" % sorted({"HARNESS", "PROJ"} - defined))
+            {"HARNESS", "PROJ"}, resolved,
+            "a published probe must spell out both paths it needs, because "
+            "the reader has neither: CLAUDE_PLUGIN_ROOT is substituted inside "
+            "hooks.json and is empty in a shell, and $PWD under Git Bash is "
+            "an MSYS path the gate cannot resolve. Unresolved: %s"
+            % sorted({"HARNESS", "PROJ"} - resolved))
+        # No `cwd=`: a probe that only runs from one directory is a probe that
+        # fails for the reader standing in their own project, and nothing in
+        # the surrounding prose tells them to move.
         proc = subprocess.run([SH, "-c", script], capture_output=True,
                               text=True, timeout=180)
         self.assertEqual(
@@ -129,10 +209,13 @@ class TestTheReadmeProbeRuns(unittest.TestCase):
         # asked to be governed. The gate has to say so rather than stay quiet,
         # because "allow" with no reason is indistinguishable from a hook that
         # never ran -- which is the question the probe exists to settle.
-        with tempfile.TemporaryDirectory() as project:
-            answer = decision(self._run(project))
-            self.assertEqual("allow", answer["permissionDecision"])
-            self.assertIn("not configured", answer["permissionDecisionReason"])
+        for doc, block in self.probes:
+            with self.subTest(doc=doc), tempfile.TemporaryDirectory() as tmp:
+                project = os.path.join(tmp, SPACED_PROJECT)
+                os.makedirs(project)
+                answer = decision(self._run(block, spaced_copy_of_the_plugin(tmp), project))
+                self.assertEqual("allow", answer["permissionDecision"])
+                self.assertIn("not configured", answer["permissionDecisionReason"])
 
     def test_adopted_project_with_no_active_task_answers_ask(self):
         # The assertion that catches a payload the gate does not treat as a
@@ -140,17 +223,19 @@ class TestTheReadmeProbeRuns(unittest.TestCase):
         # tool_name like `mcp__x__createInterface` answers `allow` with the
         # reason `not a write tool`: still JSON, so the hook is provably
         # alive, and the wrong answer to the question the reader is asking.
-        with tempfile.TemporaryDirectory() as project:
-            os.makedirs(os.path.join(project, ".claude"))
-            with open(os.path.join(project, ".claude", "appian-harness.json"),
-                      "w", encoding="utf-8") as f:
-                json.dump({"evidenceDir": "evidence"}, f)
-            answer = decision(self._run(project))
-            self.assertEqual(
-                "ask", answer["permissionDecision"],
-                "an adopted project with no active task must ask; got %r with "
-                "the reason %r" % (answer["permissionDecision"],
-                                   answer["permissionDecisionReason"]))
+        for doc, block in self.probes:
+            with self.subTest(doc=doc), tempfile.TemporaryDirectory() as tmp:
+                project = os.path.join(tmp, SPACED_PROJECT)
+                os.makedirs(os.path.join(project, ".claude"))
+                with open(os.path.join(project, ".claude", "appian-harness.json"),
+                          "w", encoding="utf-8") as f:
+                    json.dump({"evidenceDir": "evidence"}, f)
+                answer = decision(self._run(block, spaced_copy_of_the_plugin(tmp), project))
+                self.assertEqual(
+                    "ask", answer["permissionDecision"],
+                    "an adopted project with no active task must ask; got %r "
+                    "with the reason %r" % (answer["permissionDecision"],
+                                            answer["permissionDecisionReason"]))
 
 
 if __name__ == "__main__":

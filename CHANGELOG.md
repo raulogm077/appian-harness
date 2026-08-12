@@ -21,17 +21,33 @@ checkout and a temporary project, and runs it through a real `sh` — asserting
 both answers the README states: `allow` with a reason for an unconfigured
 project, `ask` for an adopted one with no active task.
 
-Two properties come from executing rather than pattern-matching, and both were
-verified by reintroducing the original defects and watching the suite go red:
+Running them turned up **two further defects in the probe
+`docs/troubleshooting.md` publishes**, neither of which any amount of reading
+had caught:
 
-- **A published block must define the paths it expands.** The substitution
-  looks for `HARNESS=` and `PROJ=` and fails naming whichever is missing. That
-  is the shape of the `0.5.0` bug — `$CLAUDE_PLUGIN_ROOT` is substituted inside
-  `hooks.json` and empty in a shell, `$PWD` under Git Bash is an MSYS path —
-  and it holds whatever variable a future edit reaches for.
+- It invoked `hooks/run_hook.sh` **relative**, which resolves only from inside
+  the checkout — not where a reader stands when they have a project to ask
+  about, and nothing in the surrounding text told them to move.
+- It left both paths **unquoted**, so the command splits on the first space.
+  It failed here, under `Proyecto Claude Code Cowork`, and would have passed on
+  a GitHub runner forever — which is why the fixtures now build directories
+  whose names contain spaces rather than accepting whatever `tempfile` hands
+  over. `C:/Users/you/My Documents/…` is an ordinary place to keep a checkout.
+
+Four properties in total come from executing rather than pattern-matching, and
+each was verified by reintroducing its defect and watching the suite go red:
+
+- **A published block must spell out the paths it expands.** The substitution
+  looks for `HARNESS=`, `PROJ=` or the `/abs/path/to/…` placeholders and fails
+  naming whichever never resolved. That is the shape of the `0.5.0` bug —
+  `$CLAUDE_PLUGIN_ROOT` is substituted inside `hooks.json` and empty in a
+  shell, `$PWD` under Git Bash is an MSYS path — and it holds whatever variable
+  a future edit reaches for.
 - **The payload must be one the gate classifies as a write.** A `tool_name`
   whose server segment does not name Appian answers `allow` / `not a write
-  tool`, and the `ask` assertion fails on it. That was the older bug.
+  tool`, and the `ask` assertion fails on it.
+- **The launcher must be named absolutely**, and **both paths must be quoted**
+  — the two found by running it.
 
 A lint was the first idea and the corpus refused it: `${CLAUDE_PLUGIN_ROOT}`
 appears legitimately eight times across `skills/` and `agents/`, where the text
