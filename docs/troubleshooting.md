@@ -111,13 +111,27 @@ Two ways out, and the first is the one to prefer:
   --ignored` lists everything that would travel; it is clean when it prints
   nothing.
 
-Either way the repair is to fix the source and install again — installing
-replaces the cached copy, so there is nothing to go and delete inside
-`~/.claude/plugins/cache`.
+Either way the repair is a **remove-and-reinstall of the marketplace, not an
+update**: `claude plugin marketplace remove`, add it back, install. What an
+update will not do is clean. On 2026-08-12 the installed copy carried a
+`docs/architecture.md` that has never existed in git — an uncommitted draft
+swept up by a directory install at `0.2.4` — and it was still there at `0.5.2`,
+five releases later, having survived every update in between **including
+GitHub-sourced auto-updates**. Updates lay the new files over the old
+directory and delete nothing, so a file that enters the cache once stays until
+the marketplace is removed and re-added. The plugin being run accumulates what
+every past install ever carried, which is a stronger version of the drift this
+section opened with.
 
 Comparing an installed copy with `git ls-files` turns up one file that no
 source produced: `.in_use/<pid>`, which Claude Code writes to mark the copy as
-in use. That one belongs there. A `__pycache__` entry appearing after the hooks
+in use. That one belongs there. **Compare names first and contents second, and
+normalize line endings before trusting a content diff**: the install converts
+LF to CRLF on Windows, so a byte-level comparison reports every text file
+changed — on 2026-08-12 that was 88 files "differing" and zero real
+differences once `\r\n` was normalized to `\n`. A reader who skips that step
+concludes their copy is corrupted, which is the wrong answer that looks like a
+right one. A `__pycache__` entry appearing after the hooks
 have run does not, and no longer happens — `run_hook.sh` exports
 `PYTHONDONTWRITEBYTECODE`, because bytecode written next to the source is
 exactly what makes the copy stop being comparable.

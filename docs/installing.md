@@ -128,7 +128,12 @@ they answered correctly in six cases, including the whole chain ending in
 active task; ask for an object outside `allowedObjects`; **allow** with an
 active task, the object in scope and a valid passing `practices-design.json`;
 block on a stop with a task in flight and no verdicts; and
-approve-with-recorded-debt on the repeat stop. The closure chain was then run
+approve-with-recorded-debt on the repeat stop. Since `0.5.2` the first two of
+those answers are not a dated claim but a test: `hooks/test_documented_probe.py`
+extracts the published probe from this documentation and runs it on every CI
+run, and since `0.5.3` it runs the whole-chain recipe the same way — which is
+how that recipe was found to have never produced either answer it promised.
+The closure chain was then run
 again end to end against a scratch project, in the order a real task meets it:
 block with the task in flight and nothing produced; **approve** once
 `practices-implementation`, `practices-review` and `practices-qa` were present,
@@ -151,7 +156,14 @@ raulogm077/appian-harness` and `claude plugin install
 appian-harness@appian-harness --scope user` were executed in that order against
 this repository, the marketplace registered with a `github` source, and the
 installed copy under `~/.claude/plugins/cache` compared file by file against
-`git ls-files` — identical, 38 files, nothing extra. What that leaves untested
+`git ls-files` — identical, 38 files, nothing extra. Repeating that comparison
+on 2026-08-12, after five releases of auto-updates, changed the answer in both
+directions: the 88 tracked files were identical in content once line endings
+were normalized (the install writes CRLF on Windows, so a byte-level diff
+reports everything changed and nothing is), and the copy carried **one file
+git never had** — an uncommitted draft a directory install had swept up five
+releases earlier, which updates never remove. Both halves of that
+are now written up in [Troubleshooting](troubleshooting.md#the-installed-copy-carries-files-that-are-not-in-git). What that leaves untested
 is the slash-command surface itself, the scope prompt step 2 opens, and the
 restart in step 3. What is no longer hypothetical is the failure mode. This
 section used to open with a bare `/plugin install appian-harness`; the first

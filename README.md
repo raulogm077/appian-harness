@@ -244,7 +244,7 @@ there.
 | `CHANGELOG.md` | What each release changed for a project that upgrades and edits nothing. Read it before upgrading: a gate that *stops* firing announces nothing, so that is the only place it is announced |
 | `.github/workflows/` | The checks, on Linux and Windows × Python 3.9 and 3.13 |
 
-The Python carries its own tests — 280 for `scripts/`, 189 for `hooks/`, standard
+The Python carries its own tests — 285 for `scripts/`, 189 for `hooks/`, standard
 library only:
 
 ```

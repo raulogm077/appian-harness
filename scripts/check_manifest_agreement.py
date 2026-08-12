@@ -1,4 +1,4 @@
-"""Holds the two manifests that declare a version to the same answer.
+"""Holds everything that declares a version to the same answer.
 
 `.claude-plugin/marketplace.json` sat at 0.2.1 while `.claude-plugin/plugin.json`
 said 0.2.4 -- stale across three consecutive releases. Nothing broke, and that
@@ -13,9 +13,23 @@ rather than tagging, and says so in the plugin's own terms:
 
 So the drift was one release away from blocking the thing it was invisible to.
 
+The changelog is the third place a version has to appear, and until 0.6.0 it
+was the one place nothing compared. CONTRIBUTING's release procedure said "add
+the CHANGELOG entry" as step 2 -- the only step of the four with no check
+behind it, in a repository whose CHANGELOG opens by saying it is the *only*
+announcement a gate that stops firing ever gets. A release whose CHANGELOG has
+no entry ships behaviour nobody was told about, so a CHANGELOG.md that exists
+must carry a `## <version>` heading for the version the manifests declare.
+
+A CHANGELOG.md that does not exist is deliberately not this file's finding:
+the shipped documents link to it (`docs/troubleshooting.md` for one), so its
+absence breaks the cross-document link check in `check_readme_claims.py`.
+Reporting it here too would be the restated-check drift `ci.yml` argues
+against.
+
 A pass here is not a promise that `tag` will succeed. The same probe showed it
 also refuses on a dirty working tree, which belongs to the release procedure
-and not to this file. All this reports is that the two manifests agree.
+and not to this file.
 
 Deliberately not a call to `claude plugin validate`: CI does not have the CLI,
 and a check that only runs where the CLI happens to be installed is the same
@@ -28,6 +42,7 @@ to compare.
 """
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -129,6 +144,21 @@ def check(root):
             msgs.append("marketplace entry %r declares version %s but plugin.json says "
                         "%s; `claude plugin tag` refuses to tag a release whose "
                         "manifests disagree" % (name, entry_version, version))
+
+    changelog = os.path.join(root, "CHANGELOG.md")
+    if os.path.isfile(changelog):
+        with open(changelog, encoding="utf-8") as f:
+            text = f.read()
+        # `## <version>` followed by a boundary, not merely a prefix: the entry
+        # for 0.5.10 must not satisfy a release of 0.5.1. Anchored to `## ` so
+        # a version mentioned in a paragraph -- every entry here cites earlier
+        # releases in prose -- cannot stand in for the heading a reader scans
+        # for.
+        if not re.search(r"^##\s+%s(\s|$)" % re.escape(version), text, re.MULTILINE):
+            msgs.append("CHANGELOG.md has no `## %s` entry, and the changelog is the "
+                        "only announcement a behaviour change ever gets; write the "
+                        "entry before releasing (CONTRIBUTING.md, Releasing, step 2)"
+                        % version)
     return (1 if msgs else 0), msgs
 
 
@@ -137,7 +167,10 @@ def main(root):
     for m in msgs:
         print("%s: %s" % ("ERROR" if code == 1 else "NOT MEASURED", m))
     if code == 0:
-        print("OK both manifests declare the same name and version")
+        if os.path.isfile(os.path.join(root, "CHANGELOG.md")):
+            print("OK the manifests agree and CHANGELOG.md carries the entry")
+        else:
+            print("OK both manifests declare the same name and version")
     return code
 
 
