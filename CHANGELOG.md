@@ -8,6 +8,40 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.5.3 — 2026-08-12
+
+### Fixed
+
+**The recipe for seeing the whole chain produced neither answer it promised.**
+`docs/troubleshooting.md` builds a scratch project, probes the scope gate, and
+says the result is `ask` with `cannot validate practices-design: no pluginRoot
+configured` — then `allow` with `scope and design audit check out` once
+`CLAUDE_PLUGIN_ROOT` is exported. Followed exactly it produced `allow` with
+`not a write tool`, and nothing else, for two independent reasons:
+
+- the payload was `mcp__x__createInterface`, which `WRITE_TOOL_RE` does not
+  match, so the gate allowed it before looking at the fixture at all — the
+  same defect `0.5.1` fixed in the one-liner, in the block beside it;
+- the fixture never wrote `appian-skill-loaded.json`, a second file the gate
+  opens before any write. With the payload corrected the chain stopped one
+  reason early, on a requirement the recipe did not mention and did not build.
+
+Both are fixed, and the recipe now says why each piece is load-bearing.
+
+### Added
+
+**`hooks/test_documented_probe.py` runs that recipe too**, as one script across
+its two blocks, asserting `ask` on the pluginRoot trap and then `allow` on the
+whole chain. Each defect was confirmed by putting it back: the payload turns
+the first answer into `allow`, and removing the skill record turns the last one
+into `ask`.
+
+The first assertion is worth more than it looks. The pluginRoot trap is only
+reachable once everything before it is satisfied — active task, object in
+`allowedObjects`, atomicity budget, skill record, a structurally valid verdict
+about this task and phase — so reaching it at all is a check on the entire
+fixture rather than on its tail.
+
 ## 0.5.2 — 2026-08-12
 
 ### Added
