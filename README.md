@@ -137,6 +137,13 @@ promise. A harness that demands the whole cycle for a label change teaches
 people to route around it, so choose by what you are about to do — not by which
 one sounds the most thorough.
 
+They are not a commitment. One file decides which one you are on: run
+`/appian-init` and a path-1 project becomes a governed one from the next tool
+call; delete `.claude/appian-harness.json` and every hook goes back to
+returning allow. Nothing about the choice is announced to a server or written
+anywhere you cannot reverse, so starting on the cheapest path costs nothing if
+the work turns out to deserve more.
+
 ### 1 — Advice, with nothing adopted
 
 Install, and stop there. `appian-best-practices`, `appian-specify` and
