@@ -72,7 +72,11 @@ jobs:
       # a release. Not a call to `claude plugin validate`: CI has no CLI, and a
       # check that only runs where the CLI happens to be installed is the same
       # absent-gate problem run_hook.sh exists to prevent.
-      - name: The two manifests declare the same version
+      #
+      # Since 0.6.0 the same script holds the changelog to the release: the
+      # CHANGELOG is the only announcement a behaviour change ever gets, and
+      # "add the entry" was the one release step with no check behind it.
+      - name: The manifests and the changelog declare the same version
         run: python scripts/check_manifest_agreement.py
 
       # Every test here imports harness_hooks.py directly, which proves the

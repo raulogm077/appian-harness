@@ -8,6 +8,52 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.6.0 — 2026-08-12
+
+### Added
+
+**A release with no changelog entry now fails the build.**
+`check_manifest_agreement.py` holds a third thing to the version the manifests
+declare: `CHANGELOG.md` must carry a `## <version>` heading for it. It was the
+one step of the release procedure with no check behind it — in the repository
+whose changelog opens by saying it is the only announcement a gate that stops
+firing ever gets. The heading match is anchored: an entry for `0.5.10` does not
+vouch for `0.5.1`, and a version mentioned in a paragraph is not an entry. A
+missing `CHANGELOG.md` is deliberately not this check's finding — the shipped
+documents link to it, so its absence already breaks the link check — and this
+entry is the first the new rule verifies.
+
+**Documentation alignment is a named release step.** CONTRIBUTING's procedure
+gains step 3: read the release's diff asking which sentences in `README.md` and
+`docs/` it makes false, and fix them in the same release. The mechanical edges
+were already held — counts and links by `check_readme_claims.py`, published
+commands by `hooks/test_documented_probe.py` — but no check notices a paragraph
+describing last release's behaviour, so the procedure now says whose job that
+is.
+
+### Fixed
+
+Two claims in the documentation were compared against a real installation and
+lost. Both corrections are in `docs/troubleshooting.md` and
+`docs/installing.md`:
+
+- **"Installing replaces the cached copy" was false for updates.** The
+  installed copy carried a `docs/architecture.md` that has never existed in
+  git — an uncommitted draft swept up by a directory install at `0.2.4` — and
+  it survived five releases of updates, including GitHub-sourced auto-updates.
+  Updates lay new files over the old directory and delete nothing. The repair
+  is a remove-and-reinstall of the marketplace, and the documentation now says
+  so.
+- **The file-by-file comparison needed a line-ending caveat.** The install
+  writes CRLF on Windows, so a byte-level diff of the 2026-08-12 copy reported
+  all 88 files changed when zero were. Names first, contents second, normalize
+  `\r\n` before trusting a difference.
+
+Verified along the way, unchanged: `command -v python3` resolves to the
+WindowsApps alias exactly as the slow-hooks entry describes, and the
+`gitCommitSha` comparison correctly identified the installed `0.5.2` as one
+release behind.
+
 ## 0.5.3 — 2026-08-12
 
 ### Fixed

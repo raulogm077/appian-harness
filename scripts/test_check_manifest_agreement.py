@@ -151,5 +151,63 @@ class ReportedRatherThanRaised(unittest.TestCase):
         self.assertTrue(any("plugins[0]" in m and "null" in m for m in msgs))
 
 
+class ChangelogCarriesTheRelease(unittest.TestCase):
+    """Step 2 of the release procedure, as a check instead of a sentence.
+
+    CONTRIBUTING said "add the CHANGELOG entry" and nothing verified it -- the
+    only step of the four with no gate behind it, in a repository whose
+    changelog opens by saying it is the only announcement a gate that stops
+    firing ever gets. These hold the new rule: a CHANGELOG.md that exists must
+    carry a heading for the version the manifests declare.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def changelog(self, text):
+        with open(os.path.join(self.root, "CHANGELOG.md"), "w",
+                  encoding="utf-8") as f:
+            f.write(text)
+
+    def test_an_entry_for_the_released_version_passes(self):
+        write_pair(self.root, "0.6.0", "0.6.0")
+        self.changelog("# Changelog\n\n## 0.6.0 — 2026-08-12\n\nWords.\n")
+        self.assertEqual(C.check(self.root)[0], 0)
+
+    def test_a_bump_with_no_entry_is_caught_and_names_the_step(self):
+        # The drift this exists for: both manifests moved, the changelog did
+        # not, and the release ships behaviour nobody was told about.
+        write_pair(self.root, "0.6.0", "0.6.0")
+        self.changelog("# Changelog\n\n## 0.5.3 — 2026-08-12\n\nWords.\n")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("## 0.6.0" in m and "CONTRIBUTING" in m for m in msgs))
+
+    def test_a_longer_version_is_not_mistaken_for_its_prefix(self):
+        # `0.5.10` contains `0.5.1`. An unanchored search would let the entry
+        # for the newer release vouch for the older one forever.
+        write_pair(self.root, "0.5.1", "0.5.1")
+        self.changelog("# Changelog\n\n## 0.5.10 — 2027-01-01\n\nWords.\n")
+        self.assertEqual(C.check(self.root)[0], 1)
+
+    def test_a_version_mentioned_in_prose_is_not_an_entry(self):
+        # Every entry here cites earlier releases in its body. A paragraph
+        # saying "0.6.0 fixed this" is not the heading a reader scans for.
+        write_pair(self.root, "0.6.0", "0.6.0")
+        self.changelog("# Changelog\n\n## 0.5.3\n\nAnd 0.6.0 will fix it.\n")
+        self.assertEqual(C.check(self.root)[0], 1)
+
+    def test_no_changelog_at_all_is_not_this_checkers_finding(self):
+        # Deliberate division of labour: the shipped documents link to
+        # CHANGELOG.md, so its absence breaks the cross-document link check in
+        # check_readme_claims.py. Reporting it here too is the restated-check
+        # drift ci.yml argues against -- and every earlier test in this file
+        # builds a root with no changelog, which is also why this branch stays
+        # quiet rather than NOT_MEASURED.
+        write_pair(self.root, "0.6.0", "0.6.0")
+        self.assertEqual(C.check(self.root)[0], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

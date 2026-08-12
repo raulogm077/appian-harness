@@ -114,9 +114,10 @@ you did test in place, delete `.claude/appian-harness.json`, `evidence/` and
 # 1. bump BOTH manifests to the new version
 #    .claude-plugin/plugin.json and .claude-plugin/marketplace.json
 # 2. add the CHANGELOG entry
-# 3. verify they agree before tagging
+# 3. align the documentation with what the release changes
+# 4. verify manifests and changelog agree before tagging
 python scripts/check_manifest_agreement.py
-# 4. tag (validates both manifests itself, and refuses if they disagree)
+# 5. tag (validates both manifests itself, and refuses if they disagree)
 claude plugin tag --dry-run
 claude plugin tag --push
 ```
@@ -124,7 +125,23 @@ claude plugin tag --push
 Step 1 says **both** because the marketplace entry sat three releases behind
 `plugin.json` without anything noticing: nothing at install time reads it, so
 the drift was invisible right up to the point where it would have blocked a
-release. Step 3 is that becoming a command you can run.
+release. Step 4 is that becoming a command you can run.
+
+Step 2 is enforced, not requested: since `0.6.0`,
+`check_manifest_agreement.py` fails when `CHANGELOG.md` has no `## <version>`
+entry for the version the manifests declare — it was the one step of these
+with no check behind it, in a repository whose changelog opens by saying it is
+the only announcement a gate that stops firing ever gets.
+
+Step 3 is the part a check cannot do for you, so here is what it means
+concretely: read the release's diff asking **which sentences in `README.md`
+and `docs/` it makes false**, and fix those in the same release. The
+mechanical edges are held for you — `check_readme_claims.py` pins every count
+and cross-document link, and `hooks/test_documented_probe.py` executes the
+commands the documentation publishes — but neither can notice that a paragraph
+still describes last release's behaviour in prose. Every documented command
+that changed gets run once before it ships; six of the six that had never been
+run turned out to be broken (`0.5.1`–`0.5.3`), which is the entire argument.
 
 Two refusals, both observed against a throwaway repository rather than inferred
 from the documentation.
@@ -137,7 +154,7 @@ release's. With `plugin.json` at 0.2.4 and the marketplace entry at 0.2.1,
 ✘ Version mismatch: plugin.json says "0.2.4" but .claude-plugin\marketplace.json plugins[0].version says "0.2.1". plugin.json wins at install time, so update the marketplace entry to "0.2.4" (or remove it) before tagging.
 ```
 
-That is why step 3 sits before step 4 and not after: it is the same check, run
+That is why step 4 sits before step 5 and not after: it is the same check, run
 where the CLI is not — on your machine before you reach for the tag, and in CI,
 which has no `claude` binary at all.
 
