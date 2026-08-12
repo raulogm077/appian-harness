@@ -8,6 +8,41 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.5.2 — 2026-08-12
+
+### Added
+
+**The probe the README hands a reader is now run by the test suite.** `0.5.1`
+fixed two documented commands that could not do what the prose beside them
+promised; nothing in 466 tests had noticed, because not one of them executed a
+command out of the documentation. `hooks/test_documented_probe.py` extracts the
+fenced block that invokes `run_hook.sh`, points its placeholder paths at the
+checkout and a temporary project, and runs it through a real `sh` — asserting
+both answers the README states: `allow` with a reason for an unconfigured
+project, `ask` for an adopted one with no active task.
+
+Two properties come from executing rather than pattern-matching, and both were
+verified by reintroducing the original defects and watching the suite go red:
+
+- **A published block must define the paths it expands.** The substitution
+  looks for `HARNESS=` and `PROJ=` and fails naming whichever is missing. That
+  is the shape of the `0.5.0` bug — `$CLAUDE_PLUGIN_ROOT` is substituted inside
+  `hooks.json` and empty in a shell, `$PWD` under Git Bash is an MSYS path —
+  and it holds whatever variable a future edit reaches for.
+- **The payload must be one the gate classifies as a write.** A `tool_name`
+  whose server segment does not name Appian answers `allow` / `not a write
+  tool`, and the `ask` assertion fails on it. That was the older bug.
+
+A lint was the first idea and the corpus refused it: `${CLAUDE_PLUGIN_ROOT}`
+appears legitimately eight times across `skills/` and `agents/`, where the text
+already tells the reader to resolve it, and once in `docs/troubleshooting.md`
+where the recipe assigns it. Flagging those would have been a check people
+learn to scroll past, which protects nothing.
+
+Two slow tests, gated by the existing `APPIAN_HARNESS_SKIP_SLOW` opt-out
+alongside the launcher suite, and importing that module's shell-finder rather
+than carrying a second copy of where Git for Windows hides `sh.exe`.
+
 ## 0.5.1 — 2026-08-12
 
 ### Fixed
