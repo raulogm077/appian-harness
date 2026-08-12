@@ -49,6 +49,13 @@ jobs:
       - name: Skill frontmatter lint
         run: python scripts/lint_skills.py
 
+      # The three agents are as much the product as the seven skills, and for
+      # four releases nothing looked at them: lint_skills.py walks skills/ and
+      # stops. An agent's description decides whether it is ever dispatched,
+      # which is the same job a skill description does and was going unjudged.
+      - name: Agent frontmatter lint
+        run: python scripts/lint_agents.py
+
       # Counts in prose drift. This plugin's drifted three times in one
       # working session -- hooks, skills, test totals -- and a reader caught
       # it every time, a check caught it never. It is a script rather than an
@@ -56,6 +63,33 @@ jobs:
       # drift is cheap to fix.
       - name: README's self-description matches the tree
         run: python scripts/check_readme_claims.py
+
+      # The marketplace entry sat three releases behind plugin.json without
+      # anything noticing, because nothing at install time reads it -- plugin.json
+      # wins and the entry version is silently ignored. What does read it is
+      # `claude plugin tag`, which refuses to tag a release whose manifests
+      # disagree, so the drift was invisible right up until it would have blocked
+      # a release. Not a call to `claude plugin validate`: CI has no CLI, and a
+      # check that only runs where the CLI happens to be installed is the same
+      # absent-gate problem run_hook.sh exists to prevent.
+      - name: The two manifests declare the same version
+        run: python scripts/check_manifest_agreement.py
+
+      # Every test here imports harness_hooks.py directly, which proves the
+      # program is correct and says nothing about whether Claude Code can start
+      # it. hooks.json names paths; a hook whose command cannot be found does not
+      # ask and does not block -- it does not run, and the plugin installs, looks
+      # healthy and enforces nothing.
+      - name: Everything the manifests reference is in the tree
+        run: python scripts/check_package_integrity.py
+
+      # `claude plugin eval` is in early access and has never scored these cases.
+      # What can be checked without the runner is that a case has something
+      # scoring it, and that the something is not a copy of the prompt -- a
+      # grader that rewards the prompt's vocabulary scores well while the task
+      # goes undone, which is the confident green this plugin argues against.
+      - name: Eval cases are well-formed
+        run: python scripts/check_evals.py
 
       # No step here re-checks that the deferrable list in the document and
       # in `DEFERRABLE_CRITERIA` agree, or that every reference file has

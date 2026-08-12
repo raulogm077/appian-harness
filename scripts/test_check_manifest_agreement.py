@@ -1,0 +1,114 @@
+"""The checker that catches manifest drift has to be able to catch it.
+
+Mostly small broken pairs of manifests, confirming it says so. The one test
+that earns its keep is the last: it runs against this repository, where the
+drift it describes actually happened.
+"""
+import json
+import os
+import shutil
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import check_manifest_agreement as C  # noqa: E402
+
+
+def write_pair(root, plugin_version, entry_version, plugin_name="p", entry_name="p"):
+    d = os.path.join(root, ".claude-plugin")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "plugin.json"), "w", encoding="utf-8") as f:
+        json.dump({"name": plugin_name, "version": plugin_version}, f)
+    with open(os.path.join(d, "marketplace.json"), "w", encoding="utf-8") as f:
+        json.dump({"name": "m", "plugins": [{"name": entry_name, "version": entry_version,
+                                             "source": "./"}]}, f)
+
+
+def write_raw(root, filename, text):
+    d = os.path.join(root, ".claude-plugin")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, filename), "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+class VersionAgreement(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def test_matching_versions_pass(self):
+        write_pair(self.root, "0.2.4", "0.2.4")
+        self.assertEqual(C.check(self.root)[0], 0)
+
+    def test_the_drift_that_actually_happened_is_caught(self):
+        # marketplace.json sat at 0.2.1 while plugin.json had moved on to 0.2.4.
+        write_pair(self.root, "0.2.4", "0.2.1")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("0.2.1" in m and "0.2.4" in m for m in msgs))
+
+    def test_name_disagreement_is_caught(self):
+        write_pair(self.root, "0.2.4", "0.2.4", plugin_name="a", entry_name="b")
+        self.assertEqual(C.check(self.root)[0], 1)
+
+    def test_no_marketplace_is_not_measured(self):
+        # A plugin can ship through someone else's marketplace and carry none
+        # of its own. That is not a failure, and it is not an agreement either.
+        d = os.path.join(self.root, ".claude-plugin")
+        os.makedirs(d)
+        with open(os.path.join(d, "plugin.json"), "w", encoding="utf-8") as f:
+            json.dump({"name": "p", "version": "1.0.0"}, f)
+        self.assertEqual(C.check(self.root)[0], C.EXIT_NOT_MEASURED)
+
+    def test_missing_plugin_json_is_a_failure(self):
+        self.assertEqual(C.check(self.root)[0], 1)
+
+    def test_this_repository_agrees(self):
+        root = os.path.join(os.path.dirname(__file__), "..")
+        self.assertEqual(C.check(root)[0], 0)
+
+
+class SilenceIsNotAgreement(unittest.TestCase):
+    """The three ways this could report agreement while comparing nothing.
+
+    Each is a branch the checker already handles; none was exercised, and an
+    unexercised branch in a checker is the same unverified claim the plugin
+    spends a README arguing against.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def test_an_entry_with_no_version_at_all_is_caught(self):
+        # The vacuous green this guards: written as
+        # `if entry_version and entry_version != version`, a marketplace entry
+        # that simply omits the field agrees with every release forever.
+        write_raw(self.root, "plugin.json", '{"name": "p", "version": "1.0.0"}')
+        write_raw(self.root, "marketplace.json",
+                  '{"name": "m", "plugins": [{"name": "p", "source": "./"}]}')
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("no version" in m for m in msgs))
+
+    def test_a_plugin_json_missing_its_version_is_caught(self):
+        # Without the name/version guard both sides read as None, None == None,
+        # and the run passes having compared two absences.
+        write_raw(self.root, "plugin.json", '{"name": "p"}')
+        write_raw(self.root, "marketplace.json",
+                  '{"name": "m", "plugins": [{"name": "p", "source": "./"}]}')
+        self.assertEqual(C.check(self.root)[0], 1)
+
+    def test_unparseable_json_is_reported_rather_than_raised(self):
+        # A traceback out of CI names a line of this file; a message names the
+        # manifest that is broken. Only one of those tells the reader what to fix.
+        write_raw(self.root, "plugin.json", '{"name": "p", "version": "1.0.0"}')
+        write_raw(self.root, "marketplace.json", "{not json at all")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("marketplace.json" in m for m in msgs))
+
+
+if __name__ == "__main__":
+    unittest.main()
