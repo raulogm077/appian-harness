@@ -2,6 +2,16 @@
 
 > Part of the [appian-harness](../README.md) documentation.
 
+This document is the longest of the three ways in — the whole cycle, for a whole
+application. The other two are shorter on purpose and are described where
+somebody first looks, in [Which path is
+yours](../README.md#which-path-is-yours): advice with nothing adopted, which
+needs no configuration and no MCP server, and one small change, which skips
+SPECIFY and PLAN and may resolve REVIEW as exempt. They are not lesser versions
+of what follows; they are the right answer to a smaller question, and reaching
+for this page when one of them fits is how a harness earns a reputation for
+getting in the way.
+
 ## How it is used, end to end
 
 One small task, all the way through. Say the request is *"users need to see the
