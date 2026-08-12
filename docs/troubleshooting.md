@@ -172,8 +172,13 @@ To settle it rather than guess, feed a hook a payload the way Claude Code does:
 
 ```
 printf '{"tool_name":"mcp__appian-dev__createInterface","tool_input":{"name":"Foo"},"cwd":"/abs/path/to/project"}' \
-  | sh hooks/run_hook.sh /abs/path/to/appian-harness scope-gate
+  | sh "/abs/path/to/appian-harness/hooks/run_hook.sh" "/abs/path/to/appian-harness" scope-gate
 ```
+
+Absolute and quoted, both deliberately. Relative would work only from inside
+the checkout, which is not where you are standing when you have a project to
+ask about; unquoted breaks the moment either path contains a space, and on
+Windows `C:/Users/you/My Documents/…` is an ordinary place to keep a checkout.
 
 In a project with no config that prints `"permissionDecision":"allow"` with the
 reason `appian-harness not configured for this project`; with a config and no
