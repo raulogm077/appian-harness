@@ -50,9 +50,21 @@ in early access and does not respond on the account this plugin is developed on,
 neither `init` nor the runner. Six and not forty: forty unexecuted cases would
 be more impressive and exactly as unverified, and the trap in prompt evals is
 not too few cases — it is graders that reward the vocabulary of the prompt while
-the task goes undone. Three routing, three safety, one of them the `0.2.4`
-regression. `evals/README.md` says "never been executed" in its first sentence
-and a test asserts the caveat is still there.
+the task goes undone. Three routing, three safety.
+
+**None of them guards a hook, and an earlier draft of this entry said one did.**
+It called a case "the `0.2.4` regression", which was wrong twice over: `0.2.4`
+is the release that *removed* that behaviour, and no prompt-level eval can reach
+the hook layer at all. The hooks fire on real tool events — a prompt is text, so
+there is no `tool_name`, no failure, and nothing injected; reverting the fix
+would not move that case's score by a point. What each case does have is a lever
+in the plugin's own **text**: the read-failure case measures whether
+`appian-build`'s "after a failure, never retry blind" — correct, and scoped to
+writes — leaks onto reads, which is the kind of case where the arm *with* the
+plugin can score worse than the arm without it.
+
+`evals/README.md` says "never been executed" in its first sentence and a test
+asserts the caveat is still there.
 
 **Issue templates**, which ask for the four things every hook report needs and
 nobody sends unprompted: plugin version, OS, the Python the launcher found, and
