@@ -17,16 +17,24 @@ nothing.
 ```
 
 **From a local checkout instead**, which is the route to take while working on
-the plugin itself:
+the plugin itself — from a session standing in the directory that *contains*
+the checkout:
 
 ```
-/plugin marketplace add "C:\Users\you\My Projects\appian-harness"
+/plugin marketplace add ./appian-harness
 ```
+
+Not an absolute path, however quoted: the slash command rejects those outright
+— see *The checkout path* below for what was measured.
 
 Those two differ in more than the argument. A GitHub source installs what is
-committed; a directory source copies the working tree **as it stands, including
-files `.gitignore` excludes** — see [The installed copy carries files that are
-not in git](troubleshooting.md#the-installed-copy-carries-files-that-are-not-in-git).
+committed; a directory source has been observed copying the working tree **as
+it stands, including files `.gitignore` excludes** — see [The installed copy
+carries files that are not in
+git](troubleshooting.md#the-installed-copy-carries-files-that-are-not-in-git),
+including the 2026-08-14 measurement where a directory install delivered only
+tracked files, which is the risk becoming historical rather than the warning
+becoming wrong.
 
 **2. Install the plugin from that marketplace, by its full name.**
 
@@ -63,27 +71,32 @@ marketplaces already registered with your installation, and this one is not
 among them until step 1 runs.
 
 **The checkout path, and what to do about spaces.** This applies to the local
-route only — a GitHub `owner/repo` argument has no spaces to lose.
-`/plugin marketplace add`
-takes a directory containing `.claude-plugin/marketplace.json`, a direct path to
-a `marketplace.json`, a GitHub `owner/repo`, or a git URL. The documented
-local-path examples are all relative and none of them contains a space, so
-**there is no documented quoting rule** for the case that matters if your
-checkout lives under `My Projects` or `Documents and Settings`. Try the
-double-quoted absolute path first, as written above. If the argument was split
-on the space, the error names a path truncated at the first one —
-`C:\Users\you\My` rather than the folder you meant — which is how that failure
-is told apart from a path that is simply wrong.
+route only — a GitHub `owner/repo` argument has no spaces to lose. An earlier
+version of this section admitted there was no documented quoting rule and said
+to try the double-quoted absolute path first. On 2026-08-14 that advice was
+executed against a checkout under `Proyecto Claude Code Cowork` — three spaces
+— and the question dissolved rather than getting answered: **the slash command
+rejects every absolute path before touching the disk**, with backslashes and
+with forward slashes alike, answering
 
-Two routes avoid the question instead of answering it, and either beats guessing
-twice:
+```
+Invalid marketplace source format. Try: owner/repo, https://..., or ./path
+```
 
-- **Type a relative path with no space in it.** Start Claude Code in the
-  directory that *contains* the checkout and add it as `./appian-harness`. That
-  is the shape the documentation shows, and the argument stays space-free
-  however many spaces the ancestors of the path have.
-- **Use the shell commands rather than the slash commands**, where the quoting
-  rule is your shell's and you already know it:
+That error's list is the whole accepted grammar. Quoting never gets a chance
+to matter, because the only local form the slash command takes is a `./`
+relative path — which is space-free however many spaces the ancestors of your
+checkout have. Two things about it, both measured the same day:
+
+- **It resolves against the session's working directory**, so stand in the
+  directory that *contains* the checkout and add `./appian-harness`. From the
+  wrong directory the failure names a path with a missing separator —
+  `...Cowork.claude-plugin\marketplace.json` — which reads like a corrupted
+  install and is only a `./` resolved somewhere you did not mean.
+- **The shell route remains for absolute paths**, where the quoting rule is
+  your shell's and you already know it. (Whether the CLI accepts a
+  space-bearing absolute directory source has not itself been measured — what
+  is measured is that the slash command never will:)
 
   ```sh
   claude plugin marketplace add "/path/with spaces/appian-harness"
@@ -148,29 +161,40 @@ message with exit 2, 0 on a clean input, and **3 on an input neither of them
 understands** — a component tree of unrecognised types for N2, a layout naming
 no nodes for N3. Both of those returned 0 until 2026-08-09.
 
-The three installation steps are **not verified as slash commands**: `/plugin
-marketplace add` and `/plugin install` run inside Claude Code, so nobody here
-can type them from a shell. Their CLI equivalents were run, which is a weaker
-claim rather than the same one: on 2026-08-09 `claude plugin marketplace add
-raulogm077/appian-harness` and `claude plugin install
-appian-harness@appian-harness --scope user` were executed in that order against
-this repository, the marketplace registered with a `github` source, and the
-installed copy under `~/.claude/plugins/cache` compared file by file against
-`git ls-files` — identical, 38 files, nothing extra. Repeating that comparison
+The three installation steps **were verified as slash commands on 2026-08-14**,
+typed by a person inside Claude Code — for a long time the one surface nobody
+here could exercise, because slash commands cannot be run from a shell. What
+that session established, each answer observed rather than assumed: absolute
+paths are rejected outright (the grammar finding above); `./appian-harness`
+from the containing directory registers; `/plugin install
+appian-harness@appian-harness` opens the scope prompt and installs at `user`
+scope; `marketplace remove` uninstalls the plugin exactly as
+[Troubleshooting](troubleshooting.md) warns; a first re-add from GitHub failed
+with a transient `EBUSY` lock **whose retry succeeded with nothing deleted**,
+against the error text's own advice; and the rebuilt copy matched git name for
+name and byte for byte once line endings were normalized. Before that, the CLI
+equivalents had been run — a weaker claim rather than the same one: on
+2026-08-09 `claude plugin marketplace add raulogm077/appian-harness` and
+`claude plugin install appian-harness@appian-harness --scope user` were
+executed in that order against this repository, the marketplace registered
+with a `github` source, and the installed copy under `~/.claude/plugins/cache`
+compared file by file against `git ls-files` — identical, 38 files, nothing
+extra. Repeating that comparison
 on 2026-08-12, after five releases of auto-updates, changed the answer in both
 directions: the 88 tracked files were identical in content once line endings
 were normalized (the install writes CRLF on Windows, so a byte-level diff
 reports everything changed and nothing is), and the copy carried **one file
 git never had** — an uncommitted draft a directory install had swept up five
 releases earlier, which updates never remove. Both halves of that
-are now written up in [Troubleshooting](troubleshooting.md#the-installed-copy-carries-files-that-are-not-in-git). What that leaves untested
-is the slash-command surface itself, the scope prompt step 2 opens, and the
-restart in step 3. What is no longer hypothetical is the failure mode. This
-section used to open with a bare `/plugin install appian-harness`; the first
-person to follow it copied that first code block, and it answered `Plugin
-"appian-harness" not found in any marketplace` (field experience). Hence the
-order, stated as steps. The quoting of a path containing spaces is unverified in
-a different way — the documentation does not address it at all, which is why the
-section names a form to try first and two routes that do not depend on the
-answer, rather than presenting one as settled.
+are now written up in [Troubleshooting](troubleshooting.md#the-installed-copy-carries-files-that-are-not-in-git).
+The 2026-08-14 session closed that gap — and closed the reinstall question the
+2026-08-12 ghost had opened: the remove-and-reinstall rebuilt the copy clean,
+the file git never had gone with it. What is no longer hypothetical is the
+failure mode either. This section used to open with a bare `/plugin install
+appian-harness`; the first person to follow it copied that first code block,
+and it answered `Plugin "appian-harness" not found in any marketplace` (field
+experience). Hence the order, stated as steps. And the quoting question this
+section once named a form to *try* for is settled the same way, by a person
+running it: there is nothing to quote, because the slash command accepts no
+absolute path at all.
 

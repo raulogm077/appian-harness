@@ -8,6 +8,46 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.6.1 — 2026-08-14
+
+The first time a person other than the author installed this plugin, and the
+documentation lost four more claims to the attempt. All of it in the install
+documents; nothing the harness does to a project changed.
+
+### Fixed
+
+**The local-install advice could never have worked.** `docs/installing.md`
+said to try the double-quoted absolute path first and told the reader how to
+recognise the argument splitting on a space. Neither outcome is reachable:
+`/plugin marketplace add` rejects **every absolute path before touching the
+disk** — backslashes or forward slashes — answering `Invalid marketplace
+source format. Try: owner/repo, https://..., or ./path`, and that list is the
+whole accepted grammar. The quoting question this section was written around
+never gets a chance to arise. Both documents now teach the one local form that
+registers, `./appian-harness` from the directory that contains the checkout,
+with the measured trap attached: the relative path resolves against the
+session's working directory, and from the wrong one the error names a path
+with a missing separator, which reads like a corrupted install and is not one.
+
+### Added
+
+**The slash-command surface is verified, by a person.** The one paragraph of
+`installing.md` that admitted nobody here could type a slash command now
+records what happened when somebody did: registration, the scope prompt,
+`user` scope, `marketplace remove` uninstalling the plugin exactly as warned,
+and a rebuilt copy identical to git — 88 of 88 tracked files, the `0.2.4`
+ghost gone with it, which also closes the reinstall question `0.6.0` left
+open: a remove-and-reinstall cleans what updates never do.
+
+**A transient `EBUSY` on `marketplace add` gets its own entry.** The error
+tells you to delete a directory by hand; the plain retry succeeded with
+nothing deleted. The entry says to try the cheap thing first.
+
+**The directory-source warning is dated, not retired.** A 2026-08-14 directory
+install delivered only tracked files, where the 2026-08-09 one swept in
+`.pytest_cache/` and `__pycache__/`. The observed risk is historical; the
+advice to clean the tree stands as insurance.
+
 ## 0.6.0 — 2026-08-12
 
 ### Added
