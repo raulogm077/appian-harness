@@ -46,10 +46,13 @@ Migrate rather than let them coexist:
 
 2. **Add it back under the new name.** Same command as *Installing* step 1,
    pointed at the same checkout, pulled to a version where
-   `.claude-plugin/marketplace.json` already reads `"name": "appian-harness"`:
+   `.claude-plugin/marketplace.json` already reads `"name": "appian-harness"`
+   — from a session standing in the directory that *contains* the checkout,
+   because the slash command accepts no absolute path (measured 2026-08-14;
+   the grammar is `owner/repo`, a URL, or a `./` relative path):
 
    ```
-   /plugin marketplace add "C:\Users\you\My Projects\appian-harness"
+   /plugin marketplace add ./appian-harness
    ```
 
 3. **Reinstall,** now under the matching name from both sides of the `@`:
@@ -59,6 +62,27 @@ Migrate rather than let them coexist:
    ```
 
 4. **Restart Claude Code** (or `/reload-plugins`), same as *Installing* step 3.
+
+### `Failed to finalize marketplace cache` (EBUSY) on `marketplace add`
+
+Observed once, on Windows, on 2026-08-14 — the first `marketplace add` after a
+remove, in a session that had been doing plugin surgery for a while:
+
+```
+Error: Failed to finalize marketplace cache. Please manually delete the
+directory at C:\Users\you\.claude\plugins\marketplaces\appian-harness if it
+exists and try again.
+
+Technical details: EBUSY: resource busy or locked, rename '...\marketplaces\
+raulogm077-appian-harness' -> '...\marketplaces\appian-harness'
+```
+
+The registration downloads into a staging directory and renames it into place,
+and on Windows something — a running session, an indexer, an antivirus — can
+hold the target long enough for the rename to fail. **Retry the same command
+before deleting anything**: the second attempt succeeded with nothing deleted,
+which makes the error text's own advice the second-best option. Reach for the
+manual deletion only if the retry fails the same way.
 
 ### The installed copy is behind the repository
 
@@ -122,6 +146,17 @@ directory and delete nothing, so a file that enters the cache once stays until
 the marketplace is removed and re-added. The plugin being run accumulates what
 every past install ever carried, which is a stronger version of the drift this
 section opened with.
+
+Two days later the repair was performed and measured rather than trusted. The
+2026-08-14 remove-and-reinstall rebuilt the copy with the ghost gone and the
+tree exact — 88 of 88 tracked files by name and, once line endings were
+normalized, by content. The same session added one observation that softens
+the opening warning without retiring it: an install from a **directory** source
+that day delivered only tracked files — no `.pytest_cache/`, no
+`__pycache__/` — where the 2026-08-09 install had swept both in. Whether the
+client changed or a git checkout is filtered now, the observed risk is
+historical; cleaning the tree before a directory install remains the cheap
+insurance it was.
 
 Comparing an installed copy with `git ls-files` turns up one file that no
 source produced: `.in_use/<pid>`, which Claude Code writes to mark the copy as
