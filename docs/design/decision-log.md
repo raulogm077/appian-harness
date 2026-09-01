@@ -835,3 +835,18 @@ Las decisiones de este documento se agrupan en cuatro clases, y esa agrupación 
 - **Se añade lo barato que faltaba** — D-09, D-11, D-15, D-16, D-17, D-18, D-19, D-20, D-21, D-26,
   D-27. Cuatro comprobaciones que no existían, un perímetro que decidía en silencio si el plugin
   gobierna algo, y la graduación que impide que el bucle de remediación se coma el trabajo.
+
+---
+
+## Addendum · 1-sep-2026 — Fase 0 ejecutada, freeze intacto
+
+Las cinco sondas y la comprobación de esquemas de § 16 se ejecutaron contra Claude Code 2.1.248 y
+el MCP real; el resultado completo vive en [`implementacion-0.7.md`](implementacion-0.7.md), junto
+a la norma. **Ninguna activó la regla de reapertura de § 21**: `ask` es válido y efectivo
+(`escalate` no existe y se ignora en silencio); un `ask` no atendido deniega, no auto-aprueba;
+`PostToolBatch` dispara también con lotes de una llamada (campo real: `tool_response`, sin
+`error`); la carga diferida ahorra ~86,6 K tokens/turno (el doble de lo estimado); las tres clases
+de payload tienen ejemplar real. Las tres discrepancias de esquema (vistas/filtros usan
+`visibilityExpression`, ningún `update*` lleva `parentFolderUuid`, `updateFolder` no tiene campos
+de seguridad) caen en la fila «se corrige la regla antes de escribirla» de la tabla de supuestos
+del propio freeze — salida prevista de la sonda, no reapertura.

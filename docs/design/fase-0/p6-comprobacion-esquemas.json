@@ -1,0 +1,412 @@
+{
+ "A_visibilityExpr": [
+  {
+   "tool": "addRecordTypeView",
+   "field": "visibilityExpr",
+   "tool_exists": true,
+   "present": false,
+   "required": false
+  },
+  {
+   "tool": "updateRecordTypeView",
+   "field": "visibilityExpr",
+   "tool_exists": true,
+   "present": false,
+   "required": false
+  },
+  {
+   "tool": "addRecordTypeUserFilter",
+   "field": "visibilityExpr",
+   "tool_exists": true,
+   "present": false,
+   "required": false
+  },
+  {
+   "tool": "updateRecordTypeUserFilter",
+   "field": "visibilityExpr",
+   "tool_exists": true,
+   "present": false,
+   "required": false
+  },
+  {
+   "tool": "addRecordTypeAction",
+   "field": "visibilityExpr",
+   "tool_exists": true,
+   "present": true,
+   "required": false,
+   "type": "string",
+   "enum": null,
+   "desc": "SAIL expression controlling visibility (default \"=true()\")"
+  },
+  {
+   "tool": "updateRecordTypeAction",
+   "field": "visibilityExpr",
+   "tool_exists": true,
+   "present": true,
+   "required": false,
+   "type": null,
+   "enum": null,
+   "desc": ""
+  }
+ ],
+ "B_constant_type": [
+  {
+   "tool": "createConstant",
+   "tool_exists": true,
+   "allFields": [
+    "appUuid",
+    "description",
+    "multiple",
+    "name",
+    "parentFolderUuid",
+    "type",
+    "value"
+   ],
+   "typeCandidates": {
+    "type": {
+     "type": "string",
+     "enum": null,
+     "desc": "",
+     "required": true
+    }
+   }
+  },
+  {
+   "tool": "updateConstant",
+   "tool_exists": true,
+   "allFields": [
+    "description",
+    "multiple",
+    "name",
+    "type",
+    "uuid",
+    "value",
+    "versionId"
+   ],
+   "typeCandidates": {
+    "type": {
+     "type": null,
+     "enum": null,
+     "desc": "",
+     "required": false
+    }
+   }
+  }
+ ],
+ "C_parentFolderUuid": [
+  "createConstant",
+  "createExpressionRule",
+  "createFolder",
+  "createIntegration",
+  "createInterface",
+  "createProcessModel",
+  "uploadDocument"
+ ],
+ "D_expression": [
+  {
+   "tool": "updateInterface",
+   "expression": {
+    "tool": "updateInterface",
+    "field": "expression",
+    "tool_exists": true,
+    "present": true,
+    "required": false,
+    "type": null,
+    "enum": null,
+    "desc": "Inline SAIL expression string. Use expressionFilePath instead for non-trivial expressions — it enables efficient editing on validation failure."
+   },
+   "expressionFilePath": {
+    "tool": "updateInterface",
+    "field": "expressionFilePath",
+    "tool_exists": true,
+    "present": true,
+    "required": false,
+    "type": null,
+    "enum": null,
+    "desc": "Absolute path to the local file containing the SAIL expression. Edit the file from getInterface or createInterface, then pass the same path here. The file content is read and submitted as the expression."
+   }
+  },
+  {
+   "tool": "updateExpressionRule",
+   "expression": {
+    "tool": "updateExpressionRule",
+    "field": "expression",
+    "tool_exists": true,
+    "present": true,
+    "required": false,
+    "type": null,
+    "enum": null,
+    "desc": "Inline SAIL expression string. Use expressionFilePath instead for non-trivial expressions — it enables efficient editing on validation failure."
+   },
+   "expressionFilePath": {
+    "tool": "updateExpressionRule",
+    "field": "expressionFilePath",
+    "tool_exists": true,
+    "present": true,
+    "required": false,
+    "type": null,
+    "enum": null,
+    "desc": "Absolute path to the local file containing the SAIL expression. Edit the file from getExpressionRule or createExpressionRule, then pass the same path here. The file content is read and submitted as the expression."
+   }
+  },
+  {
+   "tool": "createInterface",
+   "expression": {
+    "tool": "createInterface",
+    "field": "expression",
+    "tool_exists": true,
+    "present": true,
+    "required": false,
+    "type": null,
+    "enum": null,
+    "desc": "Inline SAIL expression string. Use expressionFilePath instead for non-trivial expressions — it enables efficient editing on validation failure."
+   },
+   "expressionFilePath": {
+    "tool": "createInterface",
+    "field": "expressionFilePath",
+    "tool_exists": true,
+    "present": true,
+    "required": false,
+    "type": null,
+    "enum": null,
+    "desc": "Absolute path to the local file containing the SAIL expression. Write the SAIL expression to this file before calling createInterface. The file content is submitted as the interface expression."
+   }
+  },
+  {
+   "tool": "createExpressionRule",
+   "expression": {
+    "tool": "createExpressionRule",
+    "field": "expression",
+    "tool_exists": true,
+    "present": true,
+    "required": false,
+    "type": null,
+    "enum": null,
+    "desc": "Inline SAIL expression string. Use expressionFilePath instead for non-trivial expressions — it enables efficient editing on validation failure."
+   },
+   "expressionFilePath": {
+    "tool": "createExpressionRule",
+    "field": "expressionFilePath",
+    "tool_exists": true,
+    "present": true,
+    "required": false,
+    "type": null,
+    "enum": null,
+    "desc": "Absolute path to the local file containing the SAIL expression. Write the expression to this file before calling createExpressionRule. The file content is submitted as the expression."
+   }
+  }
+ ],
+ "E_updateFolder_fields": {
+  "uuid": "",
+  "name": "",
+  "description": ""
+ },
+ "F_names_without_RecordType": {
+  "customRecordField_tools": [
+   "addCustomRecordField",
+   "deleteCustomRecordField",
+   "updateCustomRecordField"
+  ],
+  "configureRecordEvents_exists": true,
+  "contain_RecordType": []
+ },
+ "G_delete_corpus": [
+  "deleteApplication",
+  "deleteConnectedSystem",
+  "deleteConstant",
+  "deleteCustomRecordField",
+  "deleteDocument",
+  "deleteExpressionRule",
+  "deleteExpressionRuleTestCase",
+  "deleteFolder",
+  "deleteGroup",
+  "deleteIntegration",
+  "deleteInterface",
+  "deleteInterfaceTestCase",
+  "deleteProcessModel",
+  "deleteProcessModelNode",
+  "deleteRecordData",
+  "deleteRecordType",
+  "deleteRecordTypeAction",
+  "deleteRecordTypeField",
+  "deleteRecordTypeRelationship",
+  "deleteRecordTypeUserFilter",
+  "deleteRecordTypeView",
+  "deleteSite",
+  "deleteWebApi"
+ ],
+ "H_updateObjectSecurity": true,
+ "I_reorderRecordTypeViews": {
+  "exists": true,
+  "fields": [
+   "urlStubs",
+   "uuid",
+   "versionId"
+  ]
+ },
+ "J_data_writes": {
+  "insertRecordData": true,
+  "updateRecordData": true,
+  "deleteRecordData": true
+ },
+ "K_write_corpus": {
+  "count": 78,
+  "tools": [
+   "addCustomRecordField",
+   "addGroupMembers",
+   "addObjectsToApplication",
+   "addRecordTypeAction",
+   "addRecordTypeField",
+   "addRecordTypeRelationship",
+   "addRecordTypeUserFilter",
+   "addRecordTypeView",
+   "configureRecordEvents",
+   "createApplication",
+   "createConnectedSystem",
+   "createConstant",
+   "createExpressionRule",
+   "createExpressionRuleTestCase",
+   "createExpressionRuleTestCases",
+   "createFolder",
+   "createGroup",
+   "createIntegration",
+   "createInterface",
+   "createInterfaceTestCase",
+   "createInterfaceTestCases",
+   "createProcessModel",
+   "createProcessModelNode",
+   "createRecordType",
+   "createSite",
+   "createWebApi",
+   "deleteApplication",
+   "deleteConnectedSystem",
+   "deleteConstant",
+   "deleteCustomRecordField",
+   "deleteDocument",
+   "deleteExpressionRule",
+   "deleteExpressionRuleTestCase",
+   "deleteFolder",
+   "deleteGroup",
+   "deleteIntegration",
+   "deleteInterface",
+   "deleteInterfaceTestCase",
+   "deleteProcessModel",
+   "deleteProcessModelNode",
+   "deleteRecordData",
+   "deleteRecordType",
+   "deleteRecordTypeAction",
+   "deleteRecordTypeField",
+   "deleteRecordTypeRelationship",
+   "deleteRecordTypeUserFilter",
+   "deleteRecordTypeView",
+   "deleteSite",
+   "deleteWebApi",
+   "insertRecordData",
+   "removeGroupMember",
+   "reorderRecordTypeViews",
+   "replaceDocumentContent",
+   "updateApplication",
+   "updateConnectedSystem",
+   "updateConstant",
+   "updateCustomRecordField",
+   "updateDocument",
+   "updateExpressionRule",
+   "updateExpressionRuleTestCase",
+   "updateFolder",
+   "updateGroup",
+   "updateIntegration",
+   "updateInterface",
+   "updateInterfaceTestCase",
+   "updateObjectSecurity",
+   "updateProcessModel",
+   "updateProcessModelNode",
+   "updateRecordData",
+   "updateRecordType",
+   "updateRecordTypeAction",
+   "updateRecordTypeField",
+   "updateRecordTypeRelationship",
+   "updateRecordTypeUserFilter",
+   "updateRecordTypeView",
+   "updateSite",
+   "updateWebApi",
+   "uploadDocument"
+  ]
+ },
+ "M_schema_indirection": {
+  "tools_with_ref_oneOf_anyOf": [
+   "addCustomRecordField",
+   "addRecordTypeAction",
+   "addRecordTypeField",
+   "addRecordTypeUserFilter",
+   "addRecordTypeView",
+   "configureRecordEvents",
+   "createApplication",
+   "createConnectedSystem",
+   "createConstant",
+   "createExpressionRule",
+   "createExpressionRuleTestCase",
+   "createFolder",
+   "createGroup",
+   "createIntegration",
+   "createInterface",
+   "createInterfaceTestCase",
+   "createProcessModel",
+   "createProcessModelNode",
+   "createRecordType",
+   "createSite",
+   "createWebApi",
+   "getAgent",
+   "getDocumentText",
+   "getExpressionRule",
+   "getInterface",
+   "getWebApi",
+   "insertRecordData",
+   "listAgents",
+   "listAiSkills",
+   "listApplicationObjects",
+   "listApplications",
+   "listConnectedSystems",
+   "listConstants",
+   "listDocuments",
+   "listExpressionRules",
+   "listFolders",
+   "listGroups",
+   "listIntegrations",
+   "listInterfaces",
+   "listProcessModels",
+   "listRecordTypes",
+   "listRoboticTasks",
+   "listSites",
+   "listWebApis",
+   "reorderRecordTypeViews",
+   "testInterface",
+   "testProcessModel",
+   "testRule",
+   "updateApplication",
+   "updateConnectedSystem",
+   "updateConstant",
+   "updateCustomRecordField",
+   "updateDocument",
+   "updateExpressionRule",
+   "updateExpressionRuleTestCase",
+   "updateFolder",
+   "updateGroup",
+   "updateIntegration",
+   "updateInterface",
+   "updateInterfaceTestCase",
+   "updateProcessModel",
+   "updateProcessModelNode",
+   "updateRecordData",
+   "updateRecordType",
+   "updateRecordTypeAction",
+   "updateRecordTypeField",
+   "updateRecordTypeRelationship",
+   "updateRecordTypeUserFilter",
+   "updateRecordTypeView",
+   "updateSite",
+   "updateWebApi",
+   "uploadDocument",
+   "validateExpression"
+  ]
+ }
+}
