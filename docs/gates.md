@@ -2,6 +2,18 @@
 
 > Part of the [appian-harness](../README.md) documentation.
 
+<figure>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/architecture-dark.svg">
+    <img src="assets/architecture-light.svg" width="940"
+         alt="Architecture of appian-harness: skills and agents on the left write plain project files in the centre — the config, the active task file, the evidence tree — while six hooks on the right read them at Claude Code events. Below, every write reaches the shared Appian environment through a design MCP, gated at PreToolUse.">
+  </picture>
+  <figcaption>The moving parts. Skills and agents write plain files in your
+  project; six hooks read them at Claude Code events — nothing coordinates
+  except through the files. Solid arrows write, dashed arrows read, and the
+  strongest thing the write gate ever says is <em>ask</em>.</figcaption>
+</figure>
+
 ## The gates
 
 Everything above, the install and configuration sections aside, is doctrine an

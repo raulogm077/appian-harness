@@ -14,6 +14,18 @@ getting in the way.
 
 ## How it is used, end to end
 
+<figure>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/task-lifecycle-dark.svg">
+    <img src="assets/task-lifecycle-light.svg" width="880"
+         alt="The six phases of one task: specify and plan once, then build, verify and review inside a per-task loop, closed by the Stop hook. A bar alongside shows the active task file existing from the moment build takes the task until review deletes the file.">
+  </picture>
+  <figcaption>One task, end to end. <code>tasks/current.json</code> is created by
+  <code>appian-build</code> and deleted by <code>appian-review</code>; the window
+  in between is the closure gate's whole reach, and the builder's own blocked
+  stop is the handoff into verification, not a failure.</figcaption>
+</figure>
+
 One small task, all the way through. Say the request is *"users need to see the
 requests that are still open"*, and the plan has already turned that into
 `TASK-3: list open requests`. Paths below use the defaults; which of them are
