@@ -2,7 +2,7 @@
 
 Mostly small broken pairs of manifests, confirming it says so. The one test
 that earns its keep is the last: it runs against this repository, where the
-drift it describes actually happened.
+drift it describes is the drift that can actually occur.
 """
 import json
 import os
@@ -42,7 +42,7 @@ class VersionAgreement(unittest.TestCase):
         self.assertEqual(C.check(self.root)[0], 0)
 
     def test_the_drift_that_actually_happened_is_caught(self):
-        # marketplace.json sat at 0.2.1 while plugin.json had moved on to 0.2.4.
+        # The drift itself: marketplace.json at 0.2.1, plugin.json at 0.2.4.
         write_pair(self.root, "0.2.4", "0.2.1")
         code, msgs = C.check(self.root)
         self.assertEqual(code, 1)
@@ -72,9 +72,8 @@ class VersionAgreement(unittest.TestCase):
 class SilenceIsNotAgreement(unittest.TestCase):
     """The two ways this could report agreement while comparing nothing.
 
-    Each is a branch the checker already handles; neither was exercised, and
-    an unexercised branch in a checker is the same unverified claim the plugin
-    spends a README arguing against.
+    Each is a branch the checker already handles, and an unexercised branch in
+    a checker is the same unverified claim the plugin argues against.
     """
 
     def setUp(self):
@@ -107,9 +106,8 @@ class ReportedRatherThanRaised(unittest.TestCase):
     CI runs this checker, and CONTRIBUTING puts it at step 3 of the release,
     immediately before `claude plugin tag`. A traceback there halts a release
     without naming which of the two manifests is malformed -- the one question
-    this file can answer. It already answered it for a file that will not
-    parse; these are the same case one layer in, where the JSON is valid and
-    the shape is not.
+    this file can answer. These are that case one layer in, where the JSON is
+    valid and the shape is not.
     """
 
     def setUp(self):
@@ -126,7 +124,7 @@ class ReportedRatherThanRaised(unittest.TestCase):
         self.assertTrue(any("marketplace.json" in m for m in msgs))
 
     def test_a_manifest_whose_root_is_an_array_is_reported(self):
-        # `[]` parses. Asking it for a name raised AttributeError.
+        # `[]` parses. Asking it for a name raises AttributeError.
         write_raw(self.root, "plugin.json", "[]")
         code, msgs = C.check(self.root)
         self.assertEqual(code, 1)
@@ -134,7 +132,7 @@ class ReportedRatherThanRaised(unittest.TestCase):
 
     def test_a_plugins_key_holding_null_is_reported(self):
         # `get("plugins", [])` never returns its default here: the key is
-        # present, so None came back and the comprehension raised on it.
+        # present, so None comes back and the comprehension raises on it.
         write_raw(self.root, "plugin.json", '{"name": "p", "version": "1.0.0"}')
         write_raw(self.root, "marketplace.json", '{"name": "m", "plugins": null}')
         code, msgs = C.check(self.root)
@@ -154,11 +152,10 @@ class ReportedRatherThanRaised(unittest.TestCase):
 class ChangelogCarriesTheRelease(unittest.TestCase):
     """Step 2 of the release procedure, as a check instead of a sentence.
 
-    CONTRIBUTING said "add the CHANGELOG entry" and nothing verified it -- the
-    only step of the four with no gate behind it, in a repository whose
-    changelog opens by saying it is the only announcement a gate that stops
-    firing ever gets. These hold the new rule: a CHANGELOG.md that exists must
-    carry a heading for the version the manifests declare.
+    "Add the CHANGELOG entry" is a sentence nothing verifies, in a repository
+    whose changelog opens by saying it is the only announcement a gate that
+    stops firing ever gets. The rule held here: a CHANGELOG.md that exists
+    must carry a heading for the version the manifests declare.
     """
 
     def setUp(self):

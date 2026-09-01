@@ -1,16 +1,11 @@
-"""Deterministic checks over an interface's EVALUATED component tree.
+"""Deterministic checks over an interface's EVALUATED component tree, which
+carries resolved data a linter over the source can never see.
 
-Why this level exists: a rendered-interface test returns the component tree
-already evaluated with resolved data -- including colours that came out of the
-database and appear nowhere in the source (field experience). A linter over the
-source can never see them.
+    usage: n2_interface_tree.py TREE_JSON [--empty-path]
+    exit: 0 clean, 1 findings or unreadable input, 2 usage, 3 NOT MEASURED
 
-Two operating notes, both field experience: the default response size cap
-truncates a real screen, so raise it and trust the truncation flag rather than
-the byte count; and some API surfaces fail to serialize certain component
-types, so pick the surface that answers correctly, not the one that answers
-first.
-"""
+Why the evaluated tree, and the two traps in fetching one:
+docs/design-notes.md § n2_interface_tree.py · why the evaluated tree, platform traps"""
 import json
 import os
 import re
@@ -25,20 +20,8 @@ INPUTS = ("TextField", "ParagraphField", "IntegerField", "FloatingPointField",
           "DateField", "DropdownField", "CheckboxField", "RadioButtonField", "PickerField")
 CONFIRM_KEYS = ("confirmMessage", "confirmHeader", "confirmButtonLabel")
 
-# THE vocabulary: the `#t` values whose type this checker knows how to judge.
-# One constant, and the usage text is built from it rather than restating it,
-# so the list a user reads is the list the code applies.
-#
-# Why it has to exist at all: the walk used to accept any shape and report
-# `OK` when nothing matched, so a tree of types this checker does not judge
-# was indistinguishable from a screen that was checked and found clean --
-# the same vacuous pass lint_skills.py fixed when it stopped saying "All
-# skills passed" over zero files. `main` now reports that case as NOT
-# MEASURED and exits 3.
-#
-# Types outside this list are not guessed at or aliased onto it. If a real
-# tree comes back NOT MEASURED, the honest answer is that this checker does
-# not know those components -- not that the screen is fine.
+# The `#t` values this checker judges, and USAGE is built from it:
+# docs/design-notes.md § n2_interface_tree.py · the checked-type vocabulary
 CHECKED_TYPES = INPUTS + ("Grid", "Button", "DynamicLink", "Text")
 
 
@@ -74,14 +57,8 @@ def _walk(node, out):
 
 def type_census(tree):
     """(recognised, unrecognised) `#t` values in this tree, both sorted.
-
-    Kept separate from check_tree on purpose: check_tree's contract is
-    documented as returning findings, and every caller iterates that list.
-    Whether the run measured anything is a question about coverage rather
-    than a finding, so it is answered here and acted on by main -- the
-    NOT MEASURED distinction is a CLI-level contract, not a new return shape
-    for the importable API.
-    """
+    Coverage is not a finding, so it stays out of check_tree's return shape:
+    docs/design-notes.md § n2_interface_tree.py · type_census"""
     recognised, unrecognised = set(), set()
     for n in _walk(tree, []):
         t = n.get("#t")
@@ -192,10 +169,8 @@ def main(argv):
               % (path, len(unrecognised), ", ".join(unrecognised)))
 
     if not recognised:
-        # Findings can still exist here -- contrast does not care what type a
-        # node is -- and they are printed above because they are real. But a
-        # run that judged none of the types it exists to judge has not
-        # measured this screen, and saying OK would be the vacuous pass.
+        # Findings printed above can be real and this still be unmeasured:
+        # docs/design-notes.md § n2_interface_tree.py · no recognised types
         print("\nNOT MEASURED %s: no component node of a type this checker judges was found, so "
               "none of the type-keyed checks ran. Known types: %s."
               % (path, ", ".join(CHECKED_TYPES)))

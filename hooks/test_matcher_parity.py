@@ -1,22 +1,8 @@
-"""The matcher has two halves in two languages, and nothing compared them.
+"""The two halves of the matcher, compared against the real tool catalogue.
 
-`hooks.json` decides which tool calls Claude Code delivers to the hook
-process; `WRITE_TOOL_RE` decides what the hook does with the ones that
-arrive. A verb present only in the Python half is a gate that cannot fire:
-the call is never routed, so the pattern never sees it. That happened --
-`appian_invoke_process_model` was added to the Python side alone and was
-dead in production while every test passed, because the tests call
-`scope_gate` directly and never touch the JSON matcher.
-
-The comment in `harness_hooks.py` has stated the invariant since, and until
-this file nothing enforced it -- a plugin whose argument is that an
-unchecked claim is not a pass, resting on an unchecked claim.
-
-The names below are real, taken from the tool catalogue of the two Appian
-MCP servers as a live session lists them, plus every other MCP server in
-that session whose tool name carries a write verb. The point of using the
-real catalogue rather than invented names is that the last two defects here
-were both found by measuring against it and neither by reasoning.
+Invariant: `hooks.json` must route every call `WRITE_TOOL_RE` gates -- a verb
+present only in the Python half is a gate that cannot fire. Corpus rationale:
+docs/design-notes.md § test_matcher_parity.py · the real tool catalogue.
 """
 import json, os, re, sys, tempfile, unittest
 
@@ -210,14 +196,12 @@ OTHER_SERVERS = (
     "mcp__claude_ai_Vercel__update_project_deployment_protection",
 )
 
-# counts: 166 12
-# Case is the half of this that a corpus of real names cannot test, because
-# every real Appian tool is lowercase-initial. It is still the direction that
-# matters: Claude Code applies the JSON matcher as written, and that matcher
-# spells `[Aa]ppian` precisely because it has no case-insensitive flag to
-# lean on. A Python side compiled with re.IGNORECASE would gate these and
-# the JSON side would not route them -- broader here than there, which is
-# the silent failure the comment warns about.
+# Case is the half a corpus of real names cannot test: every real Appian tool
+# is lowercase-initial. It is still the direction that matters -- Claude Code
+# applies the JSON matcher as written and has no case-insensitive flag, which
+# is why that matcher spells `[Aa]ppian` by hand. A Python side compiled with
+# re.IGNORECASE would gate names the JSON side never routes: broader here
+# than there, which is the silent failure.
 CASE_VARIANTS = (
     "mcp__APPIAN-dev__createRecordType",
     "mcp__Appian-Dev__DeleteRecordType",
@@ -264,13 +248,10 @@ class TestHooksJsonRoutesEverythingThePatternGates(unittest.TestCase):
         self.assertEqual(self._unrouted_by(self.log), [])
 
     def test_the_failure_notice_receives_them_too(self):
-        # Third consumer, and the reason this assertion is here rather than
-        # trusted: the pattern is now spelled out verbatim in three
-        # hooks.json entries, and JSON has no way to say it once. Editing
-        # one copy and not the others is the whole failure mode, so every
-        # copy is held to the same invariant instead of the two that
-        # happened to have a test. This one was a bare `mcp__.*` until
-        # 0.2.4 -- broader, not narrower, which is why nothing caught it.
+        # Third consumer. The pattern is spelled out verbatim in three
+        # hooks.json entries and JSON has no way to say it once, so every
+        # copy is held to the invariant: editing one and not the others is
+        # the failure mode.
         self.assertEqual(self._unrouted_by(self.failure), [])
 
     def test_destructive_is_a_subset_of_write(self):
@@ -290,8 +271,8 @@ class TestHooksJsonRoutesEverythingThePatternGates(unittest.TestCase):
         self.assertGreater(len([n for n in self.ALL if DESTRUCTIVE_TOOL_RE.match(n)]), 10)
 
     def test_the_runtime_verbs_that_were_dead_are_routed_now(self):
-        # The specific regression. Each of these starts real work in a
-        # shared environment.
+        # Each of these starts real work in a shared environment, so both
+        # halves have to cover it.
         for name in ("mcp__appian__appian_invoke_process_model",
                      "mcp__appian__appian_invoke_agent",
                      "mcp__appian-dev__testProcessModel"):
@@ -303,14 +284,11 @@ class TestHooksJsonRoutesEverythingThePatternGates(unittest.TestCase):
         # off. An expression rule has no side effects and stored test cases
         # are what a verification step is supposed to replay freely.
         #
-        # "On both sides" is the name, and for a long time the body checked
-        # only one: `WRITE_TOOL_RE`. The other side is not the JSON matcher
-        # -- that one routes a bare `invoke|run|test` deliberately, so a real
-        # write cannot escape the scope gate -- it is what the hooks DO with
-        # what the matcher hands them. `log_write` never asked, and recorded
-        # three expression-rule invocations as writes of a task that was
-        # merely in flight, expiring every one of its verdicts. The missing
-        # assertion is the one that would have caught it.
+        # "Both sides" is `WRITE_TOOL_RE` and what the hooks DO with what the
+        # matcher hands them -- not the JSON matcher, which routes a bare
+        # `invoke|run|test` deliberately so no real write escapes the scope
+        # gate. `log_write` recording a read as a write expires every verdict
+        # of a task that is merely in flight.
         for name in ("mcp__appian__appian_invoke_expression_rule",
                      "mcp__appian-dev__testRule",
                      "mcp__appian-dev__runAllInterfaceTestCases",
@@ -326,8 +304,9 @@ class TestHooksJsonRoutesEverythingThePatternGates(unittest.TestCase):
                     "%s is a read: it must not land in the write log" % name)
 
     def test_another_vendors_write_tools_are_not_measured_against_appian_scope(self):
-        # Before the server name had to carry `appian`, a Supabase branch
-        # deletion was checked against an Appian task's allowedObjects.
+        # The server name has to carry `appian`, or another vendor's write --
+        # a Supabase branch deletion -- is checked against an Appian task's
+        # allowedObjects.
         for name in OTHER_SERVERS:
             self.assertIsNone(WRITE_TOOL_RE.match(name), name)
 

@@ -121,10 +121,9 @@ class TestAMissingFileIsAFindingAndNotATraceback(TreeFixture, unittest.TestCase)
     existed to produce. It also collapses the 0/1/3 vocabulary every caller
     here is written against into an unhandled exception, which is neither.
 
-    Measured, not imagined: deleting hooks/hooks.json from a copy of this
-    repository made this file raise FileNotFoundError on the json.load that
-    counts hooks, and that traceback -- not a finding -- was what failed the
-    build. check_package_integrity.py says so in its own comment.
+    Measured: with hooks/hooks.json deleted from a copy of this repository,
+    this file raises FileNotFoundError on the json.load that counts hooks,
+    and that traceback -- not a finding -- is what fails the build.
     """
 
     def test_a_missing_hooks_manifest_is_a_finding(self):
@@ -153,7 +152,7 @@ class TestAMissingFileIsAFindingAndNotATraceback(TreeFixture, unittest.TestCase)
 
     def test_a_missing_hook_program_is_a_finding(self):
         # The config keys and the log names are both read out of this file, so
-        # losing it silently unheld two of the checks rather than one.
+        # losing it silently unholds two of the checks rather than one.
         with tempfile.TemporaryDirectory() as t:
             self._tree(t, "declaring one hooks\nsomeKey a-skill some-log.jsonl\n")
             os.remove(os.path.join(t, "hooks", "harness_hooks.py"))
@@ -170,14 +169,12 @@ class TestAMissingFileIsAFindingAndNotATraceback(TreeFixture, unittest.TestCase)
 
 
 class TestTheCountsTheReadmeTableStates(TreeFixture, unittest.TestCase):
-    """The claims that were prose and nothing else until now.
+    """The counting claims the README makes about its own tree.
 
     "Ten modules", "Seven skills", "Eleven domain references", "Three judging
-    agents", "Six eval cases -- three routing, three safety". All true when
-    written, none of them held by anything: adding an eleventh module left CI
-    green while the README listed ten of eleven. They arrived in the release
-    that codified "a claim in prose brings the check that holds it", which is
-    the whole reason they are worth the fixtures below.
+    agents", "Six eval cases -- three routing, three safety". Prose alone
+    goes stale silently: an eleventh module leaves CI green while the README
+    lists ten of eleven. A claim in prose brings the check that holds it.
     """
 
     def test_a_wrong_module_count_is_reported(self):
@@ -212,9 +209,7 @@ class TestTheCountsTheReadmeTableStates(TreeFixture, unittest.TestCase):
         # "standalone modules" ends in "one". Without a boundary on the left
         # of the number, that reads as a claim of one module and fails a tree
         # that has none -- a finding invented out of ordinary prose, in a
-        # file whose whole worth is that its findings are real. No sentence
-        # in the README does this today; the sections about to be written
-        # into docs/ are where connective prose like it lands.
+        # file whose whole worth is that its findings are real.
         with tempfile.TemporaryDirectory() as t:
             self._tree(t, "declaring one hooks\nsomeKey a-skill some-log.jsonl\n"
                           "the standalone modules are documented elsewhere\n")
@@ -349,10 +344,8 @@ class TestEveryRelativeLinkResolves(TreeFixture, unittest.TestCase):
     """A link is the shortest checkable claim a document can make.
 
     "It is over there" -- and moving a section is exactly what breaks it.
-    Splitting the README into docs/ took `](CHANGELOG.md)` with it, a link
-    that resolved from the root and does not resolve from `docs/`, and it was
-    found by a person reading. Everything else in this file exists because
-    that kind of coverage lasts until the day nobody remembers to look.
+    Splitting the README into docs/ takes `](CHANGELOG.md)` with it, a link
+    that resolves from the root and does not resolve from `docs/`.
     """
 
     def _link_fails(self, root, documents):
@@ -373,9 +366,9 @@ class TestEveryRelativeLinkResolves(TreeFixture, unittest.TestCase):
             self.assertEqual(fails, [])
 
     def test_a_link_is_resolved_against_its_own_file_and_not_the_root(self):
-        # The defect itself. `](CHANGELOG.md)` in a document that used to be
-        # part of the README resolves to docs/CHANGELOG.md once it moves, and
-        # a checker resolving from the root would call it fine.
+        # The defect itself: `](CHANGELOG.md)` in a document moved out of the
+        # README resolves to docs/CHANGELOG.md, and a checker resolving from
+        # the root would call it fine.
         with tempfile.TemporaryDirectory() as t:
             fails = self._link_fails(t, {"docs/a.md": "see [the changelog](CHANGELOG.md)\n",
                                          "CHANGELOG.md": "# Changelog\n"})

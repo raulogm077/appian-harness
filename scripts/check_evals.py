@@ -1,45 +1,6 @@
 """Holds evals/ to the shape `claude plugin eval` expects, before it can run.
 
-`claude plugin eval` is in early access and does not respond on the account
-this plugin is developed on -- neither `init` nor the runner. So the suite here
-has never been executed, and the honest thing to do about that is two things:
-say so in evals/README.md, and check mechanically what can be checked without
-the runner.
-
-What can, and fails a build: that every directory under evals/ is a case with a
-prompt, that every case has a grader, and that the grader says something a judge
-could apply. What can only be guessed at, and therefore warns: whether a grader
-is a retyped copy of its prompt, and whether a prompt is built out of the
-phrases its target skill advertises. What cannot be checked here at all: whether
-the skills actually pass. Nothing here claims that.
-
-Three findings from an independent review shaped the current version, all three
-measured on the first one rather than argued about:
-
-- A directory holding graders/ and no prompt.md was skipped, not failed -- the
-  guard read it as "not a case". Alone it produced exit 3, the code a caller
-  skips; beside one valid case it produced exit 0 and the broken directory
-  vanished. So a directory under evals/ is now a case by default, and what is
-  NOT a case is a closed list.
-- A grader with no scorable vocabulary passed. `"the response should not"` is
-  entirely stopwords -- including `not`, the word carrying the criterion -- and
-  the empty word set was skipped rather than failed. `"!!!"` passed through the
-  other door, surviving as a "word" that overlapped with nothing. Both die in
-  the same branch now: an empty vocabulary is a finding.
-- No similarity number fails a build any more. Both are blunt: the vocabulary
-  overlap compares SETS, blind to order, frequency, negation and morphology --
-  a grader reading exactly "ALPHA BETA GAMMA" against a prompt asking for
-  exactly that output scores 100% and is perfectly legitimate. The sequence
-  ratio, which briefly was the gate, scores a verbatim copy 1.00 and the same
-  copy with one sentence added 0.72, clean past both thresholds. So it stopped
-  byte-for-byte paste and advertised protection against copying in general. The
-  line is now: shape fails, judgement warns. Whether a file exists, has content
-  and says something applicable is a fact; whether two texts are "the same
-  claim" is an opinion held by an uncalibrated number.
-
-- The prompts were built out of the phrases the skill descriptions advertise --
-  the same defect one layer earlier, and the one this file was not watching.
-  See `_trigger_echo`.
+Shape fails, judgement warns: docs/design-notes.md § check_evals.py · scope
 
     python3 scripts/check_evals.py [root]
 
@@ -54,58 +15,29 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from exit_codes import EXIT_NOT_MEASURED  # noqa: E402
 from lint_skills import parse_frontmatter  # noqa: E402
 
-# Findings fail the build; warnings are printed and do not. Carried on the
-# message itself rather than in a second list beside it, so severity has one
-# home instead of two that can fall out of step, and `check(root)` keeps
-# returning `(exit_code, messages)`.
-#
-# This comment used to say "the shape its three siblings have". Two of the four
-# expose a `check()` at all, and one of those returns a bare list -- a count of
-# its own family, wrong, in the file that argues counts in prose go stale. So
-# the shape is described and not tallied.
+# Findings fail the build; warnings print and do not. Severity rides on the
+# message: docs/design-notes.md § check_evals.py · WARNING_PREFIX
 WARNING_PREFIX = "warning: "
 
-# Two ways of asking "is this grader just its prompt again", both of them
-# warnings, neither of them a gate.
-#
-# The sequence ratio was a build failure until it was measured against the thing
-# it claims to stop. A verbatim copy scores 1.00 and is caught; the same copy
-# with one sentence added drops to 0.72 on the sequence and 0.64 on the
-# vocabulary, which is clean past both. So the hard branch stopped byte-for-byte
-# paste and nothing else -- the least likely form of the defect -- while
-# advertising protection against the whole of it. A metric that catches only the
-# careless case has a place; a build gate that promises more than it delivers
-# does not.
+# Warnings, never gates: both metrics are blunt and the numbers are measured.
+# docs/design-notes.md § check_evals.py · similarity thresholds
 DUPLICATE_SEQUENCE_WARNING = 0.9
 RESTATEMENT_WARNING_OVERLAP = 0.8
 
-# `!` was in this class once, and it weakened the metric silently: `evidence!`
-# was a token that could never match `evidence` in its prompt, while
-# `evidence.` matched fine, because `.` was never in the class. The asymmetry
-# had no reason behind it and its effect was that emphatic graders read as less
-# similar to their prompts than they are. SAIL names survive the removal --
-# `a!queryRecordType` becomes `a` (a stopword) and `queryrecordtype` on both
-# sides of the comparison, so the pair still meets.
+# `!` is out of the word class: with it in, `evidence!` can never match the
+# `evidence` in its prompt. docs/design-notes.md § check_evals.py · WORD
 WORD = re.compile(r"[a-z0-9-]+")
 NOT_A_WORD = re.compile(r"[^a-z0-9]+")
 STOPWORDS = frozenset("a an and are as at be by for from in is it its of on or "
                       "that the to with when should must not response".split())
 
-# A phrase is three words, and it has to carry two that mean something before a
-# match counts -- "the task is" is grammar, "run the gates" is a trigger.
-#
-# Three rather than a tuned number: measured against the six shipped prompts it
-# found one echo and no false positives, and the one it found was real. That is
-# thin calibration, which is exactly why this side of the check warns and never
-# fails.
+# Three words, two of them meaningful -- thin calibration, which is why this
+# side warns: docs/design-notes.md § check_evals.py · phrase calibration
 PHRASE_WORDS = 3
 PHRASE_MEANING = 2
 
-# Directories under evals/ that are not cases, named one by one. The closed
-# list is the point: "anything without a prompt.md is not a case" is exactly
-# what let a half-written case disappear from the count. `results` is where the
-# runner writes its scores; dot- and dunder-prefixed directories are tool
-# artefacts (`.pytest_cache`, `__pycache__`), never authored content.
+# A directory under evals/ is a case by default, and what is not one is
+# enumerated here: docs/design-notes.md § check_evals.py · NOT_A_CASE
 NOT_A_CASE = frozenset(("results",))
 
 
@@ -116,11 +48,8 @@ def _is_case_dir(name):
 def _significant(text):
     """The scorable vocabulary of a text.
 
-    A token has to carry a letter to count: `Score 1` and `Score 0` would
-    otherwise contribute `1` and `0`, and a grader holding nothing but digits
-    would read as having said something. Punctuation is out one step earlier
-    now that `!` has left WORD -- `"!!!"` yields no tokens at all -- but the
-    letter test is what keeps a numeric grader from passing for vocabulary.
+    A token has to carry a letter, so a numeric grader has no vocabulary:
+    docs/design-notes.md § check_evals.py · _significant
     """
     return frozenset(w for w in WORD.findall(text.lower())
                      if w not in STOPWORDS and any(c.isalpha() for c in w))
@@ -142,9 +71,8 @@ def _phrases(words):
 def _skill_descriptions(root):
     """Skill name -> the description that decides when it fires.
 
-    Read through lint_skills' own parser rather than a second one written here.
-    The frontmatter rule has one definition in this repository and this file is
-    not going to become its second.
+    Read through lint_skills' own parser, the one definition of the rule:
+    docs/design-notes.md § check_evals.py · one frontmatter parser
     """
     found = {}
     skills_dir = os.path.join(root, "skills")
@@ -164,13 +92,8 @@ def _skill_descriptions(root):
 def _trigger_echo(entry, prompt, descriptions):
     """A prompt built out of the words a skill advertises, or None.
 
-    The axis this file was not watching. It was written to catch a grader that
-    copies its prompt, and the same defect one layer earlier -- a prompt that
-    copies the skill description -- went unchecked: `routing-verify-not-review`
-    asked for "run the gates", which appian-verify's description names as one of
-    its four trigger phrases, in a prompt of thirteen words. A router doing
-    nothing but substring matching scored that case, so the case measured
-    nothing about routing.
+    A router matching substrings alone would score such a case without
+    routing: docs/design-notes.md § check_evals.py · trigger echo
     """
     spoken = _phrases(_normalized(prompt))
     for skill in sorted(descriptions):
@@ -188,9 +111,8 @@ def _trigger_echo(entry, prompt, descriptions):
 def _grader_problem(entry, grader, grader_text, prompt):
     """What is wrong with one grader, as a message, or None.
 
-    The message carries WARNING_PREFIX when the problem is worth reading and
-    not worth failing a build over -- severity rides with the sentence, which
-    is the whole reason there is no second list to keep in step with this one.
+    WARNING_PREFIX rides on the message rather than a second list:
+    docs/design-notes.md § check_evals.py · WARNING_PREFIX
     """
     if not grader_text.strip():
         return "%s/graders/%s is empty" % (entry, grader)
@@ -272,9 +194,8 @@ def main(root):
         else:
             print("%s: %s" % ("ERROR" if code == 1 else "NOT MEASURED", m))
     if code == 0:
-        # Says only what gated. Similarity and phrase echoes warn, so claiming
-        # here that no grader copies its prompt would be this file asserting the
-        # half of its own output it deliberately does not enforce.
+        # Says only what gated -- similarity and phrase echoes only warn:
+        # docs/design-notes.md § check_evals.py · the OK line
         print("OK every eval case has a prompt and a grader with a criterion in it")
     return code
 

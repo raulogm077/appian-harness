@@ -121,11 +121,10 @@ class TestLintSkill(unittest.TestCase):
             self.assertEqual(lint_skill(p), [])
 
     def test_a_trigger_followed_by_an_exclusion_still_passes(self):
-        # The commonest real shape, and the one the whole-description search
-        # rejected: state when the skill fires, then state when it does not.
-        # The old comment claimed sentence punctuation protected this. It
-        # only protected a negation placed BEFORE the trigger -- here the
-        # negation is its own later sentence and was still fatal.
+        # The commonest real shape, and the one a whole-description search
+        # rejects: state when the skill fires, then state when it does not.
+        # Sentence punctuation only protects a negation placed BEFORE the
+        # trigger; here the negation is its own later sentence.
         with tempfile.TemporaryDirectory() as t:
             p = write(t, "appian-build",
                       "Use when building an Appian object. Do not use when the change is cosmetic.")

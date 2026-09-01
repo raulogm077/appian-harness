@@ -1,14 +1,8 @@
 """The launcher answers when the program cannot start.
 
-`run_hook.sh` exists because a hook whose command cannot be found does not
-ask and does not block -- it does not run, and the plugin installs, looks
-healthy and enforces nothing. `harness_hooks.py` is carefully fail-closed,
-but that safety net is inside the program; this script's job is to start the
-program, and to answer in its place when it cannot.
-
-Which made it the one component with no tests at all: the fail-closed path
-everything else leans on was itself unverified. These run the real script
-through a real `sh`, with the interpreter search deliberately starved.
+A hook whose command cannot be found does not ask and does not block: it does
+not run, and the plugin looks healthy while enforcing nothing. These run the
+real `run_hook.sh` through a real `sh`, with the interpreter search starved.
 """
 import json, os, shutil, subprocess, sys, tempfile, unittest
 
@@ -20,13 +14,11 @@ SCRIPT = os.path.join(HOOKS, "run_hook.sh")
 def _find_shell():
     """A POSIX shell, including where Git for Windows actually puts one.
 
-    `shutil.which("sh")` is not enough on Windows and the reason is the
-    same one `run_hook.sh` is written around: Git for Windows puts git.exe
-    on PATH via `Git\\cmd` and leaves sh.exe in `Git\\bin` and
-    `Git\\usr\\bin`, neither of which is usually on PATH. A test that gave
-    up there would skip precisely on the platform whose failure mode this
-    launcher exists to survive -- which is how the one untested component
-    stayed untested.
+    `shutil.which("sh")` is not enough on Windows, for the reason
+    `run_hook.sh` is written around: Git for Windows puts git.exe on PATH via
+    `Git\\cmd` and leaves sh.exe in `Git\\bin` and `Git\\usr\\bin`, neither
+    usually on PATH. Giving up there would skip precisely on the platform
+    whose failure mode this launcher exists to survive.
     """
     found = shutil.which("sh") or shutil.which("bash")
     if found:
@@ -45,14 +37,9 @@ def _find_shell():
 SH = _find_shell()
 
 # Measured on Windows: ~3.8s per starved invocation and ~8.5s with an
-# interpreter, all of it Git Bash and Python startup rather than anything
-# this module does. Across the cases below that is minutes, which is too
-# slow for the loop somebody runs after every edit and exactly right for
-# CI and for a release check.
-#
-# So the default is to run them -- a test suite that skips by default is a
-# test suite that rots -- and the fast loop is an explicit opt-out someone
-# had to type:
+# interpreter, nearly all of it Git Bash and Python startup. Across the cases
+# below that is minutes -- right for CI, too slow for the edit loop. So the
+# default is to run them and the fast loop is an explicit opt-out:
 #
 #     APPIAN_HARNESS_SKIP_SLOW=1 python -m unittest discover -s hooks
 #
@@ -82,11 +69,9 @@ def run(subcommand, project_root, starve=False, payload=None, extra_env=None):
     if extra_env:
         env.update(extra_env)
     body = json.dumps(payload if payload is not None else {"cwd": project_root})
-    # 180s, not 60s. A Git Bash spawn plus an interpreter probe is seconds
-    # on an idle Windows box and considerably more when the machine is busy;
-    # at 60s a loaded CI runner turned that into two spurious errors in a
-    # run that passed when the module ran alone. A timeout that fires under
-    # load is not measuring the launcher, it is measuring the machine.
+    # 180s, not 60s: a Git Bash spawn plus an interpreter probe is seconds on
+    # an idle Windows box and considerably more when the machine is busy. A
+    # timeout that fires under load measures the machine, not the launcher.
     proc = subprocess.run([SH, SCRIPT, PLUGIN_ROOT, subcommand],
                           input=body, capture_output=True, text=True, env=env, timeout=180)
     return proc

@@ -1,11 +1,9 @@
 """One assignment, or the constant is not shared -- it is merely agreed with.
 
 `assertEqual(module.EXIT_NOT_MEASURED, 3)` over six modules passes just as
-happily when all six type the number out themselves, which is the state this
-file exists to end: it is what CI reported for four releases while the literal
-sat in six places. So the assertion that carries the weight here is about the
-source text rather than the imported value -- exactly one file in the tree
-assigns the number, and everything else imports it.
+happily when all six type the number out themselves. So the assertion that
+carries the weight here is about the source text rather than the imported
+value: exactly one file in the tree assigns the number, the rest import it.
 """
 import os
 import re
@@ -29,8 +27,8 @@ ASSIGNMENT = re.compile(r"^[ \t]*EXIT_NOT_MEASURED\s*=\s*[0-9]", re.M)
 # a discovery rule that quietly matched nothing would pass over a checker that
 # had dropped the name entirely.
 #
-# lint_agents is on the list although it never assigned the value -- it takes
-# `EXIT_NOT_MEASURED` from lint_skills, which now re-exports it from here, and
+# lint_agents is on the list although it assigns nothing -- it takes
+# `EXIT_NOT_MEASURED` from lint_skills, which re-exports it from here, and
 # that two-step is precisely the thing worth holding to an assertion.
 REPORTERS = (
     "lint_skills",
@@ -71,10 +69,10 @@ class TheConstant(unittest.TestCase):
         self.assertEqual(exit_codes.EXIT_NOT_MEASURED, 3)
 
     def test_exactly_one_file_assigns_it(self):
-        # The defect itself. Six files each typed `EXIT_NOT_MEASURED = 3`, all
-        # six agreed, every test was green, and one of them changing its mind
-        # would have stayed green -- the same shape as the matcher written
-        # three times that hooks/test_matcher_parity.py was written to catch.
+        # Six files each typing `EXIT_NOT_MEASURED = 3` all agree, every test
+        # is green, and one of them changing its mind stays green -- the same
+        # shape as the matcher written three times that
+        # hooks/test_matcher_parity.py exists to catch.
         assigning = sorted(relative for relative, text in python_sources(REAL_ROOT)
                            if ASSIGNMENT.search(text))
         self.assertEqual(assigning, ["scripts/exit_codes.py"], assigning)

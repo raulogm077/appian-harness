@@ -84,8 +84,8 @@ class TestObjectsEverythingDependsOn(unittest.TestCase):
 
 class TestGrouping(unittest.TestCase):
     def test_findings_are_not_repeated_once_per_pair(self):
-        # A destructive task in a group of three reported the same fact
-        # twice; a list that repeats itself gets skimmed.
+        # A destructive task in a group of three states the fact once: a
+        # list that repeats itself gets skimmed.
         g = [task("T-1", ["A"], title="delete something"), task("T-2", ["B"]),
              task("T-3", ["C"])]
         f = check_group(g)
@@ -118,8 +118,8 @@ class TestTasksOf(unittest.TestCase):
 
 
 class TestExitCodes(unittest.TestCase):
-    """0 clean, 1 findings, 2 usage, 3 NOT MEASURED -- and 3 is the one that
-    had to be earned. A plan this cannot read is a plan nobody checked."""
+    """0 clean, 1 findings, 2 usage, 3 NOT MEASURED -- and 3 is the one worth
+    pinning. A plan this cannot read is a plan nobody checked."""
 
     def _run(self, plan, *extra):
         with tempfile.TemporaryDirectory() as t:
@@ -156,9 +156,8 @@ class TestExitCodes(unittest.TestCase):
 
 class TestTransitiveDependencies(unittest.TestCase):
     """Direct edges are not enough. Given T-1 <- T-2 <- T-3, nothing joins
-    T-1 and T-3 directly, so a pairwise check on direct edges alone runs
-    them together and starts T-3 before T-2 has begun. This case is here
-    because the checker originally got it wrong."""
+    T-1 and T-3 directly, so a pairwise check on direct edges alone runs them
+    together and starts T-3 before T-2 has begun."""
 
     CHAIN = [task("T-1", ["A"]),
              task("T-2", ["B"], depends=["T-1"]),

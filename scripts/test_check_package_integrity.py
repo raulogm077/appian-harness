@@ -1,15 +1,8 @@
 """A checker for missing files has to be able to miss one.
 
-Every case here builds a tree with exactly one referent broken and confirms
-the checker names it -- plus the one case that matters most, which points at
-the real repository and would catch the defect the other 321 tests cannot
-see: they import harness_hooks.py, and importing a module says nothing about
-whether Claude Code can find the file hooks.json told it to run.
-
-The case-sensitivity case is the odd one. It runs on Windows, where the
-filesystem itself disagrees with the assertion, which is the entire point:
-if isfile_exact ever degrades to os.path.isfile, that test goes green in CI
-and red here, and the plugin quietly becomes author-machine-only.
+Every case builds a tree with exactly one referent broken and confirms the
+checker names it; one case points at the real repository, because importing
+harness_hooks.py says nothing about whether Claude Code finds what it runs.
 """
 import json
 import os
@@ -43,9 +36,7 @@ def scaffold(root, with_launcher=True, plugin_extra=None, hooks=MINIMAL_HOOKS,
     if with_boot_chain:
         # A tree that declares a hook is not complete at run_hook.sh: the
         # launcher execs a program and that program imports another, and
-        # neither is named by any manifest. The fixture grew these when the
-        # checker learned to require them -- what "a complete tree" means
-        # changed, so the tree that stands for one had to change with it.
+        # neither is named by any manifest.
         os.makedirs(os.path.join(root, "scripts"))
         open(os.path.join(root, "hooks", "harness_hooks.py"), "w").close()
         open(os.path.join(root, "scripts", "validate_verdict.py"), "w").close()
@@ -59,16 +50,14 @@ def scaffold(root, with_launcher=True, plugin_extra=None, hooks=MINIMAL_HOOKS,
 def link_dir(link, target):
     """Point `link` at directory `target`, however this platform will allow.
 
-    A symlink first, then a Windows junction. The fallback is what makes the
-    dangling and escaping cases testable *here*: os.symlink needs a privilege
-    this account does not have, and `mklink /J` needs none, and both produce
+    A symlink first, then a Windows junction: os.symlink needs a privilege an
+    ordinary account does not have, `mklink /J` needs none, and both produce
     the condition under test -- a name that appears in a directory listing
     whether or not anything is on the other end of it.
 
-    Falling back rather than skipping is deliberate. These are precisely the
-    cases an author cannot reason about from their own machine, which is how
-    they survived review in the first place; a test that quietly skips on the
-    developer's platform and runs only in CI is the absent gate again.
+    Falling back rather than skipping is deliberate: these are the cases an
+    author cannot reason about from their own machine, and a test that skips
+    on the developer's platform and runs only in CI is the absent gate again.
     """
     try:
         os.symlink(target, link, target_is_directory=True)
@@ -155,10 +144,10 @@ class CaseSensitivity(TempTree):
 
     def test_resolution_reads_the_listing_not_the_filesystem_s_opinion(self):
         # Stated directly as well as through check(), so a regression points
-        # at the function rather than at whichever caller noticed first. Aimed
-        # at `_referent_problem` because that is what check() calls: a test
-        # that exercises a wrapper nothing else uses proves the wrapper, and
-        # the shipped path is free to rot underneath it.
+        # at the function rather than at whichever caller noticed first.
+        # Aimed at `_referent_problem` because that is what check() calls: a
+        # test exercising a wrapper nothing else uses proves the wrapper,
+        # while the shipped path is free to rot underneath it.
         os.makedirs(os.path.join(self.root, "hooks"))
         open(os.path.join(self.root, "hooks", "Run_Hook.sh"), "w").close()
         self.assertIsNone(C._referent_problem(self.root, "hooks/Run_Hook.sh", True))
@@ -175,10 +164,10 @@ class ComponentsResolve(TempTree):
         self.assertTrue(any("ghost" in m for m in msgs), msgs)
 
     def test_an_agent_file_that_does_not_decode_is_reported(self):
-        # The whole of what this file asks of an agent now: that the bytes are
+        # The whole of what this file asks of an agent: that the bytes are
         # there and are text. Whether the frontmatter inside means anything is
-        # lint_agents.py's question, and asking it in two places is how the
-        # two answers drifted apart the first time.
+        # lint_agents.py's question, and asking it in two places is how two
+        # answers drift apart.
         scaffold(self.root)
         os.makedirs(os.path.join(self.root, "agents"))
         with open(os.path.join(self.root, "agents", "a.md"), "wb") as f:
@@ -202,8 +191,8 @@ class TheBootChain(TempTree):
     """hooks.json names the launcher and stops. The chain does not."""
 
     def test_the_program_the_launcher_starts_must_be_in_the_tree(self):
-        # Measured on a copy of this repository: delete hooks/harness_hooks.py
-        # and check() returned (0, []). run_hook.sh execs an interpreter
+        # Measured on a copy of this repository: with hooks/harness_hooks.py
+        # deleted, check() returns (0, []). run_hook.sh execs an interpreter
         # against that path, Python exits `can't open file` writing nothing to
         # stdout, and a scope gate that emits no decision does not gate.
         scaffold(self.root)
@@ -243,9 +232,9 @@ class TheBootChain(TempTree):
 
 class ExecFormHooks(TempTree):
     def test_a_typo_in_an_exec_form_hook_is_seen(self):
-        # Reading only `command` meant an argv-form hook produced no referent
-        # AND no warning: the recursion reached the list, every element was a
-        # bare str, and a str node yields nothing. check() returned (0, []).
+        # Reading only `command` leaves an argv-form hook with no referent AND
+        # no warning: the recursion reaches the list, every element is a bare
+        # str, and a str node yields nothing -- check() returns (0, []).
         scaffold(self.root, hooks={"hooks": {"Stop": [{"hooks": [
             {"type": "command",
              "args": ["sh", "${CLAUDE_PLUGIN_ROOT}/hooks/TYPO.sh", "x"]}]}]}})
@@ -264,16 +253,13 @@ class ExecFormHooks(TempTree):
 class Commands(TempTree):
     """The component a user invokes by name, and the one with no other reader.
 
-    lint_skills walks skills/ and lint_agents walks agents/; nothing in the
-    nine CI steps had ever opened commands/. The half of that gap which is a
-    claim about prose -- the README promising `/appian-init` when no such file
-    exists -- is check_readme_claims', not this file's. What is here is what
-    the physical inventory can contradict on its own.
-
-    The remaining half, plugin.json pointing `commands` at a path that is not
-    there, needs nothing new: `commands` is one of COMPONENT_FIELDS and
-    ManifestDeclaredPaths.test_a_component_path_plugin_json_declares_must_exist
-    is already written on exactly that fixture.
+    lint_skills walks skills/ and lint_agents walks agents/; nothing else
+    opens commands/. What is here is what the physical inventory can
+    contradict on its own. A claim about prose -- the README promising
+    `/appian-init` when no such file exists -- is check_readme_claims'; and
+    plugin.json pointing `commands` at a path that is not there is covered by
+    ManifestDeclaredPaths.test_a_component_path_plugin_json_declares_must_exist,
+    since `commands` is one of COMPONENT_FIELDS.
     """
 
     def test_a_command_file_that_does_not_decode_is_reported(self):
@@ -286,12 +272,11 @@ class Commands(TempTree):
         self.assertTrue(any("commands/appian-init.md" in m for m in msgs), msgs)
 
     def test_a_directory_shipping_no_md_at_all_registers_no_command(self):
-        # The shape the readability loop could not see: it selected `.md`
-        # files and there were none, so a commands/ holding a renamed or
-        # half-converted file contributed nothing to check and nothing to
-        # report. A directory Claude Code scans and takes zero commands out of
-        # is the same package-looks-healthy-and-does-nothing failure this file
-        # opens by describing, one component along.
+        # The shape a readability loop cannot see: it selects `.md` files, so
+        # a commands/ holding only a renamed or half-converted file
+        # contributes nothing to check and nothing to report. A directory
+        # Claude Code scans and takes zero commands out of is the same
+        # looks-healthy-and-does-nothing failure, one component along.
         scaffold(self.root)
         os.makedirs(os.path.join(self.root, "commands"))
         open(os.path.join(self.root, "commands", "appian-init.txt"), "w").close()
@@ -321,9 +306,9 @@ class Commands(TempTree):
 
     def test_a_namespaced_command_counts_as_registered(self):
         # commands/<namespace>/<name>.md is how a command gets a namespace,
-        # so a package whose commands all live one level down registers plenty
-        # of them. A top-level-only scan would have called that empty and
-        # invented a finding, which is worse than the silence it replaced.
+        # so a package whose commands all live one level down registers
+        # plenty of them. A top-level-only scan calls that empty and invents
+        # a finding, which is worse than the silence it replaces.
         scaffold(self.root)
         os.makedirs(os.path.join(self.root, "commands", "appian"))
         with open(os.path.join(self.root, "commands", "appian", "init.md"), "w",
@@ -345,12 +330,10 @@ class Commands(TempTree):
         self.assertTrue(any("commands/appian/init.md" in m for m in msgs), msgs)
 
     def test_a_command_file_that_leads_nowhere_is_reported(self):
-        # `os.path.isfile` answers False for a dangling link and the loop used
-        # to read that as "not a command file" and move on -- silence over a
-        # name that is in the listing, ends in .md, and resolves to nothing.
-        # Every other referent in this file goes through _referent_problem;
-        # these two directories were the exception, for no reason but that
-        # they were added last.
+        # `os.path.isfile` answers False for a dangling link, which reads as
+        # "not a command file" -- silence over a name that is in the listing,
+        # ends in .md, and resolves to nothing. Every referent in this file
+        # goes through `_referent_problem`, these two directories included.
         scaffold(self.root)
         os.makedirs(os.path.join(self.root, "commands"))
         if not link_dir(os.path.join(self.root, "commands", "appian-init.md"),
@@ -366,11 +349,10 @@ class WhereTheNameActuallyLeads(TempTree):
     """A name in a listing is evidence of spelling and of nothing else."""
 
     def test_a_dangling_referent_is_not_a_present_one(self):
-        # The defect a reviewer found: exists_exact never asked the
-        # filesystem anything. os.listdir reports the name of a link whose
-        # target does not exist, so a declared component directory that
-        # pointed at nothing counted as present, raised the tally, emitted no
-        # finding, and the checker could exit 0 over it.
+        # `exists_exact` has to ask the filesystem, not only os.listdir:
+        # listdir reports the name of a link whose target does not exist, so
+        # a declared component directory pointing at nothing would count as
+        # present, raise the tally, emit no finding, and exit 0.
         scaffold(self.root, plugin_extra={"skills": "./components"})
         if not link_dir(os.path.join(self.root, "components"),
                         os.path.join(self.root, "no-such-target")):
@@ -436,9 +418,10 @@ class ManifestDeclaredPaths(TempTree):
         self.assertTrue(any("cmds" in m for m in msgs), msgs)
 
     def test_hook_code_with_nothing_declaring_it_fails(self):
-        # Measured against a copy of this repository: delete hooks/hooks.json
-        # and check() returned (0, []). Six hooks left the package and the
-        # checker whose whole subject is hooks that never run said nothing.
+        # Measured against a copy of this repository: with hooks/hooks.json
+        # deleted, check() returns (0, []). Six hooks leave the package and
+        # the checker whose whole subject is hooks that never run says
+        # nothing.
         scaffold(self.root)
         os.remove(os.path.join(self.root, "hooks", "hooks.json"))
         code, msgs = C.check(self.root)
@@ -459,10 +442,10 @@ class ManifestDeclaredPaths(TempTree):
         self.assertEqual(code, 0, msgs)
 
     def test_a_declared_hooks_manifest_that_is_absent_is_reported(self):
-        # Already true before this test existed -- `hooks` is one of
-        # COMPONENT_FIELDS, so the declared path goes through the same loop
-        # as every other declared path. Pinned here because "it happens to
-        # work" and "it is held to working" are different states.
+        # `hooks` is one of COMPONENT_FIELDS, so the declared path goes
+        # through the same loop as every other declared path. Pinned here
+        # because "it happens to work" and "it is held to working" are
+        # different states.
         scaffold(self.root, hooks=None, plugin_extra={"hooks": "./gone.json"})
         code, msgs = C.check(self.root)
         self.assertEqual(code, 1, msgs)

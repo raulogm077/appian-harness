@@ -137,14 +137,13 @@ class TestScopeGate(unittest.TestCase):
             self.assertNotEqual(d["permissionDecision"], "deny")
 
 class TestScopeMatchesEitherIdentifier(unittest.TestCase):
-    """`allowedObjects` was compared against one identifier, chosen by
-    preferring `name` and falling back to `uuid`. Real MCP schemas do not
-    cooperate: `updateInterface` takes a uuid and usually no name,
+    """`allowedObjects` is compared against every identifier in the call.
+
+    Preferring one key is wrong against the real MCP schemas:
+    `updateInterface` takes a uuid and usually no name,
     `addRecordTypeField(uuid, fieldName)` has no name at all, and
     `updateProcessModelNode(processModelUuid, nodeId, name)` has a `name`
-    that belongs to the node rather than the object. So most post-create
-    writes compared the wrong string and asked -- noise the README then
-    misread as evidence of oversized tasks.
+    that belongs to the node rather than the object.
 
     A task is scoped by whichever identifier its plan could know, so the
     write is in scope when ANY identifier in the call matches. The keys
@@ -173,8 +172,8 @@ class TestScopeMatchesEitherIdentifier(unittest.TestCase):
             self.assertEqual(d["permissionDecision"], "allow")
 
     def test_a_node_name_is_not_the_object_and_does_not_have_to_match(self):
-        # updateProcessModelNode's `name` is the node's. Under the old
-        # "prefer name" rule this asked on every layout fix.
+        # updateProcessModelNode's `name` is the node's, not the object's:
+        # under a "prefer name" rule this asks on every layout fix.
         with tempfile.TemporaryDirectory() as t:
             d = self._gate(t, ["_pm-0000-uuid"], "mcp__appian-dev__updateProcessModelNode",
                            {"processModelUuid": "_pm-0000-uuid", "nodeId": 4,
@@ -253,9 +252,8 @@ class TestScopeGateOutcome(unittest.TestCase):
 class TestDeferralIsRecordedNotMerelyPermitted(unittest.TestCase):
     """`10-quality-gates.md` says a deferral "goes into the project's
     deferred-debt register with task, criterion, reason, owner and closing
-    condition". Nothing wrote it there, so a deferral was a permission and
-    the register was a sentence. A deferral that opens a gate now leaves a
-    line behind."""
+    condition". A deferral that opens a gate leaves that line behind, or the
+    register is a sentence and the deferral is just a permission."""
 
     def _config(self, root):
         make_plugin_root(root)
@@ -327,9 +325,9 @@ class TestDeferralIsRecordedNotMerelyPermitted(unittest.TestCase):
 
 
 class TestVerdictMustAgreeWithItsPath(unittest.TestCase):
-    """The gates open one exact path per phase. Until they also told the
-    validator *which* task and phase they were opening, the document could
-    say anything: one audit copied into four filenames satisfied the whole
+    """The gates open one exact path per phase, and tell the validator
+    *which* task and phase they are opening -- otherwise the document can say
+    anything, and one audit copied into four filenames satisfies the whole
     four-phase guarantee."""
 
     def _config(self, root):
@@ -365,7 +363,7 @@ class TestVerdictMustAgreeWithItsPath(unittest.TestCase):
 
     def test_one_audit_copied_to_four_names_does_not_close_a_task(self):
         """The probe, end to end: a single `{"task":"TASK-999","phase":"qa"}`
-        document placed under all four filenames used to open every gate."""
+        document placed under all four filenames opens no gate but its own."""
         with tempfile.TemporaryDirectory() as t:
             c = self._config(t)
             for name in ("design", "implementation", "review", "qa"):
@@ -387,8 +385,9 @@ class TestVerdictMustAgreeWithItsPath(unittest.TestCase):
 
 class TestVerdictLookupIsCaseSensitive(unittest.TestCase):
     """`practices-QA.json` is documented as a verdict the gate reports
-    missing. On a case-insensitive filesystem it was found and the task
-    closed, so the harness behaved differently on a laptop than in CI."""
+    missing. On a case-insensitive filesystem a case-varied name is found and
+    the task closes, so the harness behaves differently on a Windows or macOS
+    laptop than in CI unless the gate compares the name itself."""
 
     def test_verdict_named_with_the_wrong_case_is_reported_missing(self):
         with tempfile.TemporaryDirectory() as t:
@@ -469,11 +468,10 @@ class TestWriteLog(unittest.TestCase):
 
 
 class TestEvidenceWritesAreVisible(unittest.TestCase):
-    """Every input the gates read is writable by the agent they constrain,
-    and until now `Write` and `Edit` were neither gated nor logged -- so an
-    agent could author its own passing verdict and leave no trace of having
-    done it. This does not stop that (see log_evidence_write's comment on
-    why gating is the wrong trade); it makes it visible."""
+    """Every input the gates read is writable by the agent they constrain, so
+    an agent can author its own passing verdict. This does not stop that (see
+    log_evidence_write's comment on why gating is the wrong trade); it makes
+    it visible."""
 
     def _log(self, config):
         path = os.path.join(config["evidenceDir"], "evidence-writes.jsonl")
@@ -514,9 +512,8 @@ class TestEvidenceWritesAreVisible(unittest.TestCase):
     def test_a_write_to_the_run_authorization_is_recorded(self):
         # The gate reads this file to decide whether anyone authorized the
         # writes at all, so an agent that edits it grants itself the run.
-        # Same footing as the active task file, and it arrived later --
-        # which is the whole reason this list has to grow with the gates
-        # rather than be written once.
+        # Same footing as the active task file: this list grows with the
+        # gates rather than being written once.
         with tempfile.TemporaryDirectory() as t:
             run = os.path.join(t, "tasks", "run.json")
             c = cfg(t, activeRunFile=run)
@@ -570,14 +567,12 @@ class TestOfficialAppianSkillIsRequiredBeforeWriting(unittest.TestCase):
     """Writing through the design MCP requires the official Appian skill
     (github.com/appian/dev-mcp-skills). It carries what the tool schemas
     cannot express -- naming conventions, both sides of a relationship, the
-    order objects must be created in, real UUIDs versus invented ones --
-    and none of that is anything the other gates measure, so a write issued
-    without it fails in a way nothing here would otherwise catch.
+    order objects must be created in, real UUIDs versus invented ones -- and
+    no other gate measures any of that.
 
-    A hook cannot see whether a skill is in an agent's context; that limit
-    is the same one this plugin already states about its own doctrine. What
-    it can do is open a file, so the requirement is enforced the way the
-    design audit already is: recorded per task, read by the gate."""
+    A hook cannot see whether a skill is in an agent's context, but it can
+    open a file, so the requirement is enforced the way the design audit is:
+    recorded per task, read by the gate."""
 
     def _config(self, root, **over):
         make_plugin_root(root)
@@ -929,14 +924,14 @@ class TestObjectLeasesGuardConcurrentBuilders(unittest.TestCase):
 
 
 class TestWriteMatcherAimsAtAppianAndAtRuntime(unittest.TestCase):
-    """The matcher was wrong in both directions at once, and both were
-    measured against real tool names rather than argued about.
+    """The matcher has to be right in both directions, measured against real
+    tool names rather than argued about.
 
-    Too wide: `^mcp__.*__` matched every MCP server, so Supabase, Figma and
-    Google Drive writes were measured against an Appian task's contract.
-    Too narrow: the verb list described the design catalogue and ignored the
-    runtime, so invoking a process model -- which starts real work and
-    writes real data in a shared environment -- passed with no gate."""
+    Too wide: `^mcp__.*__` matches every MCP server, so Supabase, Figma and
+    Google Drive writes get measured against an Appian task's contract. Too
+    narrow: a verb list describing the design catalogue and ignoring the
+    runtime lets invoking a process model -- which starts real work and
+    writes real data in a shared environment -- pass with no gate."""
 
     def _w(self, name):
         return scope_gate({"tool_name": name, "tool_input": {}},
@@ -950,7 +945,7 @@ class TestWriteMatcherAimsAtAppianAndAtRuntime(unittest.TestCase):
             self.assertEqual(self._w(name), "ask", name)
 
     def test_appian_runtime_execution_is_gated(self):
-        # These change real state and used to escape entirely.
+        # These change real state in a shared environment.
         for name in ("mcp__appian__appian_invoke_process_model",
                      "mcp__appian__appian_invoke_agent",
                      "mcp__appian-dev__testProcessModel"):

@@ -1,16 +1,8 @@
 """Ceremony in proportion to the change, in the layer that enforces it.
 
-The doctrine graduated by risk from the start — the calibration table in
-`appian-best-practices`, the entry threshold in `appian-review` — while the
-gates applied one ceremony to everything. A text fix cost four verdicts, and
-the escape people actually take from that is to stop declaring tasks at all,
-which loses the record entirely. Cheaper-but-recorded beats
-expensive-and-avoided.
-
-The other direction matters equally: `high` adds an adversarial pass whose
-question is "how does this fail?" rather than "does this meet the
-contract?". A fourth opinion earns its cost only by asking a different
-question.
+`trivial` needs one verdict, `standard` three, `high` a fourth adversarial
+pass that asks "how does this fail?" rather than "does this meet the
+contract?". An unrecognised risk value fails towards more ceremony.
 """
 import json, os, sys, unittest, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -23,11 +15,9 @@ TASK = "T-1"
 
 
 class TestDecidingIsSeparateFromRecording(unittest.TestCase):
-    """A query must not create files. The first version logged from inside
-    `_required_closure_phases`, so asking "which phases does trivial need?"
-    with an empty config wrote an `evidence/` directory into whatever the
-    current directory happened to be — including the plugin's own checkout,
-    which is the contamination CI has a step to prevent."""
+    """A query must not create files: `_required_closure_phases` and
+    `_risk_tier` answer which phases a tier needs without logging, so asking
+    with an empty config writes no `evidence/` into the current directory."""
 
     def test_asking_the_question_writes_nothing(self):
         with tempfile.TemporaryDirectory() as t:

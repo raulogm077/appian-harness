@@ -106,12 +106,12 @@ class TestCLI(unittest.TestCase):
 
 
 class TestUnrecognisedTreeIsNotAPass(unittest.TestCase):
-    """A tree whose component types this checker does not judge used to come
+    """A tree whose component types this checker does not judge must not come
     back `OK`, exit 0 -- indistinguishable from a screen that was checked and
-    found clean. That is the same vacuous pass `lint_skills.py` fixed when it
-    stopped claiming "All skills passed" over zero files, and it also broke
-    the plugin's own claim that these exit codes tell a clean run from a run
-    that never happened."""
+    found clean. That is the vacuous pass `lint_skills.py` refuses when it
+    declines to claim "All skills passed" over zero files, and it breaks the
+    plugin's own claim that these exit codes tell a clean run from a run that
+    never happened."""
 
     def run_main(self, args):
         out, err = io.StringIO(), io.StringIO()

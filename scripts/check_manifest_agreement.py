@@ -1,39 +1,4 @@
-"""Holds everything that declares a version to the same answer.
-
-`.claude-plugin/marketplace.json` sat at 0.2.1 while `.claude-plugin/plugin.json`
-said 0.2.4 -- stale across three consecutive releases. Nothing broke, and that
-is precisely why it survived: plugin.json wins at install time and the entry
-version is silently ignored. What does read the entry is `claude plugin tag`,
-probed on a throwaway repository carrying exactly this drift -- it exits 1
-rather than tagging, and says so in the plugin's own terms:
-
-    Version mismatch: plugin.json says "0.2.4" but marketplace.json
-    plugins[0].version says "0.2.1". plugin.json wins at install time, so
-    update the marketplace entry to "0.2.4" (or remove it) before tagging.
-
-So the drift was one release away from blocking the thing it was invisible to.
-
-The changelog is the third place a version has to appear, and until 0.6.0 it
-was the one place nothing compared. CONTRIBUTING's release procedure said "add
-the CHANGELOG entry" as step 2 -- the only step of the four with no check
-behind it, in a repository whose CHANGELOG opens by saying it is the *only*
-announcement a gate that stops firing ever gets. A release whose CHANGELOG has
-no entry ships behaviour nobody was told about, so a CHANGELOG.md that exists
-must carry a `## <version>` heading for the version the manifests declare.
-
-A CHANGELOG.md that does not exist is deliberately not this file's finding:
-the shipped documents link to it (`docs/troubleshooting.md` for one), so its
-absence breaks the cross-document link check in `check_readme_claims.py`.
-Reporting it here too would be the restated-check drift `ci.yml` argues
-against.
-
-A pass here is not a promise that `tag` will succeed. The same probe showed it
-also refuses on a dirty working tree, which belongs to the release procedure
-and not to this file.
-
-Deliberately not a call to `claude plugin validate`: CI does not have the CLI,
-and a check that only runs where the CLI happens to be installed is the same
-absent-gate problem the launcher exists to prevent.
+"""Holds both manifests and the CHANGELOG heading to the same version.
 
     python3 scripts/check_manifest_agreement.py [root]
 
@@ -49,9 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from exit_codes import EXIT_NOT_MEASURED  # noqa: E402
 
 
-# Python's type names are not the ones the file is written in. A reader
-# staring at `[...]` in a .json is looking at an array, and telling them it is
-# a "list" sends them to translate before they can act.
+# JSON's type names, not Python's: a reader staring at `[...]` in a .json is
+# looking at an array, and "list" makes them translate before they can act.
 JSON_SHAPE = {dict: "an object", list: "an array", str: "a string",
               bool: "a boolean", type(None): "null"}
 
@@ -63,14 +27,8 @@ def _shape(value):
 def _read_manifest(path, label):
     """Return (mapping, problem); exactly one of the two is None.
 
-    Two failure modes, not one. `json.load` raising means the file will not
-    parse; a file that parses to an array is perfectly readable and still
-    cannot be asked for a name. That second one used to leave here as an
-    AttributeError -- in a step CONTRIBUTING places immediately before
-    `claude plugin tag`, where a traceback halts a release without naming
-    which of the two manifests is malformed. That is the one question this
-    file exists to answer, and it already answered it for the unparseable
-    case, so crashing on the other was an asymmetry rather than a boundary.
+    Two failure modes, and neither may leave here as a traceback:
+    docs/design-notes.md § check_manifest_agreement.py · _read_manifest
     """
     try:
         with open(path, encoding="utf-8") as f:
@@ -97,14 +55,13 @@ def check(root):
 
     name = plugin.get("name")
     version = plugin.get("version")
-    # Both fields, before anything is compared. A plugin.json missing its
-    # version reads as None, the entry that also omits one reads as None, and
-    # the run passes having compared two absences -- agreement about nothing.
+    # Both fields before anything is compared -- two absences compare equal:
+    # docs/design-notes.md § check_manifest_agreement.py · both fields first
     if not name or not version:
         return 1, ["plugin.json must declare both 'name' and 'version'"]
 
     if not os.path.isfile(market_path):
-        # A plugin distributed only through someone else's marketplace has
+        # A plugin distributed through someone else's marketplace has
         # nothing here to agree with. Not a pass: nothing was compared.
         return EXIT_NOT_MEASURED, [
             "no .claude-plugin/marketplace.json; no entry was compared against "
@@ -113,10 +70,8 @@ def check(root):
     if problem:
         return 1, [problem]
 
-    # A missing key means no entries, which the "declares no entry" branch
-    # below reports properly. A key present and holding null is a different
-    # thing -- someone wrote it and got it wrong -- and `get`'s default never
-    # fires for it, so it reached the loop as None and raised there.
+    # A key holding null is not a missing key; `get`'s default never fires:
+    # docs/design-notes.md § check_manifest_agreement.py · plugins is null
     declared = market.get("plugins", [])
     if not isinstance(declared, list):
         return 1, ["marketplace.json 'plugins' must be an array; it is %s"
@@ -128,13 +83,14 @@ def check(root):
 
     entries = [e for e in declared if e.get("name") == name]
     if not entries:
-        # Naming what IS declared, because the usual cause is a rename that
-        # landed in one manifest only, and "no entry named X" sends the reader
-        # to open the file for something this check already read.
+        # Names what IS declared, because the usual cause is a rename that
+        # landed in one manifest only.
         return 1, ["marketplace.json declares no entry named %r, so plugin.json's "
                    "version cannot be checked against anything; it declares: %s"
                    % (name, ", ".join(repr(e.get("name")) for e in declared) or "nothing")]
 
+    # plugin.json wins at install time, so drift is invisible until tagging:
+    # docs/design-notes.md § check_manifest_agreement.py · the drift
     for entry in entries:
         entry_version = entry.get("version")
         if entry_version is None:
@@ -149,11 +105,8 @@ def check(root):
     if os.path.isfile(changelog):
         with open(changelog, encoding="utf-8") as f:
             text = f.read()
-        # `## <version>` followed by a boundary, not merely a prefix: the entry
-        # for 0.5.10 must not satisfy a release of 0.5.1. Anchored to `## ` so
-        # a version mentioned in a paragraph -- every entry here cites earlier
-        # releases in prose -- cannot stand in for the heading a reader scans
-        # for.
+        # A boundary, not merely a prefix -- 0.5.10 must not satisfy 0.5.1 --
+        # and anchored to `## ` so a version cited in prose cannot stand in.
         if not re.search(r"^##\s+%s(\s|$)" % re.escape(version), text, re.MULTILINE):
             msgs.append("CHANGELOG.md has no `## %s` entry, and the changelog is the "
                         "only announcement a behaviour change ever gets; write the "

@@ -1,35 +1,25 @@
 """Checks process-model layout from node coordinates.
 
-Field experience, and an honest limit: the API exposes node coordinates but
-neither node dimensions nor connection waypoints. So the thresholds below are
-a proxy for "these do not overlap", not a proof, and this tells you where every
-node sits -- never where any arrow goes.
-"""
+    usage: n3_process_layout.py LAYOUT_JSON
+    exit: 0 clean, 1 findings or unreadable input, 2 usage, 3 NOT MEASURED
+
+The API exposes no node dimensions and no waypoints, so this says where every
+node sits and never where an arrow goes:
+docs/design-notes.md § n3_process_layout.py · coordinates only"""
 import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# The comment here used to open "Same value and same meaning as
-# n2_interface_tree.EXIT_NOT_MEASURED and lint_skills" over a freshly typed
-# `= 3`, which is a copy that knows it is one and says so instead of stopping
-# being one. What survives the import is the part that is about this file:
-# N2's vacuous pass has a narrower form here -- a layout naming no nodes had
-# nothing to compare and reported OK, indistinguishable from a process model
-# that was checked and found clean.
 from exit_codes import EXIT_NOT_MEASURED  # noqa: E402
 
+# The proxy for "these do not overlap", not a proof:
+# docs/design-notes.md § n3_process_layout.py · the thresholds
 MIN_DX = 150
 MIN_DY = 100
 
-# The check ids jump from C3 to C5, and that gap is deliberate rather than an
-# omission to be filled later. C4 was to be a lane check -- "the nominal path
-# sits on one y, branches get their own" -- and nodes plus edges do not carry
-# enough to decide it: nothing here says which path is nominal, and any rule
-# guessing it from coordinates would only be re-asserting whatever layout it
-# was given. A constant for it (LANE_DY) sat here unused while the README
-# advertised the check; both are gone. Lanes are a judgement made by looking
-# at the diagram, which is N5.
+# C4 is missing on purpose: coordinates cannot decide lanes, so that is N5.
+# docs/design-notes.md § n3_process_layout.py · the C4 gap
 
 
 def _back_edges(edges):
@@ -105,8 +95,8 @@ layout naming no nodes is."""
 
 
 def _shape_errors(data):
-    """Rejects a malformed layout with a named reason instead of letting
-    check_layout raise a TypeError three frames down."""
+    """A named reason for a malformed layout, instead of a TypeError raised
+    three frames down in check_layout."""
     if not isinstance(data, dict):
         return "layout must be a JSON object with 'nodes' and 'edges'"
     nodes, edges = data.get("nodes"), data.get("edges")
@@ -146,9 +136,8 @@ def main(argv):
         return 1
 
     if not data["nodes"]:
-        # Nodes are what get measured. A layout naming none of them -- with
-        # or without edges -- compared nothing, and reporting that as clean
-        # is the vacuous pass this plugin argues against everywhere else.
+        # Nodes are what get measured, so naming none of them is unchecked,
+        # not clean. docs/design-notes.md § n3_process_layout.py · no nodes is not measured
         print("NOT MEASURED %s: the layout names no nodes, so no separation, direction or "
               "connectivity check ran. This is not a clean layout; it is an unchecked one."
               % path)

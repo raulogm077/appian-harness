@@ -1,11 +1,9 @@
 """A verdict is a claim about a version of the work, and it expires.
 
-The gap this closes: nothing tied a verdict to the artifact it judged. A
-review comes back FAIL, the agent fixes it -- more writes -- and re-runs
-only `phase=review`. The pre-fix `implementation` and `qa` verdicts still
-satisfied the closure gate, so the task closed on two PASSes certifying an
-artifact that no longer existed. With one builder that is an occasional
-slip. Unattended, or with several builders, it is the normal case.
+A verdict is tied to the artifact it judged: a review that fails, is fixed --
+more writes -- and re-run for `phase=review` alone must not close the task on
+pre-fix `implementation` and `qa` PASSes certifying an artifact that no
+longer exists. Unattended, or with several builders, that is the normal case.
 """
 import json, os, sys, time, unittest, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -128,14 +126,11 @@ class TestAVerdictExpiresWhenTheArtifactChanges(unittest.TestCase):
 class TestTheAdversarialVerdictExpiresToo(unittest.TestCase):
     """`risk` is a post-write phase, so it goes stale like the rest.
 
-    The exemption belongs to `design` alone, and for a reason that is about
-    *when* the phase runs, not about which tuple it happens to live in:
-    design precedes the first write on purpose, every other phase judges
-    what the writes produced. `risk` was exempt only because the staleness
-    check was keyed on `CLOSURE_PHASES`, which `risk` is not a member of --
-    it is appended to that tuple for high-risk tasks. So the tier that buys
-    a fourth opinion because a mistake there is expensive was the one tier
-    whose extra verdict never expired.
+    The exemption belongs to `design` alone, for a reason about *when* the
+    phase runs rather than which tuple it lives in: design precedes the first
+    write on purpose, every other phase judges what the writes produced.
+    `risk` is appended to `CLOSURE_PHASES` for high-risk tasks rather than
+    being a member of it, so a check keyed on that tuple alone exempts it.
     """
     TASK = "T-1"
 

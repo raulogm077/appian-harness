@@ -1,60 +1,29 @@
 """Six hooks that enforce the Appian harness's requirements, write and
-closure gates.
+closure gates. An agent must not be able to mark its own work as passing.
 
-The plugin's premise is that an agent must not be able to mark its own work
-as passing. These hooks are where that stops being advice:
-
-- session_start (SessionStart): are the three links present -- a design MCP,
-  the official Appian skill, a documentation MCP? Each one fails in a way
-  that looks like something else, so they are reported together at the
-  start rather than discovered one confusing afternoon at a time. Informs,
-  never blocks: a session missing a link is still good for reading and
-  planning. It cannot tell "configured" from "answering", so it asks the
-  agent to prove the design MCP alive with validateExpression.
-- scope_gate (PreToolUse on Appian write tools): is there an approved active
-  task? is the object in its allowedObjects? is the task inside an
-  authorized run, and is the object free of another task's lease (both only
-  when the project configures them)? is this call irreversible, and if so
-  has its impact been assessed? is the task atomic? was the official Appian
-  skill loaded and recorded for this task? is there a
-  PASSING design audit for it? "Passing" is two checks stacked: structurally
-  valid per validate_verdict (so a fabricated citation fails the gate, not
-  just a missing file), AND an outcome of PASS or a sanctioned, owned
-  NOT_MEASURED/DEFERRED -- a FAIL or an unowned NOT_MEASURED/BLOCKING audit
-  does not unlock the write, because a gate that accepts a FAIL is not a
-  gate.
-- closure_gate (Stop): the write gate cannot cover review and QA, which
-  happen after writing. This blocks closing a task without passing
-  practices-implementation, practices-review and practices-qa verdicts, and
-  names which are missing or failing -- except on a repeat Stop attempt,
-  where blocking forever would just get the gate disabled, so it approves
-  and records the omission as recorded debt instead (see closure_gate's
-  own docstring).
-- log_write (PostToolUse): appends task, tool, object and result to
-  operations.jsonl. The harness records it, not the agent -- an agent asked
-  to log its own writes forgets exactly when it matters.
-- log_evidence_write (PostToolUse on file writes): records edits aimed at
-  the three files the gates themselves read -- the evidence tree, the
-  harness config, the active task file. Every one of them is writable by
-  the agent the gates constrain, so this exists to make that visible. It
-  logs rather than gates, for the reason argued in its own docstring.
-- failure_notice (PostToolUseFailure): tells the agent not to retry a failed
-  write blindly. Says nothing about a failed read, which wants retrying.
+- session_start (SessionStart) -- reports whether the three links are there:
+  design MCP, official Appian skill, documentation MCP. Informs, never blocks.
+- scope_gate (PreToolUse on Appian write tools) -- approved active task,
+  object in `allowedObjects`, atomic task, official skill recorded, a passing
+  design audit, and the optional run and lease checks.
+- closure_gate (Stop) -- blocks closing a task without the practices verdicts
+  its risk tier requires; on a repeat attempt it approves and records debt.
+- log_write (PostToolUse) -- appends every Appian write to operations.jsonl.
+- log_evidence_write (PostToolUse on file writes) -- records edits to the
+  files the gates themselves read.
+- failure_notice (PostToolUseFailure) -- do not retry a failed write blindly.
 
 Four rules, non-negotiable:
 
-1. Never return "deny". Only "allow" or "ask". A guardrail that blocks gets
-   switched off, and then it protects nothing.
-2. Fail-closed means "ask", never refuse. If a hook cannot inspect something
-   -- unreadable config, malformed JSON -- it asks. It never lets something
-   through because it could not tell.
-3. A plugin installed in a project that does not use it must not get in the
-   way. If .claude/appian-harness.json is absent from the project, every
-   hook returns allow (or approve / no-op) and exits 0. That is the
-   activation mechanism.
+1. Never return "deny". Only "allow" or "ask".
+2. Fail-closed means "ask": a hook that cannot inspect something asks.
+3. No `.claude/appian-harness.json` in the project, every hook allows and
+   exits 0. That absence is the activation switch.
 4. scope_gate accumulates every reason it finds instead of stopping at the
-   first. Telling someone one of four problems, three times in a row, is
-   worse than telling them all four once.
+   first.
+
+Rationale, measurements and the traps behind the non-obvious lines:
+docs/design-notes.md.
 """
 import calendar
 import json
@@ -63,107 +32,40 @@ import re
 import sys
 import time
 
-# harness_hooks.py lives in hooks/; validate_verdict.py lives in ../scripts/.
-# Inserted unconditionally so this module is self-sufficient whether it's
-# imported by the test suite or run directly as the hook's entry point.
+# validate_verdict.py lives in ../scripts/; inserted unconditionally so this
+# module works both imported by the tests and run as the hook entry point.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
 from validate_verdict import isfile_exact, load_verdict, validate_verdict
 
-# The second half of a two-stage filter, and the two stages are NOT
-# interchangeable. hooks.json decides which tool calls reach this process at
-# all; this decides what to do with the ones that arrive. A tool the JSON
-# matcher does not route is a tool this function never sees in production,
-# however broad this pattern is -- which is exactly how the runtime-invoke
-# gating below was dead for a while: the verbs were added here and the JSON
-# matcher had no `(appian_)?` allowance, so `appian_invoke_process_model`
-# matched here and was never routed. Found by an outside reading, not by
-# these tests, because the tests call scope_gate directly and bypass the
-# matcher entirely.
-#
-# So the invariant to hold is: **hooks.json must route everything this
-# pattern gates.** This side is deliberately NARROWER on the runtime verbs
-# (the JSON side routes a bare `invoke|start|run|test`, this one names the
-# specific tools), which is safe -- extra routing costs one no-op call.
-# Broader here than there is the unsafe direction, and it is silent.
-#
-# `test_matcher_parity.py` is what holds it, and it exists because the
-# invariant spent a while written down and unchecked. It reads hooks.json,
-# applies both patterns to the real tool catalogue of the two Appian MCP
-# servers, and fails if anything this gates would not be routed.
-#
-# Which is also why there is no re.IGNORECASE here any more. Claude Code
-# applies the JSON matcher as written and has no flag to make it
-# case-insensitive -- that matcher spells `[Aa]ppian` by hand for exactly
-# that reason. A case-insensitive pattern on this side is therefore broader
-# than the routing, the unsafe direction, so the character classes below
-# mirror the JSON ones literally rather than leaning on a flag the other
-# half does not have.
+# Second half of a two-stage filter: hooks.json routes, this decides. The
+# invariant is that hooks.json must route everything this pattern gates --
+# narrower here is safe, broader is unsafe and silent. `test_matcher_parity`
+# holds it, and it is why there is no re.IGNORECASE.
+# docs/design-notes.md § harness_hooks.py · the two-stage matcher.
 WRITE_TOOL_RE = re.compile(
     r"^mcp__[a-zA-Z0-9_-]*[Aa]ppian[a-zA-Z0-9_-]*__"
-    # The `appian` runtime server prefixes every tool with `appian_`, so the
-    # verb is not where a reader expects it: the tool is
-    # `appian_invoke_process_model`, not `invoke_process_model`.
+    # The `appian` runtime server prefixes every tool with `appian_`.
     r"(?:appian_)?"
     r"(create|update|add|insert|configure|reorder|upload|replace|delete|remove"
     r"|invoke_process_model|invoke_agent|start_process|execute"
     r"|testProcessModel)",
 )
 
-# Two corrections are folded into that pattern, and both were measured
-# against real tool names rather than reasoned about:
-#
-# It used to begin `^mcp__.*__`, which matched ANY MCP server. With the
-# config present, `mcp__claude_ai_Supabase__create_project`,
-# `Supabase__delete_branch`, `Figma__create_new_file` and
-# `Google_Drive__create_file` were all measured against an Appian task's
-# allowedObjects -- and inconsistently, since `Notion__notion-create-pages`
-# escaped because the verb has to follow the separator. Requiring `appian`
-# in the server name keeps the gate on the environment it reasons about.
-#
-# The worse half was the other direction. The verb list described the
-# design catalogue and said nothing about the runtime, so
-# `mcp__appian__appian_invoke_process_model` -- which starts a real process
-# and writes real data in a shared environment -- passed with no gate at
-# all, as did `appian_invoke_agent` and `appian-dev__testProcessModel`.
-# `invoke_process_model`, `invoke_agent`, `start_process`, `execute` and
-# `testProcessModel` close that.
-#
-# Those runtime verbs are spelled out rather than matched as a bare
-# `invoke|run|test` prefix, and that precision is the point: an expression
-# rule has no side effects, so `invoke_expression_rule` and `testRule` are
-# reads, and `runAllInterfaceTestCases` replays stored cases, which is what
-# a verification step is supposed to do freely. Gating those would put
-# friction on discovery and on verification -- the two things this harness
-# most wants to be cheap.
-#
-# Both corrections were measured, not reasoned, and the measurement is
-# `test_matcher_parity.py` rather than a number in this comment -- a claim
-# about a count nobody can re-run is the kind of evidence this plugin
-# refuses everywhere else. The first version of this pattern was written
-# from memory and missed that the `appian` server prefixes its tools with
-# `appian_`, which is why the corpus in that test is the real catalogue.
+# The runtime verbs are spelled out rather than matched as a bare
+# `invoke|run|test`: `invoke_expression_rule`, `testRule` and
+# `runAllInterfaceTestCases` have no side effects and stay ungated.
+# Why each verb is in or out: docs/design-notes.md § harness_hooks.py · verbs.
 
-# The irreversible half of an asymmetric pair. An update is versioned and
-# recoverable; a deletion is not, and neither is a dropped column. These get
-# a different treatment from every other write, and the difference is not a
-# stricter version of the same check -- it is a different question.
-#
-# It has to stay a SUBSET of WRITE_TOOL_RE, which is why its classes mirror
-# that pattern's rather than being written independently: `scope_gate`
-# returns early for anything `_is_write_tool` rejects, so a name this
-# matched and that did not would skip the confirmation on the one class of
-# call that cannot be undone.
+# The irreversible half of an asymmetric pair, and a strict SUBSET of
+# WRITE_TOOL_RE: `scope_gate` returns early for anything `_is_write_tool`
+# rejects, so a name this matched and that did not would skip the
+# confirmation on the one class of call that cannot be undone.
 DESTRUCTIVE_TOOL_RE = re.compile(
     r"^mcp__[a-zA-Z0-9_-]*[Aa]ppian[a-zA-Z0-9_-]*__(?:appian_)?"
     r"(delete|remove"
-    # `updateRecordData` belongs here and it took an outside reading to see
-    # it. The premise separating destructive from ordinary -- "an update is
-    # versioned and recoverable" -- is true of DESIGN objects and false of
-    # RECORD DATA: a row has no version history, so overwriting one is
-    # exactly as irreversible as deleting it, and just as unbounded by
-    # `allowedObjects`. Grouping it with `updateInterface` because both are
-    # spelled "update" was reasoning from the verb instead of from what the
-    # verb does.
+    # A row has no version history, so overwriting one is as irreversible as
+    # deleting it -- the "updates are recoverable" premise covers design
+    # objects only.
     r"|updateRecordData)",
 )
 
@@ -171,19 +73,11 @@ DESTRUCTIVE_TOOL_RE = re.compile(
 # keyed by object, because an object name is not safe to put in a filename.
 DEPENDENTS_RECORD_NAME = "dependents.json"
 
-# Candidate keys for the object a write tool targets. Appian MCP tools don't
-# share one argument name for "the object", so every one of these is read and
-# they are treated as alternative spellings of the SAME target rather than as
-# a list of different objects -- which is what makes "in scope if any of them
-# matches" the correct rule and not a loosening of the gate.
-#
-# Preferring one key over the others was wrong against the real schemas.
-# `updateInterface` takes a `uuid` and usually carries no `name`;
-# `addRecordTypeField(uuid, fieldName)` has no `name` at all; and
-# `updateProcessModelNode(processModelUuid, nodeId, name)` has a `name` that
-# belongs to the *node*, not to the object the task scoped. So most
-# post-create writes compared a string that was never going to be in
-# allowedObjects, and asked.
+# Candidate keys for the object a write tool targets: Appian MCP tools share
+# no single argument name for it, so all of these are read as alternative
+# spellings of the SAME target -- which is what makes "in scope if any
+# matches" correct rather than a loosening.
+# docs/design-notes.md § harness_hooks.py · object keys.
 OBJECT_KEYS = (
     "name", "uuid", "id",
     "recordTypeUuid", "interfaceUuid", "processModelUuid", "expressionRuleUuid",
@@ -198,33 +92,15 @@ DEFAULT_MAX_ALLOWED_OBJECTS = 3
 CLOSURE_PHASES = ("implementation", "review", "qa")
 
 # Which phases a verdict may legitimately predate the writes for. An
-# allow-list of exemptions rather than a list of what to check, so a phase
-# added later is checked by default -- see `_staleness_error`, which had it
-# the other way round and left the high-risk tier's extra verdict immortal.
+# allow-list of exemptions, not a list of what to check, so a phase added
+# later is checked by default.
 STALENESS_EXEMPT_PHASES = ("design",)
 
-# Proportionality, in the layer that actually enforces it. The doctrine has
-# always graduated by risk -- the calibration table in appian-best-practices,
-# the entry threshold in appian-review -- while the gates applied one ceremony
-# to everything. So a text fix cost four verdicts, and the way people escape
-# that is to stop declaring tasks at all, which loses the record entirely.
-#
-# `risk` is declared in the plan and copied into the active task file:
-#
-#   trivial   -- cosmetic, local, touches no data, permissions or queries.
-#                One verdict. It is still a recorded task with evidence,
-#                which is the point: the alternative people actually choose
-#                is no task at all.
-#   standard  -- the default, and what an absent or unrecognised value means.
-#   high      -- data model, security, architecture, integrations. Adds an
-#                adversarial pass whose question is "how does this fail?"
-#                rather than "does this meet the contract?" -- a different
-#                premise, which is the only reason a fourth reviewer earns
-#                its cost.
-#
-# Declaring `trivial` is a downgrade the builder can write, like everything
-# else here. It is not prevented; it is logged (see _log_risk_downgrade), so
-# "was this really trivial?" is answerable afterwards.
+# How much ceremony a task's risk tier buys. `risk` is declared in the plan
+# and copied into the active task file: `trivial` is cosmetic and local and
+# pays one verdict, `standard` is the default and what an unrecognised value
+# means, `high` adds an adversarial pass. A `trivial` claim is not prevented,
+# it is logged (see _log_risk_downgrade).
 RISK_CLOSURE_PHASES = {
     "trivial": ("implementation",),
     "standard": CLOSURE_PHASES,
@@ -232,18 +108,9 @@ RISK_CLOSURE_PHASES = {
 }
 DEFAULT_RISK = "standard"
 
-# Writing to Appian through the design MCP requires the official Appian skill
-# (github.com/appian/dev-mcp-skills), which carries what the tool schemas
-# cannot express: naming conventions, both sides of a relationship, the order
-# objects must be created in, and real UUIDs versus invented ones. None of
-# that is anything this plugin's gates measure -- they check the contract,
-# atomicity and the presence of a verdict -- so a write issued without it
-# fails in a way nothing here would catch.
-#
-# A hook cannot see whether a skill is in an agent's context; that limit is
-# the same one this plugin already states about its own doctrine. What a hook
-# CAN open is a file, so the requirement is enforced the way the design audit
-# already is: the build records the load per task, and the gate reads it.
+# A hook cannot see whether a skill is in an agent's context, but it can open
+# a file: the build records the official skill's load per task, and the gate
+# reads the record. docs/design-notes.md § harness_hooks.py · official skill.
 SKILL_RECORD_NAME = "appian-skill-loaded.json"
 OFFICIAL_SKILL_URL = "github.com/appian/dev-mcp-skills"
 
@@ -259,12 +126,9 @@ SKILL_SEARCH_RELPATHS = (
     os.path.join(".claude", "skills", "appian", "SKILL.md"),
 )
 
-# The official skill declares the environment's version in its own SKILL.md as
-# `**Appian Version:** 26.7`. That field is the one thing in the record that
-# cannot be filled in without having opened the skill, which is what makes it
-# worth checking rather than decorative -- and when the project points at the
-# installed skill, the claim stops being self-reported and gets compared
-# against the file on disk.
+# The one field of the load record that cannot be filled in without having
+# opened the skill -- and, when the project points at the installed skill, the
+# one that gets compared against the file instead of being trusted.
 APPIAN_VERSION_RE = re.compile(r"^\s*\*\*Appian Version:\*\*\s*(\S+)", re.MULTILINE)
 
 
@@ -275,24 +139,9 @@ def _is_write_tool(tool_name):
 def _evidence_dir(config):
     """The evidence root, surviving a key that is present and null.
 
-    `config.get(k, DEFAULT)` returns the DEFAULT only when the key is
-    ABSENT. A project whose `.claude/appian-harness.json` says
-    `"evidenceDir": null` -- which is what a half-filled template looks
-    like -- got `None`, and `os.path.join(None, ...)` raises.
-
-    The crash itself was survivable; where it landed was not. `main()`
-    catches everything, and its answers are asymmetric by design: the scope
-    gate turns an exception into a loud `ask` and the closure gate into a
-    `block`, but the two logging hooks emit `{}` and exit 0. So one null in
-    a config file stopped the operations log and the evidence-write log
-    **silently**, at the same moment a person started hand-approving a
-    stream of "harness hook error" prompts. And an empty write log reads to
-    `_staleness_error` as "this task never wrote", which quietly makes every
-    stale verdict look fresh.
-
-    Fail-closed held for the gates and the audit trail failed open, which
-    is the wrong way round: the gates announce their own failure, the logs
-    are what nobody is watching.
+    `config.get(k, DEFAULT)` falls back only when the key is ABSENT, and a
+    null there fails the logging hooks silently.
+    docs/design-notes.md § harness_hooks.py · null config keys.
     """
     return config.get("evidenceDir") or DEFAULT_EVIDENCE_DIR
 
@@ -405,43 +254,11 @@ def _verdict_recorded_epoch(verdict_path):
 def _staleness_error(config, task_id, phase, verdict_path, last_write=_UNSET):
     """Whether this verdict certifies an artifact that has since changed.
 
-    The gap this closes: nothing tied a verdict to a version of the thing
-    it judged. So a review coming back FAIL, the agent fixing it, and only
-    `phase=review` being re-run left the pre-fix `implementation` and `qa`
-    verdicts still satisfying the closure gate -- two PASSes certifying an
-    artifact that no longer existed. With one builder that is an occasional
-    slip; unattended, or with several builders, it is the normal case.
-
-    Only the post-write phases are checked, and the exemption is named
-    rather than derived. `design` is *supposed* to predate every write --
-    that is the whole argument for running it before the first one -- so
-    measuring it against the write log would mark every correct design
-    audit stale. Every other phase judges what the writes produced.
-
-    Keying this on `CLOSURE_PHASES` instead was wrong in the one place it
-    could least afford to be. `risk` is not in that tuple -- it is appended
-    to it for high-risk tasks -- so the fourth verdict, bought precisely
-    because a mistake there is expensive, was the only one that never
-    expired. Stating the exemption as `design` means a phase added later is
-    checked by default and has to argue its way out.
-
-    Equal timestamps count as fresh: the log has one-second resolution, and
-    a verdict written in the same second as the write it judges is the
-    normal case, not a violation.
-
-    When the verdict was recorded is read from the verdict, not from the
-    filesystem. It used to be `getmtime`, which made the file's mtime *be*
-    the claim, and mtime is not a claim anyone made: `touch` cleared an
-    expiry without re-running a single audit -- the rubber stamp this check
-    exists to prevent -- and a clone, a copy or a restore from backup rewrote
-    every mtime at once, so freshness did not survive moving the project.
-    `recordedAt` is the auditor's own statement about its own verdict.
-
-    mtime stays as the fallback, and deliberately: every verdict written
-    before this field existed is on disk without it, and treating those as
-    undatable would either expire all of them or exempt all of them. Falling
-    back is also what an unparseable value does -- a malformed `recordedAt`
-    must not buy a pass it could never buy by being absent.
+    Post-write phases only: `design` is supposed to predate every write.
+    Equal timestamps count as fresh (the log has one-second resolution), the
+    date comes from the verdict's own `recordedAt` rather than from mtime,
+    and mtime is the fallback for verdicts written without that field.
+    docs/design-notes.md § harness_hooks.py · verdict staleness.
     """
     if phase in STALENESS_EXEMPT_PHASES:
         return []
@@ -465,41 +282,19 @@ def _staleness_error(config, task_id, phase, verdict_path, last_write=_UNSET):
 
 
 def _phase_errors(config, task_id, phase, last_write=_UNSET):
-    """Names what's wrong with a phase's verdict; empty list means valid AND
-    passing. Both halves matter and neither is optional:
+    """Names what's wrong with a phase's verdict; empty means valid AND
+    passing.
 
-    - validate_verdict answers "is this a well-formed audit of THIS task and
-      THIS phase, whose citations resolve?" -- a document-shape question,
-      plus the one thing shape alone cannot answer: whether the document is
-      about the work whose gate is opening it. Both gates assemble the path
-      from a task id and a phase, so both can say what they are opening, and
-      they do. Before they did, a verdict reading
-      {"task": "TASK-999", "phase": "qa"} satisfied every one of the four
-      filenames, and one audit copied four times was indistinguishable from
-      four independent ones. It deliberately still says nothing about the
-      outcome, and that separation is correct: it is not this function's job
-      to duplicate validate_verdict's citation-resolution logic, only to add
-      the outcome check on top of it.
-    - A phase audit only SATISFIES a gate when verdict == PASS, or
-      verdict == NOT_MEASURED with notMeasuredClass == DEFERRED (which
-      validate_verdict already guarantees carries an owner and a
-      closingCondition). FAIL never satisfies. NOT_MEASURED/BLOCKING never
-      satisfies either: DEFERRED is the sanctioned, owned, named escape;
-      BLOCKING is the harness saying it could have measured this and did
-      not, which is a process failure, not a limitation.
-
-    A missing file, a structurally-invalid file, and a structurally-valid
-    file with a non-satisfying outcome are three different problems, and the
-    caller (an "ask" or "block" reason shown to a person) needs to be able
-    to tell them apart -- "the audit exists and says FAIL" is not the same
-    message as "there is no audit".
+    validate_verdict answers the shape question, including whether the
+    document is about THIS task and phase; this adds the outcome on top.
+    Only PASS satisfies, or NOT_MEASURED/DEFERRED, which carries an owner
+    and a closing condition. Missing, invalid and failing are three
+    different messages on purpose.
+    docs/design-notes.md § harness_hooks.py · what satisfies a gate.
     """
     path = _verdict_path(config, task_id, phase)
-    # isfile_exact rather than os.path.isfile: the documented contract is that
-    # a verdict named `practices-QA.json` is one the gate reports as missing,
-    # and on Windows or macOS plain isfile finds it and closes the task. The
-    # evidence root is the bound -- the project chose that path's case, the
-    # agent chose everything below it.
+    # isfile_exact, not os.path.isfile: on Windows and macOS a verdict named
+    # `practices-QA.json` would be found and would close the task.
     if not isfile_exact(path, _evidence_dir(config)):
         return ["no practices-%s verdict found at %s" % (phase, path)]
     plugin_root = config.get("pluginRoot")
@@ -518,13 +313,9 @@ def _phase_errors(config, task_id, phase, last_write=_UNSET):
     if outcome == "PASS":
         return []
     if outcome == "NOT_MEASURED" and verdict.get("notMeasuredClass") == "DEFERRED":
-        # A deferral is not a permission, it is a named debt -- which is
-        # what 10-quality-gates.md always said and nothing ever did. This is
-        # the moment the debt is incurred (a gate opening on unmeasured
-        # work), so this is where it gets written down. If the register
-        # cannot be written the exception propagates: main() turns it into
-        # the fail-closed answer, because a gate opening on a deferral
-        # nobody recorded is the defect, not a tidy edge case.
+        # A deferral is a named debt, not a permission, and this is the
+        # moment it is incurred. If the register cannot be written the
+        # exception propagates and main() fails closed.
         _record_deferral(config, task_id, phase, verdict)
         return []
     if outcome == "FAIL":
@@ -572,21 +363,10 @@ def _is_count(value):
 def _run_authorization_errors(config, task_id):
     """Whether this task falls inside a run the user actually authorized.
 
-    The point of the change this supports: `appian-build` used to carry
-    `disable-model-invocation: true`, so every task in a twenty-task plan
-    needed a human keystroke to start. That put the human gate on *starting
-    work* -- high friction, almost no value -- rather than on what is
-    irreversible or on a judgement that failed.
-
-    Authorization moves from per-invocation to **per run, granted once and
-    bounded**, and it is checked here rather than trusted, so removing that
-    frontmatter flag does not turn into "the model may now write whenever
-    it likes".
-
-    Opt-in per project, exactly like `leaseFile`: with no `activeRunFile`
-    configured this returns nothing and the harness behaves as it always
-    did. What it never covers, in any mode, is the irreversible -- see
-    `_destructive_errors`, which prompts regardless of any authorization.
+    Authorization is per run, granted once and bounded, and checked here
+    rather than trusted. Opt-in: with no `activeRunFile` this returns
+    nothing. It never covers the irreversible -- `_destructive_errors`
+    prompts regardless of any authorization.
     """
     path = config.get("activeRunFile")
     if not path:
@@ -613,21 +393,10 @@ def _run_authorization_errors(config, task_id):
         errors.append("the run authorization names neither `authorizedAll` nor a list of "
                       "`authorizedTasks`, so it authorizes nothing in particular")
 
-    # The budget is not decoration on the grant: it is the difference
-    # between "the user authorized this run" and "the user authorized
-    # everything from here on". So a missing or unreadable one is an error
-    # rather than a check that quietly does not run -- three separate
-    # spellings used to walk past it, and every one of them widened the
-    # grant while leaving the file looking bounded:
-    #
-    #   no `maxTasks`         -- nothing to spend, so nothing ever spent
-    #   `"tasksCompleted": null` -- .get(k, 0) returns None, not 0, so the
-    #                            isinstance guard skipped the comparison
-    #   `"maxTasks": "5"`     -- same skip, from the other side
-    #
-    # Silent in all three, because the run keeps working. This is the same
-    # rule the risk tier follows: a malformed field buys more ceremony,
-    # never less.
+    # The budget is the difference between "the user authorized this run" and
+    # "the user authorized everything from here on", so a missing or
+    # unreadable one is an error rather than a check that quietly does not
+    # run. A malformed field buys more ceremony, never less.
     budget = run.get("maxTasks")
     done = run.get("tasksCompleted", 0)
     if not _is_count(budget):
@@ -649,24 +418,11 @@ def _is_destructive_tool(tool_name):
 def _destructive_errors(config, task_id, tool_name, candidates):
     """The impact assessment a deletion needs before it is allowed to run.
 
-    §22 of any honest review of this plugin asks for
-    `detection -> impact assessment -> guard -> execution -> verification`,
-    and until now `delete` shared a code path with `update`. They are not
-    the same risk: an update is versioned and recoverable, a deletion is
-    not, and its blast radius is not bounded by `allowedObjects` -- it can
-    break objects no task ever listed.
-
-    Two things are enforced, and they are different in kind:
-
-    - **The assessment must exist.** The official Appian skill's own
-      deletion workflow makes `getObjectDependents` mandatory before any
-      delete; this checks that its result was actually recorded for THIS
-      object, in this task. Not recorded is not the same as no dependents.
-    - **The prompt is unconditional.** Even with the assessment on file and
-      zero dependents found, this returns a reason, because the decision to
-      destroy something in a shared environment is the one this harness
-      should never make quietly on somebody's behalf. The doctrine already
-      said "ask first, always"; this is the line of code that means it.
+    A deletion's blast radius is not bounded by `allowedObjects`, so two
+    things are enforced and they differ in kind: the assessment must EXIST
+    (the official skill makes `getObjectDependents` mandatory, and this
+    checks its result was recorded for THIS object in this task), and the
+    prompt is UNCONDITIONAL even when zero dependents were found.
 
     Returns reasons, never a refusal -- the gate still only ever asks.
     """
@@ -708,24 +464,13 @@ def _destructive_errors(config, task_id, tool_name, candidates):
 def _lease_errors(config, task_id, candidates):
     """Whether another task holds a lease on the object being written.
 
-    This is the half of concurrency a git worktree cannot cover. A worktree
-    gives each builder its own files -- its own active task file, its own
-    evidence tree, its own SAIL sources -- and two builders in two
-    worktrees calling `createRecordType` still write to the same Appian.
-    The worktree isolates the recoverable half and none of the other one.
+    The half of concurrency a worktree cannot cover: two builders in two
+    worktrees still write to the same Appian.
 
-    So objects get leased. The rule is deliberately one-sided: a lease held
-    by a DIFFERENT task blocks, and no lease at all does not. Requiring a
-    lease would break every single-builder project, which is the default
-    and the common case; refusing one that belongs to somebody else is what
-    parallel work actually needs. Protection holds as long as one of two
-    colliding builders claimed the object, and `appian-build` claims.
-
-    The file has to be shared across worktrees to mean anything, which is
-    the one thing a project has to get right when it turns this on -- a
-    lease register inside a worktree is a register each builder has their
-    own private copy of, which is worse than none because it looks like
-    coordination.
+    The rule is one-sided on purpose -- a lease held by a DIFFERENT task
+    blocks, no lease at all does not -- so single-builder projects, the
+    common case, keep working. The register must be SHARED across
+    worktrees or it only looks like coordination.
     """
     path = config.get("leaseFile")
     if not path or not os.path.isfile(path):
@@ -785,14 +530,9 @@ def _skill_record_errors(config, task_id):
     all three links of the chain: the skill, the environment version it
     declares, and the documentation MCP the skill itself depends on.
 
-    Be clear about what this is worth, in the same terms the rest of this
-    plugin uses about itself: it does not prove the skill was loaded. The
-    agent writes this file, so the agent can write it without having loaded
-    anything. What it removes is the silent case -- writing to a shared
-    environment having never opened the domain knowledge, with nothing
-    anywhere recording that. And where the project points at the installed
-    skill, the version claim is checked against the file rather than taken
-    on trust, which is one more cheap route closed.
+    It does not prove the skill was loaded -- the agent writes this file.
+    What it removes is the silent case. Where the project points at the
+    installed skill, the version claim is checked against the file.
     """
     path = os.path.join(_evidence_dir(config), task_id,
                         SKILL_RECORD_NAME)
@@ -850,24 +590,13 @@ def requirements_errors(config):
     """Which of the three links this session is missing. Empty means all present.
 
     The chain is design MCP -> official Appian skill -> documentation MCP,
-    and it is checked at session start rather than one failure at a time,
-    because each link fails in a way that looks like something else:
-
-    - No design MCP and every hook here fires on nothing. The plugin
-      installs, its tests pass, and it gates absolutely nothing, which is
-      the same silent absence it exists to prevent.
-    - No official skill and objects get written with invented names and
-      UUIDs, one-sided relationships and the wrong creation order -- none
-      of which any gate here measures.
-    - No documentation MCP and the official skill's function-availability
-      checks come back empty, which reads as "the function does not exist"
-      rather than as "nothing was checked".
+    checked together at session start because each link fails in a way that
+    looks like something else.
+    docs/design-notes.md § harness_hooks.py · the three links.
 
     `mcpServers` is None when discovery did not run or could not read the
-    configuration. That is deliberately different from an empty list: not
-    knowing is not the same as knowing there are none, and reporting a
-    missing server on the strength of an unreadable file would train the
-    reader to ignore this message.
+    configuration, and that is deliberately not an empty list: not knowing
+    is not the same as knowing there are none.
     """
     missing = []
     servers = config.get("mcpServers")
@@ -898,17 +627,12 @@ def _loaded_version(config):
     """The version actually running, from the plugin root, or None.
 
     Not the installed version -- the *loaded* one. The component inventory
-    is fixed when the process starts, so a plugin can be installed, enabled
-    and validated, with every check on disk green, and still not exist in
-    the running session; and after an update the session keeps running the
-    old copy until it restarts. From inside there was no way to tell, which
-    turns "that was fixed two releases ago" into a lost afternoon.
+    is fixed when the process starts, so after an update the session keeps
+    running the old copy until it restarts, and `CLAUDE_PLUGIN_ROOT` (one
+    cache directory per version) is the only place that can say which.
 
-    `CLAUDE_PLUGIN_ROOT` is the cache directory of the version in use --
-    the cache keeps one directory per version -- so this is the one place
-    that can answer. Returns None rather than raising: the version is a
-    courtesy, the requirements report is not, and a session must never lose
-    the second to get the first.
+    Returns None rather than raising: a session must never lose the
+    requirements report to get the version.
     """
     root = config.get("pluginRoot")
     if not root:
@@ -978,9 +702,8 @@ def scope_gate(payload, config):
       8. a present, valid and passing practices-design verdict
 
     The skill record is checked before the design verdict because that is
-    the order the two happen in: the domain knowledge is what a good design
-    decision is made with, so a design audited without it was audited
-    against the wrong thing.
+    the order the two happen in: a design audited without the domain
+    knowledge was audited against the wrong thing.
     """
     tool_name = payload.get("tool_name", "")
     if not _is_write_tool(tool_name):
@@ -1023,19 +746,12 @@ def scope_gate(payload, config):
 def _risk_tier(active_task):
     """This task's risk tier, normalised. Pure — it decides, it does not record.
 
-    An unrecognised value is treated as `standard` rather than rejected:
-    the failure mode of a typo should be more ceremony than intended, never
-    less. A gate that fails open on a misspelling is not a gate.
+    An unrecognised value is treated as `standard`: a typo should buy more
+    ceremony than intended, never less.
 
-    Separated from the logging deliberately. The first version wrote the
-    downgrade register from inside this function, which made a *query*
-    produce a file — and with an empty config that file landed on a
-    relative `evidence/` path in whatever the current directory happened to
-    be. A unit test asking "which phases does trivial require?" created a
-    directory in the plugin's own checkout, which is the exact
-    plugin/project contamination this repository has a CI step to prevent.
-    Deciding and recording are now two calls, and only the gate makes the
-    second.
+    Deciding and recording are two calls on purpose. A query that writes a
+    file puts an `evidence/` directory wherever the current directory
+    happens to be — including inside the plugin's own checkout.
     """
     declared = (active_task or {}).get("risk")
     key = _norm_ident(declared) if isinstance(declared, str) else ""
@@ -1081,31 +797,18 @@ def _log_risk_downgrade(config, task_id, declared):
 def closure_gate(payload, config):
     """Stop gate: a task cannot close without its three post-write verdicts.
 
-    scope_gate only covers the write itself; review and QA happen after
-    writing, so they can only be enforced here. Names exactly which
-    verdicts are missing, invalid, or failing so the agent doesn't have to
-    guess.
+    scope_gate covers the write itself; review and QA happen after writing,
+    so they can only be enforced here. Names which verdicts are missing,
+    invalid or failing rather than making the agent guess.
 
-    A task stays in flight from the moment appian-build takes it until
-    appian-review closes it, so the builder's own Stop lands here with the
-    three verdicts legitimately absent -- the task really is unverified at
-    that moment. That block is not a failure report, and its wording says
-    so: it names the next phase to run rather than only what is missing.
-    (Before 2026-08-09 appian-build deleted the active task file at STOP,
-    which left nothing in flight and made this gate approve every nominal
-    session without checking a thing.)
+    A task is in flight from appian-build until appian-review closes it, so
+    the builder's own Stop lands here with the verdicts legitimately absent:
+    that block names the next phase to run, it is not a failure report.
 
-    A Stop hook can only approve or block -- there's no third answer -- so
-    an unconditional block on missing verdicts is a deadlock with no in-band
-    escape whenever they genuinely cannot be produced yet (auditor
-    unavailable, a human-dependent step). The first thing anyone does with a
-    deadlocked guardrail is disable it, and a disabled guardrail protects
-    nothing. Claude Code marks a repeat Stop attempt with
-    payload["stop_hook_active"]; on that repeat, this approves instead of
-    blocking forever -- but never as a silent pass. It converts the omission
-    into named, recorded debt: NOT_MEASURED / BLOCKING, written to the
-    project's evidence so a human finds it. That is the plugin's own
-    doctrine applied to itself.
+    A Stop hook has only approve and block, so on a repeat attempt
+    (payload["stop_hook_active"]) this approves rather than deadlock the
+    session -- never silently: the omission becomes named debt,
+    NOT_MEASURED / BLOCKING, written where a human finds it.
     """
     active_task = config.get("activeTask")
     if not active_task or not active_task.get("id"):
@@ -1158,23 +861,9 @@ def failure_notice(payload):
     it not to guess: read first, record the partial state, then resume from
     the first thing it never confirmed.
 
-    That advice is only true of a write, and this hook used to give it to
-    every failed call. Both halves of the matcher were wrong here and
-    neither had been corrected the way the other paths were: the JSON routed
-    a bare `mcp__.*`, so a failed call to any MCP server in the session --
-    Figma, Supabase, Drive -- came back described as an Appian write, the
-    same over-reach `WRITE_TOOL_RE` was narrowed to fix; and nothing on this
-    side asked whether the name was a write at all, the same omission that
-    put reads in the write log.
-
-    What it cost: a failed READ was announced as a failed write, and the
-    remedy handed to the agent was actively wrong for one. There is nothing
-    to have persisted, nothing partial to record, and "do not retry" is the
-    opposite of the fix -- a read that fails on a stale table name or a
-    misspelled field wants exactly one thing, which is to be issued again
-    with the name corrected. So the line gets drawn where the plugin already
-    draws it, and a failed read gets no notice: its own error says more than
-    this hook can.
+    A failed READ gets no notice, and that asymmetry is the point: nothing
+    persisted, nothing partial to record, and "do not retry" is the opposite
+    of the fix -- a read that failed on a misspelled field wants reissuing.
     """
     tool_name = payload.get("tool_name")
     if not _is_write_tool(tool_name):
@@ -1188,15 +877,9 @@ def failure_notice(payload):
 
 
 def _write_result(payload):
-    # PostToolUse delivers what the tool returned as `tool_response`, not
-    # `tool_result` -- confirmed 2026-08-09 against the hooks reference
-    # (code.claude.com/docs/en/hooks, "PostToolUse input": "The input
-    # includes both tool_input, the arguments sent to the tool, and
-    # tool_response, the result it returned", with a payload example
-    # carrying "tool_response"). `tool_result` is read as a fallback so this
-    # stays correct under either name: reading only the absent one would log
-    # every write as "ok", and a write log that lies is worse than none,
-    # because it gets trusted.
+    # PostToolUse delivers the tool's return as `tool_response`; `tool_result`
+    # is read as a fallback so a rename cannot silently log every write as
+    # "ok". docs/design-notes.md § harness_hooks.py · tool_response.
     result = payload.get("tool_response")
     if result is None:
         result = payload.get("tool_result")
@@ -1211,19 +894,11 @@ def log_write(payload, config):
     """PostToolUse: the harness logs writes, not the agent -- an agent asked
     to log its own writes forgets exactly when it matters.
 
-    It logs *writes*, and it used to log whatever the JSON matcher handed it.
-    That matcher routes a bare `invoke|start|execute|run|test` on purpose:
-    it is the net that keeps a real write from escaping the scope gate, and
-    `test_the_write_log_receives_them_too` holds that direction. Narrowing it
-    there would trade a false entry for a missed write, which is the wrong
-    trade. So the line gets drawn here, where the plugin already draws it --
-    `WRITE_TOOL_RE` has always said an expression rule has no side effects.
-
-    What it cost while missing: three `appian_invoke_expression_rule` calls
-    made during an unrelated investigation were recorded as writes of the
-    task that happened to be in flight, which expired all three of its
-    verdicts and left its closure gate unsatisfiable -- the task could not
-    close without re-running audits against an artifact nobody had touched.
+    It logs *writes*. The JSON matcher routes a bare
+    `invoke|start|execute|run|test` on purpose -- the net that keeps a real
+    write from escaping the scope gate -- so the line between a write and a
+    read is drawn here, by `WRITE_TOOL_RE`. A read recorded as a write
+    expires the in-flight task's verdicts and blocks its closure gate.
     """
     if not _is_write_tool(payload.get("tool_name")):
         return {}
@@ -1243,20 +918,12 @@ def log_write(payload, config):
 def _evidence_write_target(config, file_path):
     """Names which of the gates' inputs this path is, or None.
 
-    The inputs are the evidence tree (every verdict both gates read), the
-    harness config (whose mere presence is the activation switch), the
-    active task file (the contract the scope gate measures against), the
-    run authorization (whether anyone granted these writes at all) and the
-    lease register (whether another task holds the object). They are all
-    plain files in the project, and the agent the gates constrain can write
-    every one of them.
+    The inputs are the evidence tree, the harness config, the active task
+    file, the run authorization and the lease register: plain files in the
+    project, all writable by the agent the gates constrain.
 
-    This list has to grow whenever the gates learn to read something new,
-    and it did not: the run authorization and the lease register arrived as
-    gate inputs while this function still knew about three files. An agent
-    could add `{"authorizedAll": true}` to the run file, or drop another
-    task's lease, and the edit left no line -- unlike the same edit to the
-    config, which is no more sensitive.
+    THIS LIST MUST GROW whenever the gates learn to read something new, or
+    an edit to the new input leaves no line.
     """
     if not isinstance(file_path, str) or not file_path:
         return None
@@ -1282,22 +949,12 @@ def _evidence_write_target(config, file_path):
 def log_evidence_write(payload, config):
     """PostToolUse on file writes: records edits to what the gates read.
 
-    **Logged, not gated, and the choice is deliberate.** Gating was the
-    other option and it is the wrong trade here for one reason: the auditor
-    *legitimately* writes verdicts into this directory, appian-build
-    legitimately writes the active task file, and a hook cannot tell which
-    agent is holding the pen -- PostToolUse carries the tool and its
-    arguments, not the identity of the subagent that called it. So gating
-    would question the harness's own correct operation on every task, which
-    is the friction that gets a harness switched off, and once it is off it
-    protects nothing. Logging costs nothing, questions nothing, and turns
-    "did somebody write their own passing verdict?" from unanswerable into
-    a line in a file.
+    Logged, not gated: the auditor legitimately writes verdicts here and a
+    hook cannot tell which agent holds the pen, so gating would question the
+    harness's own correct operation on every task.
 
-    Be clear about what this is worth: it does not prevent forgery. An agent
-    with write access can still author a verdict, and after the task/phase
-    check that verdict must at least be internally coherent -- but it can be
-    written. What changes is that doing so is no longer invisible.
+    It does not prevent forgery -- an agent with write access can still
+    author a verdict. What changes is that doing so is no longer invisible.
     """
     target = _evidence_write_target(config, (payload.get("tool_input") or {}).get("file_path"))
     if target is None:
@@ -1321,16 +978,11 @@ def _now():
 def _read_jsonl(path):
     """Every well-formed object in a JSONL register, skipping the rest.
 
-    A half-written line -- an interrupted session, a disk that filled -- must
-    not make a register unreadable.
+    A half-written line must not make a register unreadable.
 
-    Which way this fails matters, because `_record_deferred_debt` decides
-    whether to append from what comes back. An unreadable register returns
-    `[]`, no prior entry is found, and the entry is appended: repeats start
-    accumulating again. That is the direction to fail in -- the cost is noise
-    in a register a human reads, not a silently missing debt record. Failing
-    the other way would suppress a real entry on the strength of a read
-    error, which is the kind of silence this plugin exists to refuse.
+    An unreadable register returns `[]`, so `_record_deferred_debt` finds no
+    prior entry and appends: the failure costs noise, never a silently
+    missing debt record.
     """
     if not os.path.isfile(path):
         return []
@@ -1382,15 +1034,12 @@ def _debt_register(config):
 def _record_deferral(config, task_id, phase, verdict):
     """Appends one accepted deferral to the project's deferred-debt register.
 
-    Deduplicated on (task, phase, criterion) because the scope gate runs on
-    every single write: without it, one deferral becomes one register line
-    per write attempt, and a register nobody can read is a register nobody
-    reads. Re-reading the file each time is affordable -- it holds one line
-    per deferred criterion, not one per operation.
+    Deduplicated on (task, phase, criterion): the scope gate runs on every
+    write, so without it one deferral becomes one line per write attempt.
 
-    These entries share the file with the closure gate's forced-approval
-    entries and are told apart by `notMeasuredClass`: DEFERRED here, a
-    sanctioned and owned debt; BLOCKING there, a process failure.
+    Shares the register with the closure gate's forced approvals, told apart
+    by `notMeasuredClass`: DEFERRED here, an owned debt; BLOCKING there, a
+    process failure.
     """
     path = _debt_register(config)
     criterion = verdict.get("deferredCriterion")
@@ -1426,24 +1075,11 @@ def _record_deferred_debt(config, task_id, missing_phases):
     closure gate is forced to approve a task it cannot verify. Returns the
     register's path so the caller can point a human at it.
 
-    Two corrections, both about saying only what is true:
-
-    The entry used to read "closed via a repeated Stop". It never was a
-    close. `activeTask` is re-read from the task file on every invocation,
-    so a task that had really closed would have approved at the top of
-    `closure_gate` and never reached here -- arriving here *means* the task
-    is still in flight. `closure_gate`'s own docstring already separates the
-    two cases ("that block is not a failure report"); this now matches it.
-
-    And it appended unconditionally, so a task that sits in flight across
-    sessions -- waiting on a human decision, which is the normal reason -- got
-    one identical line per session. Measured on a real project: eleven
-    entries, ten of them the same sentence, burying the only one that carried
-    an owner and a closing condition. Repeats of the same omission are
-    therefore skipped. Not deduplicated in place: this register is
-    append-only, and rewriting history to keep it tidy is the failure mode it
-    exists to prevent. A *different* set of missing phases is new information
-    and is still appended.
+    Reaching here means the task is still in flight, not that it closed.
+    Repeats of the same omission are skipped so a task waiting on a human
+    across sessions does not bury the entry that carries an owner; a
+    DIFFERENT set of missing phases is new information and is appended. The
+    register is append-only -- nothing is ever rewritten in place.
     """
     debt_path = _debt_register(config)
     phases = list(missing_phases)
@@ -1468,10 +1104,8 @@ def _record_deferred_debt(config, task_id, missing_phases):
 
 
 # --- CLI wiring --------------------------------------------------------
-#
-# Everything above is pure and unit-tested directly. Everything below reads
-# stdin, resolves the project's config, and adapts the pure functions'
-# output to the hook JSON contract Claude Code expects on stdout.
+# Above: pure functions, unit-tested directly. Below: stdin, config
+# resolution, and the hook JSON contract Claude Code expects on stdout.
 
 def _read_stdin_json():
     raw = sys.stdin.read()
@@ -1503,15 +1137,12 @@ def _load_json_file(path):
 def _discover_mcp_servers(project_root):
     """Every MCP server name this session could see, or None if unknowable.
 
-    Claude Code resolves MCP servers from several places, and a hook cannot
-    ask it which ones ended up live -- so this reads the same configuration
-    files and reports what is *declared*. Declared and answering are
-    different states, which is why the session-start message asks for
-    `validateExpression` rather than treating this as proof.
+    Reports what the configuration files DECLARE: a hook cannot ask Claude
+    Code which servers ended up live, which is why the session-start message
+    asks for `validateExpression` instead of treating this as proof.
 
-    None means no configuration file could be read at all. Reporting "the
-    design MCP is missing" on that basis would be a false alarm, and a
-    check that cries wolf is one people learn to scroll past.
+    None means no configuration file could be read at all -- reporting a
+    missing server on that basis would be a false alarm.
     """
     names = set()
     seen_any = False
@@ -1585,26 +1216,21 @@ def _build_config(project_root):
         "evidenceDir": evidence_dir,
         "activeTask": active_task,
         "maxAllowedObjects": _max_allowed_objects(project_config),
-        # Optional, and only the strong half of the official-skill check
-        # depends on it: pointed at the installed skill, the record's
-        # version claim is compared against the file instead of trusted.
-        # Relative paths resolve against the project, absolute ones (the
-        # common case -- the skill usually lives at user scope, outside any
-        # project) are taken as given.
+        # Optional: pointed at the installed skill, the load record's version
+        # claim is compared against the file instead of trusted. Absolute
+        # paths are taken as given -- the skill usually lives at user scope.
         "officialAppianSkillPath": _resolve_optional_path(
             project_root, project_config.get("officialAppianSkillPath")),
-        # The session-start requirements check. Names are defaults, not
-        # assumptions: a project is free to call its servers anything.
-        # Off unless a project turns it on, because sequential is the
-        # default and the common case. When on, this path has to be SHARED
-        # across worktrees -- a register each builder has a private copy of
-        # is worse than none, since it looks like coordination.
+        # Opt-in, because sequential is the common case. When on, this path
+        # must be SHARED across worktrees: a private copy per builder looks
+        # like coordination and is worse than none.
         "leaseFile": _resolve_optional_path(project_root, project_config.get("leaseFile")),
-        # Opt-in too. Configured, writes must fall inside a run the user
-        # granted; absent, the harness behaves exactly as it did when
-        # every build was started by hand.
+        # Opt-in too: configured, writes must fall inside a run the user
+        # granted; absent, every build is started by hand as before.
         "activeRunFile": _resolve_optional_path(project_root,
                                                 project_config.get("activeRunFile")),
+        # Server names are defaults, not assumptions: a project may call its
+        # servers anything.
         "designMcpServer": project_config.get("designMcpServer") or DEFAULT_DESIGN_MCP,
         "docsMcpServer": project_config.get("docsMcpServer") or DEFAULT_DOCS_MCP,
         "mcpServers": _discover_mcp_servers(project_root),

@@ -90,9 +90,9 @@ class TestCLI(unittest.TestCase):
 
 
 class TestEmptyLayoutIsNotAPass(unittest.TestCase):
-    """N2's vacuous pass in its narrower N3 form: a layout naming no nodes
-    had nothing to check and said OK, exit 0 -- indistinguishable from a
-    process model that was checked and found clean."""
+    """N2's vacuous pass in its narrower N3 form: a layout naming no nodes has
+    nothing to check, and must not answer OK, exit 0 -- indistinguishable
+    from a process model that was checked and found clean."""
 
     def run_main(self, args):
         out, err = io.StringIO(), io.StringIO()

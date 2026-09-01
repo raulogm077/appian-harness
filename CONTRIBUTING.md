@@ -71,12 +71,35 @@ there was nothing to look at.
   harness governing itself has lost the separation that makes its records worth
   reading.
 
-## Comments and commit messages
+## Comments, design notes and commit messages
 
-Comments here explain **why**, and name the concrete failure that motivated the
-line: which call escaped which gate, what it cost, how it was found. A comment
-that restates the code is not written. Read `run_hook.sh` or the matcher block
-at the top of `harness_hooks.py` for the register.
+**Comments are minimal.** A comment says, in the present tense, why the line it
+sits on is the way it is — one or two lines. A comment that restates the code is
+not written, and neither is one that narrates how the code got here: no "it used
+to be", no dates, no account of who found what.
+
+**The history goes somewhere, just not into the source.** Three homes, and each
+answers a different question:
+
+| file | question it answers |
+|---|---|
+| `docs/design-notes.md` | why is this line the way it is, and what was measured? |
+| `CHANGELOG.md` | what changes for a project that upgrades this release? |
+| `docs/troubleshooting.md` | what does a user do when this misbehaves? |
+
+Nothing is deleted, it moves. When a line needs more context than two comment
+lines can carry, the paragraph goes to `docs/design-notes.md` and the comment
+cites it:
+
+```python
+# Case-exact on purpose: docs/design-notes.md § validate_verdict.py · case
+```
+
+Module docstrings are eight lines at most: what the module does, its usage line,
+its exit codes. Function docstrings are three at most, and only where the name
+and signature do not already say it.
+
+Read `run_hook.sh` or `scripts/exit_codes.py` for the register.
 
 Commit messages are `type(scope): lowercase phrase saying what changes`, with a
 body that states the defect and the evidence. In English, like the rest of the

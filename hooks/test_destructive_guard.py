@@ -1,7 +1,7 @@
 """Deleting is not a stricter update, it is a different question.
 
-Until now `delete` shared a code path with `update`, so a deletion in a
-shared environment was measured only for scope and atomicity. An update is
+`delete` does not share a code path with `update`, so a deletion in a shared
+environment is not measured for scope and atomicity alone. An update is
 versioned and recoverable; a deletion is not, and its blast radius is not
 bounded by `allowedObjects` -- it can break objects no task ever listed.
 """
@@ -118,16 +118,13 @@ class TestDeletionNeedsAnImpactAssessment(unittest.TestCase):
 
 
 class TestRecordDataOverwriteIsIrreversibleToo(unittest.TestCase):
-    """`updateRecordData` was treated as an ordinary write, and an outside
-    reading is what caught it.
+    """`updateRecordData` is destructive, not an ordinary write.
 
     The premise separating destructive from ordinary — "an update is
     versioned and recoverable" — is true of design objects and false of
-    record data. A row has no version history, so overwriting one is
-    exactly as irreversible as deleting it, and just as unbounded by
-    `allowedObjects`. Grouping it with `updateInterface` because both are
-    spelled "update" was reasoning from the verb rather than from what the
-    verb does."""
+    record data. A row has no version history, so overwriting one is exactly
+    as irreversible as deleting it, and just as unbounded by
+    `allowedObjects`: the verb it is spelled with is not the question."""
 
     def _config(self, root):
         make_plugin_root(root)
@@ -156,34 +153,29 @@ class TestRecordDataOverwriteIsIrreversibleToo(unittest.TestCase):
 
 
 class TestConfigNullsDoNotSilenceTheAuditTrail(unittest.TestCase):
-    """A key present-but-null used to crash, and where it crashed was the
-    problem. `main()` turns a scope-gate exception into a loud `ask` and a
+    """A key present-but-null must not silence a logging hook.
+
+    `main()` turns a scope-gate exception into a loud `ask` and a
     closure-gate exception into a `block`, but the two logging hooks emit
-    `{}` and exit 0. So one `"evidenceDir": null` stopped the operations log
-    **silently** — and an empty write log reads to the staleness check as
-    "this task never wrote", quietly making every stale verdict look
-    fresh."""
+    `{}` and exit 0 — so a crash there is silent, and an empty write log
+    reads to the staleness check as "this task never wrote", making every
+    stale verdict look fresh."""
 
     def test_a_null_evidence_dir_does_not_crash_the_write_log(self):
-        # Inside a temp cwd, and that is the point rather than tidiness.
-        # The null falls back to the DEFAULT, which is the RELATIVE path
+        # Inside a temp cwd, and that is the point rather than tidiness: the
+        # null falls back to the DEFAULT, which is the RELATIVE path
         # `evidence` -- correct in production, where the hook runs with the
         # project as its working directory, and a landmine in a test, where
-        # the working directory is this repository. The first version of
-        # this test wrote `evidence/operations.jsonl` into the plugin's own
-        # checkout on every run: the exact plugin/project contamination CI
-        # has a step to catch, introduced by the test for a fix against
-        # contamination.
+        # the working directory is this repository.
         import harness_hooks as HH
         with tempfile.TemporaryDirectory() as t:
             here = os.getcwd()
             os.chdir(t)
             try:
-                # A real write tool, not an empty payload: since log_write
-                # started filtering reads out of the log, `{}` is no longer a
-                # write and would leave nothing to find. What this test is
-                # about is the null evidenceDir, so it has to get past that
-                # filter to reach the thing under test.
+                # A real write tool, not an empty payload: `log_write`
+                # filters reads out of the log, so `{}` would leave nothing
+                # to find. The subject here is the null evidenceDir, which
+                # sits past that filter.
                 HH.log_write({"tool_name": "mcp__appian-dev__updateRecordType",
                               "tool_input": {}}, {"evidenceDir": None})  # must not raise
                 self.assertTrue(os.path.isdir(os.path.join(t, HH.DEFAULT_EVIDENCE_DIR)),
@@ -215,14 +207,11 @@ class TestConfigNullsDoNotSilenceTheAuditTrail(unittest.TestCase):
 
 
 class TestBuildConfigIsExercisedWithoutASubprocess(unittest.TestCase):
-    """`_build_config` is the one function only the launcher tests reached,
-    and they are the slow ones behind an opt-out.
+    """`_build_config` gets direct coverage, at no subprocess cost.
 
-    A typo in it — `project__evidence_dir`, from a careless bulk rename —
-    survived a green fast loop and was caught only by a clean-room run with
-    the slow tests on. That is too narrow a net for the function that
-    resolves every path the gates open, so it gets direct coverage here at
-    no subprocess cost."""
+    Otherwise only the launcher tests reach it, and those sit behind the slow
+    opt-out — too narrow a net for the function that resolves every path the
+    gates open, where a typo survives a green fast loop."""
 
     import harness_hooks as HH
 

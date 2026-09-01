@@ -1,17 +1,14 @@
 """Validates SKILL.md files against the appian-harness authoring contract.
 
-Exemptions live HERE, not in skill frontmatter, so a skill cannot bypass the
-validator by editing its own file. Every entry needs a documented reason.
+    python3 scripts/lint_skills.py [root]
+
+Exit 0 pass, 1 findings, 3 nothing was checked.
 """
 import os, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# Imported rather than restated, and re-exported rather than used through the
-# module name: lint_agents.py does `from lint_skills import EXIT_NOT_MEASURED`
-# alongside MAX_DESCRIPTION and has_trigger, and that import is what a test
-# holds. The comment this line replaced claimed the value was "shared with
-# n2_interface_tree and n3_process_layout" while all three typed it out
-# separately -- shared by assertion, not by construction.
+# Imported and re-exported -- lint_agents holds this import:
+# docs/design-notes.md § lint_skills.py · shared exit code
 from exit_codes import EXIT_NOT_MEASURED  # noqa: E402
 
 MAX_DESCRIPTION = 1024
@@ -24,68 +21,35 @@ REQUIRED_SECTIONS = [
     "## Verification",
 ]
 
-# A description must say WHEN the skill fires, not only what it is. Both the
-# imperative house style ("Use when...") and the third-person form
-# `plugin-dev:skill-development` prescribes ("This skill should be used
-# when...") count: rejecting the latter would refuse a skill written exactly
-# as the official guidance recommends. `plugin-dev:skill-reviewer` found the
-# phrasing choice itself does not affect triggering quality — only the
-# specificity of the stated conditions does — so both forms are accepted on
-# equal footing rather than one being treated as a fallback.
+# Both the imperative and the third-person phrasings count as saying WHEN a
+# skill fires: docs/design-notes.md § lint_skills.py · trigger phrasings
 TRIGGER = re.compile(
     r"\buse (this )?when\b|\buse (before|after|during)\b"
     r"|\bused when\b|\bused (before|after|during)\b",
     re.I,
 )
-# "Do not use when...", "Not for use when...", "should not be used when...",
-# etc. describe an exclusion, not a trigger. The negation word can be a few
-# words away from "use"/"used" ("Not for use when...") rather than directly
-# adjacent to it ("Do not use when..."), so this matches a negation word
-# followed, within the same sentence, by "use" or "used".
-#
-# This is applied per sentence, by has_trigger below, and that is the whole
-# point of it. Applied to the description as a whole it rejected
-# "Use when X. Do not use when Y." -- a description with a perfectly good
-# trigger and an exclusion after it, which is the commonest real shape there
-# is. An earlier comment here claimed sentence punctuation protected that
-# case; it does not. What it protects is a negation placed BEFORE the
-# trigger ("Not applicable to legacy skills. Use when...") which the
-# `[^.!?]` cannot reach across. A negation AFTER the trigger sits in its own
-# later sentence and matched perfectly well.
+# A negation in the same sentence marks an exclusion, and need not sit next
+# to the verb: docs/design-notes.md § lint_skills.py · negation window
 TRIGGER_NEGATED = re.compile(r"\b(do not|don't|never|avoid|not)\b[^.!?]{0,30}\bused?\b", re.I)
 
-# Splitting on sentence-ending punctuation followed by whitespace. A
-# description is one or two sentences of prose, so this does not need to
-# survive "e.g." or an abbreviation mid-clause -- and if it mis-split one,
-# the result is a sentence with no trigger, which the next sentence covers.
+# Deliberately naive -- a mis-split yields a sentence with no trigger, which
+# the next one covers. docs/design-notes.md § lint_skills.py · sentence split
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
 
 def has_trigger(description):
     """True when SOME sentence says when the skill fires.
 
-    Per sentence rather than per description: a trigger and an exclusion are
-    two different statements, and a skill that states both is better
-    documented than one that states only the trigger. Judging them together
-    means the better description is the one that gets rejected.
-
-    The exclusion sentence still cannot serve as the trigger on its own --
-    it is skipped, not accepted -- so a description carrying only
-    "Do not use when..." fails exactly as before.
+    Per sentence, so a trigger followed by an exclusion still passes:
+    docs/design-notes.md § lint_skills.py · per-sentence judgement
     """
     for sentence in SENTENCE_SPLIT.split(description):
         if TRIGGER.search(sentence) and not TRIGGER_NEGATED.search(sentence):
             return True
     return False
 
-# name -> documented reason. Empty on purpose: every skill this plugin ships
-# carries the required sections, so nothing is exempt. The mechanism stays
-# because a router skill -- one that only lists other skills, with no
-# procedure to rationalize about -- would legitimately need it. It held one
-# entry for "using-appian-harness", a skill that does not exist here; a live
-# exemption for a phantom would silently exempt whatever took that name
-# later, which is not what a file whose exemptions are meant to be
-# unbypassable should do.
+# name -> documented reason. Exemptions live here so a skill cannot bypass
+# the validator: docs/design-notes.md § lint_skills.py · SECTION_EXEMPT
 SECTION_EXEMPT = {}
 
 
@@ -159,12 +123,8 @@ def main(root):
             failed += 1
         else:
             print("OK    %s" % path)
-    # Zero skills checked is NOT a pass: "All skills passed" would be
-    # trivially true of nothing. This harness exists to keep "verified" from
-    # being confused with "not measured", so say NOT MEASURED explicitly and
-    # fail the run -- with exit 3, which every checker in this plugin now
-    # uses for that condition, kept distinct from 1 so "nothing was checked"
-    # and "something was checked and failed" stop being one signal.
+    # Zero skills is not a pass; exit 3 keeps "nothing was checked" apart
+    # from a failure. docs/design-notes.md § lint_skills.py · exit 3
     if checked == 0:
         print("\nNOT MEASURED: skills/ exists but contains no SKILL.md files; 0 skills were validated.")
         return EXIT_NOT_MEASURED

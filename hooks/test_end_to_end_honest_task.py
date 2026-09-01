@@ -1,19 +1,8 @@
 """One honest task, walked end to end through every gate.
 
-Every unit test here checks a gate in isolation, which is how a harness ends
-up correct in the small and unusable in the large: each check defensible,
-the sequence unlivable. Six checks were added to the write path in one
-session, and any of them could have made an ordinary build ask for
-permission at a step where nothing was wrong.
-
-So this walks the sequence a builder actually performs, against the real
-reference corpus rather than a fixture, and asserts the two things that
-matter in opposite directions: **an honest task gets through**, and **the
-one failure this was all built for still gets caught.**
-
-A gate that cries wolf gets switched off, and then it protects nothing —
-so the false-positive direction is not a lesser concern here, it is half
-the subject.
+The sequence a builder performs, against the real reference corpus rather
+than a fixture: an honest task gets through, and the one failure the gates
+exist for is still caught. A gate that cries wolf gets switched off.
 """
 import json, os, sys, tempfile, time, unittest
 
@@ -30,10 +19,8 @@ REFERENCES = os.path.join(PLUGIN_ROOT, "skills", "appian-best-practices", "refer
 def a_real_citation():
     """A file and heading that genuinely exist, resolved at run time.
 
-    Hard-coding one would rot the first time a heading is reworded, and an
-    earlier draft of this file did exactly that: it cited a
-    plausible-sounding anchor that did not exist, and the validator refused
-    it — the mechanism working, demonstrated by accident.
+    Hard-coding one rots the first time a heading is reworded, and the
+    validator refuses a citation whose anchor does not exist.
     """
     for fname in sorted(os.listdir(REFERENCES)):
         if not fname.endswith(".md"):

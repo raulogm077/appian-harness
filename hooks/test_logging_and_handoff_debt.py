@@ -1,13 +1,8 @@
-"""Three defects found together, on a project where a task sat in flight for
-two days: reads recorded as writes, handoffs recorded as closes, and a
-freshness check a `touch` could clear.
+"""Claims the harness records but cannot actually know.
 
-They share a root: each one states something the harness cannot actually
-know, and states it in a file a human is meant to trust later. The write log
-said an expression-rule invocation was a write. The debt register said a task
-closed when it had not. The staleness check said a verdict was recorded when
-the file was last modified. None of the three is a crash, and that is exactly
-why they survived 167 passing tests.
+A read logged as a write, a handoff logged as a close, a freshness check a
+`touch` can clear, a failed read announced as a failed write. Each states
+something false where a human will trust it later, and none of them crashes.
 """
 import json, os, re, sys, time, unittest, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -26,9 +21,8 @@ READS = (
 )
 
 # Reads carrying no write verb at all, so they never reach the write log --
-# but which the failure path described as writes anyway, because it asked no
-# question before answering. Taken from calls a real session made and saw
-# misreported.
+# but which the failure path describes as writes unless it asks first. Real
+# tool names, taken from calls a session actually made.
 PLAIN_READS = (
     "mcp__appian-dev__getRecordTypeField",
     "mcp__appian__appian_data_fabric_sql_query",
@@ -36,8 +30,8 @@ PLAIN_READS = (
     "mcp__appian-dev__validateExpression",
 )
 
-# Other vendors' servers. The failure path was routed a bare `mcp__.*`, so a
-# failed call to any of these came back described as an Appian write.
+# Other vendors' servers. Routed a bare `mcp__.*`, a failed call to any of
+# these comes back described as an Appian write.
 FOREIGN = (
     "mcp__claude_ai_Figma__get_metadata",
     "mcp__claude_ai_Supabase__create_branch",
@@ -62,13 +56,11 @@ def read_debt(root):
 
 
 class TestAReadIsNotAWrite(unittest.TestCase):
-    """`WRITE_TOOL_RE` already says an expression rule has no side effects.
-    `log_write` never asked it.
+    """`log_write` asks `WRITE_TOOL_RE` before recording anything.
 
-    The JSON matcher routes a bare `invoke|run|test` on purpose -- it is the
-    net that keeps anything from escaping the scope gate, and
-    `test_the_write_log_receives_them_too` holds that direction. So the fix
-    belongs in Python, which is where the plugin already draws the line.
+    The JSON matcher routes a bare `invoke|run|test` on purpose -- the net
+    that keeps anything from escaping the scope gate, held by
+    `test_the_write_log_receives_them_too` -- so the line is drawn in Python.
     """
 
     TASK = "T-1"
@@ -89,9 +81,8 @@ class TestAReadIsNotAWrite(unittest.TestCase):
             self.assertEqual(len(read_log(root)), 1)
 
     def test_a_read_does_not_stale_a_verdict(self):
-        """The whole point, stated as the symptom it caused: a rule invoked
-        while investigating something else must not expire the verdicts of
-        the task that happens to be in flight."""
+        """A rule invoked while investigating something else must not expire
+        the verdicts of the task that happens to be in flight."""
         with tempfile.TemporaryDirectory() as root:
             make_plugin_root(root)
             write_skill_record(root, self.TASK)
@@ -104,14 +95,11 @@ class TestAReadIsNotAWrite(unittest.TestCase):
 
 
 class TestAHandoffIsNotAClose(unittest.TestCase):
-    """`closure_gate`'s own docstring separates the two cases -- "that block
-    is not a failure report" -- and then the debt register calls every one of
-    them a close.
+    """A handoff is not a close, and the debt register must not say it is.
 
-    It is false by construction, not merely sometimes: `activeTask` is loaded
-    fresh from the task file on every invocation, so if the task had really
-    closed, the gate would have approved at the top and never reached here.
-    Reaching the debt path *means* the task is still in flight.
+    False by construction: `activeTask` is loaded fresh from the task file on
+    every invocation, so a task that really closed would be approved at the
+    top and never reach the debt path. Reaching it means still in flight.
     """
 
     TASK = "T-2"
@@ -135,8 +123,8 @@ class TestAHandoffIsNotAClose(unittest.TestCase):
                              "the task is still in flight: %r" % entries[0]["reason"])
 
     def test_repeated_sessions_do_not_pile_up_identical_entries(self):
-        """Ten copies of one sentence buried the only entry in the register
-        that carried an owner and a closing condition."""
+        """Repeated copies of one sentence bury the entries in the register
+        that carry an owner and a closing condition."""
         with tempfile.TemporaryDirectory() as root:
             c = self._cfg(root)
             for _ in range(5):
@@ -162,14 +150,12 @@ class TestAHandoffIsNotAClose(unittest.TestCase):
 
 
 class TestFreshnessSurvivesATouch(unittest.TestCase):
-    """Staleness was measured with `os.path.getmtime`, so the file's mtime
-    *was* the claim. Two consequences nobody wrote down: `touch` clears an
-    expiry without re-running anything -- the rubber stamp this gate exists
-    to prevent -- and a clone, a copy or a restore rewrites every mtime, so
-    freshness does not survive moving the project.
+    """Staleness is the verdict's own `recordedAt`, not the file's mtime.
 
-    The verdict should carry its own `recordedAt`, with mtime kept as the
-    fallback for the verdicts already on disk without one.
+    With mtime as the claim, `touch` clears an expiry without re-running
+    anything -- the rubber stamp this gate exists to prevent -- and a clone,
+    copy or restore rewrites every mtime. mtime stays as the fallback for
+    verdicts already on disk without a `recordedAt`.
     """
 
     TASK = "T-3"
@@ -206,7 +192,7 @@ class TestFreshnessSurvivesATouch(unittest.TestCase):
             self.assertEqual(closure_gate({}, c)["decision"], "approve")
 
     def test_without_recordedAt_it_still_falls_back_to_mtime(self):
-        """Every verdict already on disk predates this field."""
+        """A verdict on disk without the field is still judged."""
         now = int(time.time())
         with tempfile.TemporaryDirectory() as root:
             c = self._setup(root, write_epoch=now - 1800, mtime=now - 3600)
@@ -224,14 +210,12 @@ class TestFreshnessSurvivesATouch(unittest.TestCase):
 
 
 class TestAFailedReadIsNotAFailedWrite(unittest.TestCase):
-    """The fourth of the same family, found the same way and fixed last.
+    """The failure path asks `_is_write_tool` too, and it is the louder one.
 
-    `log_write` was taught to ask `_is_write_tool` before recording. The
-    failure path was not, and it is the louder of the two: the write log is
-    a file someone reads later, while this speaks directly into the agent's
-    context in the same turn. It told a session that two reads were failed
-    writes, and told it not to retry them -- for a read whose only defect
-    was a stale table name, that instruction is precisely backwards.
+    The write log is a file someone reads later; this speaks straight into
+    the agent's context in the same turn. Calling a failed read a failed
+    write and saying not to retry it is backwards for a read whose only
+    defect is a stale table name.
     """
 
     WRITE = "mcp__appian-dev__createInterface"
@@ -250,15 +234,14 @@ class TestAFailedReadIsNotAFailedWrite(unittest.TestCase):
             self.assertEqual(failure_notice({"tool_name": name}), {}, name)
 
     def test_a_nameless_payload_says_nothing_rather_than_guessing(self):
-        """It used to substitute the string "unknown tool" into a sentence
-        asserting a write had failed -- a claim about an event it could not
-        identify, which is the habit this whole file exists to break."""
+        """A payload with no tool name is an event the hook cannot identify:
+        say nothing rather than assert that "unknown tool" failed to write."""
         self.assertEqual(failure_notice({}), {})
 
     def test_the_json_matcher_no_longer_routes_every_mcp_server(self):
-        """Both halves had to move. Narrowing only Python would leave the
-        hook process woken by every failed Figma or Supabase call to decide
-        it had nothing to say."""
+        """Both halves narrow together: narrowing only Python leaves the hook
+        process woken by every failed Figma or Supabase call, to decide it has
+        nothing to say."""
         matcher = re.compile(matcher_for("PostToolUseFailure", "failure-notice"))
         for name in FOREIGN + PLAIN_READS:
             self.assertIsNone(matcher.match(name), name)

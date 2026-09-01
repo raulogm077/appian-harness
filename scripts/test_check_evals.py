@@ -74,17 +74,17 @@ class EvalShape(unittest.TestCase):
 
     def test_a_case_with_no_prompt_fails(self):
         # Measured on the shipped checker: a directory holding graders/ and no
-        # prompt was not read as a malformed case, it was read as not a case at
-        # all -- so the run ended NOT MEASURED, which is the code a caller
-        # skips, with the broken directory still in the tree.
+        # prompt reads as not a case at all rather than as a malformed case,
+        # so the run ends NOT MEASURED -- the code a caller skips -- with the
+        # broken directory still in the tree.
         case(self.root, "no-prompt-here", prompt=None)
         code, msgs = C.check(self.root)
         self.assertEqual(code, 1)
         self.assertTrue(any("no-prompt-here" in m for m in msgs))
 
     def test_a_broken_case_does_not_hide_behind_a_good_one(self):
-        # The same defect in its dangerous form, also measured: one valid case
-        # was enough to carry the run to exit 0 with a broken case beside it.
+        # The same hole in its dangerous form, also measured: one valid case
+        # is enough to carry the run to exit 0 with a broken case beside it.
         case(self.root, "broken", prompt=None)
         case(self.root, "good")
         code, msgs = C.check(self.root)
@@ -100,10 +100,10 @@ class EvalShape(unittest.TestCase):
         self.assertEqual(C.check(self.root)[0], 0)
 
     def test_a_grader_of_nothing_but_stopwords_fails(self):
-        # Measured: `_significant("the response should not")` is empty, and the
-        # empty set was skipped rather than failed. "not" is a stopword and it
-        # is the word carrying the criterion -- so this grader says nothing a
-        # judge could apply, which is a case checked and failed, not a case
+        # Measured: `_significant("the response should not")` is empty, and an
+        # empty set must fail rather than be skipped. "not" is a stopword and
+        # it is the word carrying the criterion -- so this grader says nothing
+        # a judge could apply, which is a case checked and failed, not a case
         # with nothing to check.
         case(self.root, "a", grader="the response should not")
         code, msgs = C.check(self.root)
@@ -111,17 +111,17 @@ class EvalShape(unittest.TestCase):
         self.assertTrue(any("no criterion" in m for m in msgs))
 
     def test_a_grader_of_nothing_but_punctuation_fails(self):
-        # Same hole through the other door: "!!!" survived _significant as a
-        # word, overlapped with nothing, and passed.
+        # Same hole through the other door: "!!!" survives _significant as a
+        # word, overlaps with nothing, and passes.
         case(self.root, "a", grader="!!!")
         self.assertEqual(C.check(self.root)[0], 1)
 
     def test_a_prompt_quoting_a_skill_description_warns(self):
-        # The axis this checker was not watching: it was built to catch a grader
-        # copied from its prompt, while a prompt copied from the skill's own
-        # description went unchecked. `routing-verify-not-review` asked to "run
-        # the gates" -- one of the four phrases appian-verify advertises -- so
-        # substring matching alone scored the case and nothing measured routing.
+        # The second axis: a grader copied from its prompt is one failure, a
+        # prompt copied from the skill's own description is another.
+        # `routing-verify-not-review` asks to "run the gates" -- one of the
+        # four phrases appian-verify advertises -- so substring matching alone
+        # scores the case and nothing measures routing.
         os.makedirs(os.path.join(self.root, "skills", "appian-verify"))
         with open(os.path.join(self.root, "skills", "appian-verify", "SKILL.md"), "w",
                   encoding="utf-8") as f:
@@ -151,9 +151,9 @@ class EvalShape(unittest.TestCase):
         self.assertEqual([m for m in msgs if m.startswith(C.WARNING_PREFIX)], [])
 
     def test_the_shipped_prompts_do_not_echo_a_skill_description(self):
-        # Regression guard for a content fix that otherwise had no test: the
-        # prompts were rewritten to describe the user's situation rather than
-        # the vocabulary of the skill meant to catch them.
+        # Regression guard on the prompt content itself: a prompt describes
+        # the user's situation, not the vocabulary of the skill meant to
+        # catch it.
         root = os.path.join(os.path.dirname(__file__), "..")
         code, msgs = C.check(root)
         self.assertEqual(code, 0, "\n".join(msgs))

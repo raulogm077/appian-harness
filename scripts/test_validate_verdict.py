@@ -35,8 +35,8 @@ class TestValidateVerdict(unittest.TestCase):
             self.assertEqual(validate_verdict(write_verdict(t), t), [])
 
     def test_a_verdict_without_recordedAt_is_still_valid(self):
-        """Every verdict written before the field existed is on disk without
-        one, and the closure gate falls back to mtime for those."""
+        """A verdict on disk without the field is legal; the closure gate
+        falls back to mtime for those."""
         with tempfile.TemporaryDirectory() as t:
             make_plugin(t)
             self.assertEqual(validate_verdict(write_verdict(t), t), [])
@@ -162,9 +162,9 @@ class TestVerdictAgreesWithWhereItWasFound(unittest.TestCase):
 class TestDeferralNamesACriterion(unittest.TestCase):
     """The document calls the deferrable list closed and says an agent
     "cannot declare a criterion deferrable in order to unblock itself".
-    While the schema had no field naming *which* criterion was deferred,
-    that was unenforceable by construction: DEFERRED was an unconditional
-    unlock and `owner: "me" / closingCondition: "eventually"` opened a gate.
+    Without a field naming *which* criterion is deferred that is
+    unenforceable by construction: DEFERRED becomes an unconditional unlock,
+    and `owner: "me" / closingCondition: "eventually"` opens a gate.
     """
 
     def _deferred(self, root, **over):
@@ -204,9 +204,8 @@ class TestDeferralNamesACriterion(unittest.TestCase):
             self.assertEqual(validate_verdict(p, t), [])
 
     def test_a_deferral_without_an_owner_is_rejected_not_degraded(self):
-        # The document used to say an ownerless deferral "degrades to
-        # blocking". Nothing degraded it; it was refused. The message must
-        # describe what the code does.
+        # An ownerless deferral is refused, not degraded to blocking. The
+        # message has to describe what the code does.
         with tempfile.TemporaryDirectory() as t:
             make_plugin(t)
             p = self._deferred(t, owner=None)
@@ -245,11 +244,11 @@ class TestTheClosedListLivesInOnePlace(unittest.TestCase):
 
 
 class TestFindingsAreNotAFreeTextHatch(unittest.TestCase):
-    """`findings[]` went entirely unvalidated, so the per-gate "N/A: didn't
-    get to it" the three-outcomes section exists to close survived inside
-    it. N/A is legal at finding level -- unlike at verdict level -- but the
-    document requires a justification about the OBJECT, never about the
-    process, the schedule or the time available."""
+    """`findings[]` is validated too, or the per-gate "N/A: didn't get to it"
+    the three-outcomes section exists to close survives inside it. N/A is
+    legal at finding level -- unlike at verdict level -- but the document
+    requires a justification about the OBJECT, never about the process, the
+    schedule or the time available."""
 
     def _with_finding(self, root, finding):
         return write_verdict(root, findings=[finding])
@@ -322,11 +321,11 @@ class TestCaseSensitiveLookup(unittest.TestCase):
 
 class TestACitationCannotLeaveReferences(unittest.TestCase):
     """The plugin's distinctive claim is that a cited section exists in this
-    plugin and any third party can go and read it. It did not hold: a
-    reference resolving outside `references/` was accepted, because
-    isfile_exact fell back to comparing the basename whenever the path left
-    its root. So `../../../README.md#the-gates` validated cleanly -- and so
-    did a markdown file the agent wrote itself, with a heading it chose."""
+    plugin and any third party can go and read it. A reference resolving
+    outside `references/` breaks it, and a basename fallback in isfile_exact
+    is what lets one through: `../../../README.md#the-gates` validates
+    cleanly, and so does a markdown file the agent wrote itself with a
+    heading it chose."""
 
     def _verdict(self, ref):
         return {"task": "T", "phase": "design", "verdict": "PASS",

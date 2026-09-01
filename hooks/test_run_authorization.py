@@ -1,13 +1,8 @@
 """Authorization is per run, not per keystroke.
 
-`appian-build` used to carry `disable-model-invocation: true`, so every task
-in a twenty-task plan needed a human keystroke to start. That put the human
-gate on *starting work* -- high friction, almost no value -- instead of on
-what is irreversible or on a judgement that failed.
-
-Removing that flag only makes sense if something checks that a run was
-actually authorized, rather than trusting that it was. This is that
-something.
+A run file grants a bounded set of tasks, and the gate checks that a run was
+actually authorized rather than trusting it was. The human gate belongs on
+what is irreversible or on a judgement that failed, not on starting work.
 """
 import json, os, sys, unittest, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -107,9 +102,8 @@ class TestRunAuthorization(unittest.TestCase):
             self.assertEqual(self._write(c)["permissionDecision"], "ask")
 
     def test_authorization_never_covers_a_deletion(self):
-        # The one thing a run may not pre-approve. An authorization that
-        # silently covered deletes would be a master key, which is the
-        # opposite of what granting a run is for.
+        # The one thing a run may not pre-approve: an authorization that
+        # silently covered deletes would be a master key.
         with tempfile.TemporaryDirectory() as t:
             c = self._config(t, run={"authorizedAll": True})
             d = scope_gate({"tool_name": "mcp__appian-dev__deleteRecordType",
@@ -133,21 +127,12 @@ class TestRunAuthorization(unittest.TestCase):
 class TestTheBudgetIsWhatMakesItARun(unittest.TestCase):
     """"Granted once and **bounded**" -- and the bound has to exist.
 
-    The budget was the only thing standing between "the user authorized
-    this run" and "the user authorized everything from now on", and three
-    separate ways of writing the file walked straight past it:
-
-    - no `maxTasks` at all, so there was nothing to spend;
-    - `"tasksCompleted": null`, which `.get(k, 0)` returns as `None`
-      rather than `0`, so `isinstance(done, int)` was False and the whole
-      comparison was skipped;
-    - `"maxTasks": "5"`, same skip from the other side.
-
-    Every one of them read as a *wider* grant than the file appears to
-    make, which is the direction this plugin refuses everywhere else: a
-    malformed field buys more ceremony, never less. And the failure is
-    silent -- the run keeps working, so nobody finds out the cap was never
-    armed.
+    The budget is the only thing between "the user authorized this run" and
+    "the user authorized everything from now on". A missing, null or
+    string-typed `maxTasks`/`tasksCompleted` must buy more ceremony, never
+    less: a malformed field that widens a grant fails silently, because the
+    run keeps working. See docs/design-notes.md
+    § test_run_authorization.py · the budget shapes.
     """
 
     def _config_with(self, root, run):

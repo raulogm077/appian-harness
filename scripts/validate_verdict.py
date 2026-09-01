@@ -1,42 +1,25 @@
 """Validates a practices-audit verdict against the plugin's own references.
 
-A hook cannot see a subagent's transcript, so it cannot check that an auditor
-loaded a skill. What it CAN check is the trail: the verdict must name the
-reference sections it applied, and every one of them must resolve to a real
-file and a real heading in this plugin. A fabricated citation fails here.
+Checks required fields, the three outcomes, and that every citation resolves
+to a real file and heading in this plugin.
+docs/design-notes.md § validate_verdict.py · what a citation check proves.
 
-This does not prove the auditor read the section. It proves the section exists
-and is locatable by a third party -- which is the failure mode that actually
-occurs: the plausible citation that turns out not to exist.
-"""
+    usage: validate_verdict.py VERDICT_JSON PLUGIN_ROOT [TASK PHASE]
+    exit: 0 valid, 1 errors printed, 2 usage"""
 import json, os, re, sys, time
 
-# `risk` is the fifth and it is not a stricter `review`. Review asks "does
-# this meet its contract"; risk asks "how does this fail" -- a different
-# premise, which is the only thing that makes a fourth opinion worth its
-# cost. It is required only for tasks the plan declared high-risk, so the
-# adversarial pass arrives where a mistake is expensive and nowhere else.
+# `risk` asks how the thing fails, not whether it meets its contract:
+# docs/design-notes.md § validate_verdict.py · the risk phase
 PHASES = ("design", "implementation", "review", "qa", "risk")
 VERDICTS = ("PASS", "FAIL", "NOT_MEASURED")
 CLASSES = ("BLOCKING", "DEFERRED")
 
-# `N/A` is legal for one finding and never for the whole verdict: it is the
-# decision that a gate never came into play for this object, made before the
-# three outcomes become relevant (10-quality-gates.md#how-its-recorded).
+# Legal for one finding, never for the whole verdict:
+# docs/design-notes.md § validate_verdict.py · N/A at finding level
 FINDING_VERDICTS = VERDICTS + ("N/A",)
 
-# THE closed list of deferrable criteria. It lives here, in code, in one
-# place -- `10-quality-gates.md` and the auditor point at these ids rather
-# than restating them, and a test parses the document's copy and asserts it
-# matches this tuple, because a list hand-copied into three files is exactly
-# the drift this plugin keeps finding in itself.
-#
-# What makes the list mean anything is that a DEFERRED verdict must name
-# which entry it is invoking. Without that field the closed list was
-# unenforceable by construction: nothing in the document said which
-# criterion was being deferred, so "an agent cannot declare a criterion
-# deferrable in order to unblock itself" was a sentence with no mechanism
-# under it, and DEFERRED was an unconditional unlock.
+# The closed list, and a DEFERRED verdict must name which entry it invokes:
+# docs/design-notes.md § validate_verdict.py · the closed list
 DEFERRABLE_CRITERIA = (
     "screen-reader-testing",
     "design-guidance-warnings",
@@ -45,13 +28,8 @@ DEFERRABLE_CRITERIA = (
     "process-model-connection-routing",
 )
 
-# A tripwire, not a semantic judgement. The document requires an `N/A` to be
-# justified by what the OBJECT does or does not expose, "never a
-# justification about the process, the schedule or the time available" --
-# and that distinction cannot be decided by a regular expression. What this
-# can do is catch the handful of phrasings the excuse actually arrives in,
-# which is enough to stop it passing *silently*. A false positive costs one
-# rewording; the false negative it replaces cost a gate.
+# A tripwire on the phrasings the excuse arrives in, not a semantic judgement:
+# docs/design-notes.md § validate_verdict.py · the process-excuse tripwire
 PROCESS_EXCUSE = re.compile(
     r"\b(did\s?n[o']?t\s+(get|have)|didnt\s+(get|have)"
     r"|no\s+time|out\s+of\s+time|not\s+enough\s+time|lack\s+of\s+time|time\s+constraints?"
@@ -65,35 +43,8 @@ REFERENCES_SUBDIR = os.path.join("skills", "appian-best-practices", "references"
 
 
 def isfile_exact(path, root=None):
-    """os.path.isfile, with the case of the path spelled as written.
-
-    NTFS and APFS are case-insensitive by default and ext4 is not, so
-    `practices-QA.json` satisfies `os.path.isfile(".../practices-qa.json")`
-    on a laptop and not in CI -- the same evidence tree closing a task in one
-    place and blocking it in the other. The documentation is unambiguous
-    (the shape under evidenceDir is fixed, and a verdict named
-    `practices-QA.json` is one the gate reports as missing), so the strict
-    reading is the one implemented, everywhere. A harness that behaves
-    differently in two places is worse than either behaviour consistently.
-
-    `root` bounds how much of the path is held to that standard: every
-    component *below* root must match on case, while root itself and
-    everything above it are taken as given -- they are the project's own
-    configured paths, not something an agent chose. With no root, only the
-    final component is checked.
-
-    **A path outside `root` is False, not a softer check.** This used to
-    fall back to comparing the basename, on the reasoning that a root which
-    does not contain the path is a configuration oddity rather than an
-    answer. It is an answer, and the fallback was a hole: a verdict citing
-    `../../../README.md#the-gates` resolved cleanly, because README.md does
-    exist -- one directory up from where citations are allowed to point.
-    Worse, an agent could write its own markdown anywhere, name a heading
-    in it, cite it by a relative path and have both gates accept it as
-    resolved doctrine. The whole claim this function underwrites is that a
-    citation names something inside this plugin, so leaving root is a
-    refusal.
-    """
+    """Case-exact os.path.isfile below `root`; outside `root`, False.
+    docs/design-notes.md § validate_verdict.py · case-exact paths, paths outside root"""
     if not os.path.isfile(path):
         return False
     path = os.path.abspath(path)
@@ -119,13 +70,8 @@ def isfile_exact(path, root=None):
 
 
 def _is_citable_filename(fname):
-    """Whether a citation's filename may name a doctrine file at all.
-
-    A reference is `<file>.md#<anchor>` where `<file>` sits directly in
-    `references/`. Anything with a directory separator, a parent-directory
-    component or a drive letter is trying to leave, and a citation that
-    leaves is not a citation to this plugin's doctrine.
-    """
+    """A `.md` file directly inside `references/`, nothing that leaves it.
+    docs/design-notes.md § validate_verdict.py · citable filenames"""
     if not fname or os.path.isabs(fname) or not fname.lower().endswith(".md"):
         return False
     parts = fname.replace("\\", "/").split("/")
@@ -136,16 +82,8 @@ def _is_citable_filename(fname):
 
 def _slug(heading):
     """The anchor for a markdown heading, as THIS validator derives it.
-
-    Deliberately not documented as "GitHub's rule", which it is not: GitHub
-    keeps runs of separators, so `a / b` anchors as `a--b` there and `a-b`
-    here. Twenty-one of this plugin's own reference headings differ between
-    the two, so anyone copying an anchor out of a rendered table of
-    contents would be rejected by a validator claiming to use the same
-    rule. The rule that matters is this function, because this function is
-    what `anchors_of` derives the accepted set with -- an anchor is correct
-    when it matches what this produces for a heading that really exists.
-    """
+    Deliberately NOT GitHub's slug rule, which keeps runs of separators:
+    docs/design-notes.md § validate_verdict.py · the slug rule"""
     s = heading.strip().lower()
     s = re.sub(r"[^\w\s-]", "", s)
     return re.sub(r"[\s_]+", "-", s).strip("-")
@@ -167,18 +105,9 @@ def load_verdict(path):
 
 
 def validate_verdict(path, plugin_root, expected_task=None, expected_phase=None):
-    """Checks one verdict document.
-
-    `expected_task` and `expected_phase` are what the caller was opening this
-    path *for*. A gate always knows both -- it assembled the path from them --
-    and passing them is what makes the document a claim about a particular
-    piece of work rather than a claim about nothing in particular. Without
-    them the only question asked of `phase` is whether it is one of four
-    values, which one audit copied into four filenames answers four times.
-
-    They stay optional because the standalone CLI use is real: the auditor
-    validates its own verdict before any gate has opened it.
-    """
+    """Checks one verdict document. Gates pass the task and phase they
+    assembled the path from; the CLI may omit both.
+    docs/design-notes.md § validate_verdict.py · expected task and phase"""
     errors = []
     try:
         v = load_verdict(path)
@@ -214,13 +143,8 @@ def validate_verdict(path, plugin_root, expected_task=None, expected_phase=None)
         if cls not in CLASSES:
             errors.append("NOT_MEASURED needs 'notMeasuredClass' of %s" % ", ".join(CLASSES))
         elif cls == "DEFERRED":
-            # Rejected, not degraded. The document used to describe an
-            # ownerless deferral as degrading to BLOCKING, and this message
-            # repeated the claim -- but nothing degrades anything: the
-            # verdict is refused and the gate stays shut. Rewriting an
-            # agent's document into a class it did not write would be worse
-            # than refusing it, because the record would then say something
-            # nobody claimed. So the behaviour stays and the words changed.
+            # An ownerless deferral is refused, not rewritten into another class:
+            # docs/design-notes.md § validate_verdict.py · DEFERRED is rejected
             if not v.get("owner"):
                 errors.append("a DEFERRED verdict needs an 'owner'; without one it is rejected, "
                               "and the gate it was meant to open stays shut")
@@ -237,11 +161,8 @@ def validate_verdict(path, plugin_root, expected_task=None, expected_phase=None)
                               "criterion cannot be declared deferrable in order to unblock a "
                               "task" % (criterion, ", ".join(DEFERRABLE_CRITERIA)))
 
-    # Checked for shape, not for presence. Every verdict written before this
-    # field existed is on disk without one, and the closure gate falls back
-    # to the file's mtime for those on purpose. What must not happen is a
-    # value that LOOKS like a timestamp and silently falls back anyway --
-    # that is a verdict claiming a freshness nothing enforces.
+    # Shape, not presence: absent is a legal mtime fallback, malformed is not.
+    # docs/design-notes.md § validate_verdict.py · recordedAt
     recorded = v.get("recordedAt")
     if recorded is not None:
         ok = isinstance(recorded, str)
@@ -266,11 +187,8 @@ def validate_verdict(path, plugin_root, expected_task=None, expected_phase=None)
                 errors.append("reference %r must be '<file>.md#<anchor>'" % (ref,))
                 continue
             fname, anchor = ref.split("#", 1)
-            # Checked before touching the filesystem, and stated as its own
-            # error, because "does not exist" would be the wrong message for
-            # a file that exists somewhere it is not allowed to be cited
-            # from. Defence in depth with isfile_exact's root bound: this
-            # rejects the shape, that one rejects the resolved location.
+            # Shape first, so a file that exists out of bounds is not reported
+            # as missing. docs/design-notes.md § validate_verdict.py · citable filenames
             if not _is_citable_filename(fname):
                 errors.append("reference %r must name a .md file directly inside references/ -- "
                               "no absolute path, no '..', no subdirectory. A citation names "
@@ -289,11 +207,9 @@ def validate_verdict(path, plugin_root, expected_task=None, expected_phase=None)
 
 
 def _strip_na(text):
-    """Removes leading 'N/A' tokens and their punctuation.
-
-    `"evidence": "N/A"` restates the verdict instead of justifying it, and
-    the document is explicit that a bare N/A does not count. What is left
-    after this is the part that was supposed to be about the object."""
+    """Removes leading 'N/A' tokens and their punctuation, so what is left is
+    the part that was supposed to be about the object.
+    docs/design-notes.md § validate_verdict.py · bare N/A in evidence"""
     prev = None
     while prev != text:
         prev = text
@@ -302,15 +218,9 @@ def _strip_na(text):
 
 
 def _findings_errors(findings):
-    """Checks the shape of `findings[]`.
-
-    This went entirely unvalidated, which left the per-gate "N/A: didn't get
-    to it" alive inside the one field nobody looked at -- the exact hatch
-    the three-outcomes section exists to close. Unlike the top-level
-    verdict, `N/A` IS legal here: it is the decision that a gate never
-    applied to this object. What it needs is a justification about the
-    object, and that is what gets checked.
-    """
+    """Checks the shape of `findings[]`, where `N/A` is legal but needs a
+    justification about the object.
+    docs/design-notes.md § validate_verdict.py · validating findings"""
     errors = []
     if findings is None:
         return errors

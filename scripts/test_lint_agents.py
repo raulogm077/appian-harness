@@ -16,12 +16,8 @@ GOOD = ("---\n"
 # Every one of these is valid YAML, and every one grants Write to an agent
 # in READ_ONLY_AGENTS. They are here as a corpus rather than as a dozen
 # hand-written tests for the reason test_matcher_parity gives about the tool
-# catalogue: the last several defects in this file were each one more
-# spelling, found by measuring against a list and not by reasoning about the
-# parser. A reader who adds a spelling adds a row.
-#
-# The first six were caught by successive patches to a parser. The rest were
-# not, and are why the rule stopped going through a parser at all.
+# catalogue: a spelling is found by measuring against a list, not by
+# reasoning about a parser. A reader who adds a spelling adds a row.
 GRANTS_WRITE = (
     ("inline plain", "tools: Read, Write\n"),
     ("inline flow, one entry", "tools: [Write]\n"),
@@ -52,14 +48,12 @@ GRANTS_WRITE = (
 # Tools that let an agent change what it is reviewing, one per row, each in
 # the plainest possible spelling. The corpus above varies the punctuation and
 # holds the tool fixed; this one varies the tool and holds the punctuation
-# fixed, because those are two different failures and only the first was ever
-# measured.
+# fixed, because those are two different failures.
 #
-# `Bash` is here because it is the one that got through: a reviewer holding
-# it writes any file in the repository with a redirection, and it is not a
-# write tool by name. The rest are the next ones along the same line -- and
-# the MCP rows are the argument for a whitelist all by themselves, since no
-# two servers spell their write tools alike.
+# `Bash` is the one a by-name rule misses: a reviewer holding it writes any
+# file in the repository with a redirection, and it is not a write tool by
+# name. The MCP rows are the argument for a whitelist all by themselves,
+# since no two servers spell their write tools alike.
 WRITE_CAPABLE = (
     "Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "BashOutput",
     "Task", "Agent", "SlashCommand", "WebFetch", "Artifact", "TaskUpdate",
@@ -81,10 +75,9 @@ WRITE_CAPABLE = (
 READ_ONLY_SPELLINGS = (
     ("inline", "tools: Read, Grep, Glob, Skill\n"),
     ("block sequence", "tools:\n  - Read\n  - Grep\n  - Glob\n  - Skill\n"),
-    # A documented tools line. Under the blacklist this was safe by
-    # accident; under a whitelist the comment's words are candidate tool
-    # names, so refusing it would make every commented declaration a false
-    # alarm and the rule the first thing anyone deletes.
+    # A documented tools line. Under a whitelist the comment's words are
+    # candidate tool names, so refusing it would make every commented
+    # declaration a false alarm and the rule the first thing anyone deletes.
     ("inline with a comment", "tools: Read, Grep, Glob, Skill # nothing that writes\n"),
 )
 
@@ -188,11 +181,10 @@ class AgentFrontmatter(unittest.TestCase):
         self.assertTrue(any("*" in e for e in errs), errs)
 
     def test_a_flow_list_of_tools_does_not_hide_write(self):
-        # The defect an independent review found: `tools: [Write]` is valid
-        # YAML, and splitting it on commas yields the single token "[Write]",
-        # which is not the string "Write". The read-only rule was satisfied
-        # by two square brackets -- the same hole as `tools: *`, in the
-        # spelling that looks most like a list.
+        # `tools: [Write]` is valid YAML, and splitting it on commas yields
+        # the single token "[Write]", which is not the string "Write" -- the
+        # read-only rule satisfied by two square brackets, the same hole as
+        # `tools: *` in the spelling that looks most like a list.
         path = self.write("appian-reviewer.md",
                           GOOD.replace("tools: Read, Grep, Glob, Skill", "tools: [Write]"))
         errs = L.lint_agent(path, {"appian-best-practices"})
@@ -364,18 +356,16 @@ class EverySpellingThatGrantsWrite(unittest.TestCase):
         return L.lint_agent(path, {"appian-best-practices"})
 
     def test_every_spelling_that_grants_write_is_caught(self):
-        # The failure this replaces: three separate patches, each closing one
-        # spelling, each leaving the rule enforced by a parser that the next
-        # spelling walked around. Every miss here is silent, because the rule
-        # asks whether the string "Write" is present and a misparse produces
-        # a token that is not it.
+        # Every miss here is silent, because the rule asks whether the string
+        # "Write" is present and a misparse produces a token that is not it.
+        # A rule enforced by a parser is one the next spelling walks around.
         for label, block in GRANTS_WRITE:
             with self.subTest(spelling=label):
                 # Asserted on the finding existing, not on its wording. Every
                 # row but one grants Write specifically, so a substring
-                # assertion would have passed on a rule that knows that one
-                # word and nothing else -- and the corpus exists precisely to
-                # stop the rule being narrower than the thing it forbids.
+                # assertion passes on a rule that knows that one word and
+                # nothing else -- and the corpus exists precisely to stop the
+                # rule being narrower than the thing it forbids.
                 self.assertNotEqual(self.lint(block), [], label)
 
     def test_the_word_write_outside_the_tools_declaration_is_not_a_grant(self):
@@ -397,11 +387,10 @@ class EverySpellingThatGrantsWrite(unittest.TestCase):
                 self.assertEqual(self.lint(block), [], label)
 
     def test_every_write_capable_tool_is_refused(self):
-        # The defect a review found after three rounds of spelling patches:
-        # `tools: Read, Grep, Glob, Skill, Bash` passed. The rule enumerated
-        # four forbidden names, and a blacklist only ever protects against
-        # what its author imagined. This is the corpus that would have said
-        # so, and it is why the rule is a whitelist now.
+        # `tools: Read, Grep, Glob, Skill, Bash` passes a blacklist that
+        # enumerates four forbidden names, because a blacklist only ever
+        # protects against what its author imagined. This is the corpus that
+        # says so, and why the rule is a whitelist.
         for tool in WRITE_CAPABLE:
             with self.subTest(tool=tool):
                 errs = self.lint("tools: Read, Grep, %s\n" % tool)
@@ -409,12 +398,12 @@ class EverySpellingThatGrantsWrite(unittest.TestCase):
 
     def test_an_mcp_write_tool_is_not_invisible_to_the_harvester(self):
         # Stated on its own because the obvious harvester misses it, and
-        # missing it is silent. `\b[A-Z][A-Za-z]*\b` was proposed for this
-        # job: built-in tool names are capitalised, but there is no `\b[A-Z]`
-        # anywhere in `mcp__appian-dev__createRecordType` -- the capital R is
-        # between two word characters, so no boundary precedes it. That
-        # pattern harvests Read and Grep from the line and reports an agent
-        # holding every Appian write tool as clean.
+        # missing it is silent. `\b[A-Z][A-Za-z]*\b` looks right -- built-in
+        # tool names are capitalised -- but there is no `\b[A-Z]` anywhere in
+        # `mcp__appian-dev__createRecordType`: the capital R sits between two
+        # word characters, so no boundary precedes it. That pattern harvests
+        # Read and Grep from the line and reports an agent holding every
+        # Appian write tool as clean.
         errs = self.lint("tools: Read, Grep, mcp__appian-dev__createRecordType\n")
         self.assertTrue(any("createRecordType" in e for e in errs), errs)
 
@@ -446,18 +435,19 @@ class SharedRule(unittest.TestCase):
         self.assertIs(L.has_trigger, lint_skills.has_trigger)
 
     def test_the_shared_constants_are_the_skill_linter_s_own(self):
-        # Same argument, and the one the first draft of this module got
-        # wrong: it imported has_trigger and then wrote `MAX_DESCRIPTION =
-        # 1024` again. A limit raised in one file and not the other is two
-        # linters disagreeing about the same contract.
+        # Same argument: importing has_trigger and then restating
+        # `MAX_DESCRIPTION = 1024` here is a limit that can be raised in one
+        # file and not the other -- two linters disagreeing about one
+        # contract.
         import lint_skills
         self.assertIs(L.parse_frontmatter, lint_skills.parse_frontmatter)
         self.assertEqual(L.MAX_DESCRIPTION, lint_skills.MAX_DESCRIPTION)
         self.assertEqual(L.EXIT_NOT_MEASURED, lint_skills.EXIT_NOT_MEASURED)
 
     def test_frontmatter_list_always_returns_a_list(self):
-        # It used to return None for an absent key and [] for an empty one,
-        # defended in a docstring, and no caller ever told them apart.
+        # One return type, always: no caller distinguishes None for an absent
+        # key from [] for an empty one, so returning both is a distinction
+        # nothing uses and every caller has to guard against.
         self.assertEqual(L.frontmatter_list(GOOD, "nothing-declares-this"), [])
         self.assertEqual(L.frontmatter_list("no frontmatter here", "skills"), [])
 

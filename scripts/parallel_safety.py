@@ -1,52 +1,18 @@
+# This docstring is the tool's help text, so it stays ASCII. What it refuses
+# on: docs/design-notes.md § parallel_safety.py · the four refusal reasons
 """Decides whether a set of Appian tasks may be built concurrently.
 
-A git worktree isolates files. It does not isolate Appian. Two builders in
-two worktrees calling `createRecordType` write to the same environment, so
-the worktree protects the half of the problem that was already recoverable
-and none of the half that is not.
-
-This is the other half. Given the plan's tasks, it answers one question --
-"can these run at the same time?" -- and refuses for reasons that are facts
-about the tasks rather than judgements about them:
-
-1. **Shared objects.** Two tasks whose `allowedObjects` intersect are two
-   writers on one object. Nothing downstream can tell whose change a review
-   is looking at.
-2. **Dependency edges.** A task that depends on another cannot start beside
-   it. The platform imposes an order -- data source before record type,
-   record type before the query, constants before the interfaces that call
-   them -- and "in parallel" does not suspend it.
-3. **Destructive operations.** A deletion is the one action whose blast
-   radius is not bounded by `allowedObjects`: it can break objects nobody
-   listed. It runs alone, or not at all.
-4. **Objects everything touches.** The application, a security group, a
-   shared constant. Formally these are just objects, but a task that
-   modifies one is a task every other task depends on without saying so.
-
-Exit codes match the plugin's other checkers, including the one that
-matters: **3 is NOT MEASURED, not a pass.** A plan this cannot read is a
-plan nobody checked, and saying "OK" to it is exactly the vacuous green
-this harness argues against everywhere else.
-
-    0  the proposed groups are safe to run concurrently
-    1  findings -- at least one group is not safe
-    2  usage
-    3  NOT MEASURED -- nothing recognisable to judge
-
-Usage:
     python3 parallel_safety.py PLAN_JSON [--group T-1,T-2 --group T-3,T-4]
+    0 safe  1 findings  2 usage  3 NOT MEASURED -- nothing to judge, not a pass
 
-With no --group, every task in the plan is checked pairwise and the tool
-reports the largest safe concurrent groups it can find.
-"""
+With no --group every task is checked pairwise and the largest safe groups are
+reported. A worktree isolates files; it does not isolate Appian."""
 import json
 import os
 import sys
 
-# Objects whose modification is felt by tasks that never name them. Matched
-# case-insensitively against a substring of the object's name, because a
-# plan writes names and not types -- this is a heuristic that produces a
-# finding to be argued with, never a silent pass.
+# Substring match on names, because a plan writes names and not types:
+# docs/design-notes.md § parallel_safety.py · shared-object hints
 SHARED_OBJECT_HINTS = (
     "application",
     "group",
@@ -63,11 +29,9 @@ def _norm(value):
 
 
 def tasks_of(plan):
-    """The plan's tasks, however the project spelled the container.
-
-    Returns [] when nothing recognisable is there -- the caller turns that
-    into NOT MEASURED rather than into a pass.
-    """
+    """The plan's tasks, however the project spelled the container. Returns []
+    when nothing recognisable is there, which the caller turns into NOT
+    MEASURED rather than into a pass."""
     if isinstance(plan, list):
         candidates = plan
     elif isinstance(plan, dict):
@@ -92,25 +56,9 @@ def _depends_on(task):
 
 
 def transitive_dependencies(tasks):
-    """id -> every task it depends on, directly or through a chain.
-
-    Direct edges are not enough, and the gap is not theoretical: given
-    T-1 <- T-2 <- T-3, nothing connects T-1 and T-3 directly, so a
-    pairwise check on direct edges alone happily runs them together --
-    starting T-3 before T-2 has even begun. The order the platform imposes
-    is transitive, so the check has to be.
-
-    A cycle is a broken plan rather than a safe one, so it is recorded
-    (see `dependency_cycles`) instead of being followed forever.
-
-    A fixed point rather than a recursive walk, and that is not a style
-    choice: the recursive version cut each cycle short and then *cached*
-    the truncated answer, so in T-1 <-> T-2 it reported that T-1 depends on
-    itself and T-2 did not. Relaxing until nothing changes has no such
-    order dependence -- sets only grow and are bounded by the task count,
-    so it terminates, and every member of a cycle ends up containing
-    itself.
-    """
+    """id -> every task it depends on, directly or through a chain. A fixed
+    point rather than a recursive walk, which miscaches cycles:
+    docs/design-notes.md § parallel_safety.py · the transitive closure"""
     closure = {_norm(t["id"]): set(_depends_on(t)) for t in tasks}
     changed = True
     while changed:
@@ -145,12 +93,8 @@ def _shared_objects(task):
 
 def check_pair(a, b, closure=None):
     """Why these two tasks may not run concurrently. Empty list means they may.
-
-    `closure` is the transitive dependency map over the WHOLE plan. Without
-    it this falls back to direct edges only, which is weaker: a pair can
-    look independent while a chain connects them through a task neither one
-    mentions. Callers that hold the plan should always pass it.
-    """
+    Callers holding the plan should always pass `closure`; without it the check
+    is weaker: docs/design-notes.md § parallel_safety.py · check_pair without the closure"""
     findings = []
     a_id, b_id = a.get("id"), b.get("id")
     a_key, b_key = _norm(a_id), _norm(b_id)
@@ -191,8 +135,8 @@ def check_group(tasks, closure=None):
     for i, a in enumerate(tasks):
         for b in tasks[i + 1:]:
             findings.extend(check_pair(a, b, closure))
-    # Deduplicated because a destructive task in a group of four reports the
-    # same fact once per pair, and a list that repeats itself gets skimmed.
+    # One fact per pair repeats across a group, and a repetitive list gets
+    # skimmed. docs/design-notes.md § parallel_safety.py · deduplicated findings
     seen, unique = set(), []
     for f in findings:
         if f not in seen:
@@ -203,12 +147,8 @@ def check_group(tasks, closure=None):
 
 def safe_groups(tasks):
     """Greedy partition into groups that are internally safe to run together.
-
-    Greedy on purpose: the goal is a defensible answer a person can read,
-    not the theoretical maximum. A bigger group found by a cleverer search
-    would still need the same human sign-off, and it would be harder to
-    argue with.
-    """
+    Greedy on purpose, not for want of a better search:
+    docs/design-notes.md § parallel_safety.py · greedy grouping"""
     closure = transitive_dependencies(tasks)
     groups = []
     for task in tasks:
@@ -259,8 +199,8 @@ def main(argv):
 
     cycles = dependency_cycles(tasks)
     if cycles:
-        # Not a concurrency finding: a plan whose dependencies loop cannot
-        # be executed in any order at all, concurrent or otherwise.
+        # Not a concurrency finding, so it is reported alone:
+        # docs/design-notes.md § parallel_safety.py · cycles
         print("the plan's dependencies form a cycle involving: %s -- this plan cannot be "
               "executed in any order, sequential or concurrent" % ", ".join(cycles))
         return 1
@@ -288,10 +228,8 @@ def main(argv):
     solo = [g for g in groups if len(g) == 1]
     print("%d task(s) in %d group(s); %d must run alone"
           % (len(tasks), len(groups), len(solo)))
-    # Said explicitly because the printed order looks like a schedule and is
-    # not one. This answers "who may run together", never "who runs first" --
-    # the plan's dependency order still governs that, and a group whose
-    # predecessors have not closed is not ready no matter how safe it is.
+    # Said out loud because the printed order looks like a schedule and is not:
+    # docs/design-notes.md § parallel_safety.py · groups are not a schedule
     print("note: these groups say who may run TOGETHER, not in what order. "
           "Sequencing is still the plan's dependency order.")
     return 0
