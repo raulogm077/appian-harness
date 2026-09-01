@@ -17,6 +17,15 @@ Source: [About Record Types — When to use record types](https://docs.appian.co
 
 ## 1. Plan the model before creating objects
 
+> **Where the order of creation lives.** The official Appian skill carries the full dependency-ordered
+> change plan in `references/change-planning.md` — twelve steps and the complete graph, with the object
+> types that **cannot be automated** marked `(manual)`, Connected Systems, Decision Objects, Record
+> Actions and Portals among them. **Load it before sequencing any change that spans more than one
+> object type, and do not restate its graph here.** What this plugin adds is the partition into tasks,
+> the per-task ceiling and which waves can run at the same time.
+> **Without that skill installed**, the platform sources cited in this section give the same order for
+> the types it covers.
+
 Appian marks model planning as **the most critical step**: identifying which business entities deserve their own record type before touching Designer.
 
 - ✅ List the people, places, things or events the app manages (e.g. Customers, Orders, Products). One record type = **one distinct business concept or one main process**.

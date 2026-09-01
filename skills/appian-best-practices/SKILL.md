@@ -184,13 +184,20 @@ one governs **what it was written for**:
 | Source | Wins on | Because |
 |---|---|---|
 | **Official documentation** (`docs.appian.com`, documentation MCP) | Everything, for the environment's version | It is the platform's own account of itself |
-| **Official Appian skill** ([`dev-mcp-skills`](https://github.com/appian/dev-mcp-skills/)) | Naming conventions, both sides of a relationship, creation order, UUID handling | It is the vendor's account of how its own API behaves, which is exactly what these docs do not cover |
+| **Official Appian skill** ([`dev-mcp-skills`](https://github.com/appian/dev-mcp-skills/)) | Naming conventions, both sides of a relationship, creation order, UUID handling — and, in full, **dependency-ordered change planning** (`change-planning.md`) and **post-change verification** (`change-review.md`) | It is the vendor's account of how its own API behaves, which is exactly what these docs do not cover |
 | **These `references/`** | Quality gates, the three outcomes, what counts as evidence, when something is finished | That is what this plugin is for, and no other layer defines it |
 | **The project's local convention** | House style, prefixes, structure | Consistency inside one app beats canonical style — unless it breaks security or platform validity, and then say so |
 
 They overlap far less than they look like they might. Where they do overlap, the one higher in this
 table wins, and a disagreement worth noticing is worth **saying out loud** rather than resolving
 quietly.
+
+One consequence is worth stating plainly, because it decides work rather than wording: **where the
+official skill already specifies a mechanic, do not restate it here — cite it and require its
+trace.** Before adding a post-write check of your own, read `change-review.md`; it already names
+`diagnostics.error` being null, a `"-1"` from a broken `totalCount`, a filtered grid returning fewer
+rows than the total, and a serialised `[@attributes=` inside a cell. Reinventing those, worse, is the
+repeated work this plugin exists to prevent.
 
 ## When Doctrine and Official Documentation Conflict
 

@@ -84,6 +84,15 @@ list, is rejected.
 
 ## 1. Platform correctness
 
+> **Before adding a check of your own, read the official one.** The official Appian skill specifies
+> post-change verification in `references/change-review.md` (249 lines), and it already names checks
+> that are easy to reinvent worse: `diagnostics.error` must be null · no `"-1"` coming from a broken
+> `totalCount` · a filtered grid must return **fewer** rows than the unfiltered total · a serialised
+> `[@attributes=` inside a cell is a defect. **Those are the mechanics; this section is the gate** —
+> which of them must pass before a change can close, and what counts as evidence that it did.
+> **Without that skill installed**, this section stands on its own and the checks above are still
+> worth running by hand.
+
 - ✅ The object **saves and validates without errors**. With MCP `appian-dev` available: `validateDesignObject`, and for interfaces `validateExpression` **with `isInterface: true`** (without that flag a correct interface fails with *"Could not find variable 'env!features'"*). Without MCP: save in Designer without errors and review its Design Guidance.
 - ✅ Expressions, references, constants, record fields and rule inputs **exist and are of the expected type**. Known blind spot: object validation **does not see a nonexistent rule invoked inside an `a!forEach` over an empty list** — catch it by evaluating the call to that rule separately, with its parentheses.
 - ❌ No **invented UUIDs, names, fields or references** remain. Identifiers come from reading the environment or the project's documentation, never from memory or from another environment.
@@ -167,7 +176,7 @@ Detail: doc **05-performance**.
 - ✅ **Naming** conforms to the current convention: the project's if it's documented, or the one existing objects already follow; failing that, the official standard (Standard Object Names, doc 08).
 - ✅ **Typed** rule inputs with clear names; each rule, **one responsibility**.
 - ❌ No duplicated business logic or embedded environment values (use constants; complex logic → Decision object).
-- ✅ Comments that explain **non-obvious decisions**, not that repeat the code. Errors turned into controlled results/messages.
+- ✅ Comments that explain **non-obvious decisions**, not that repeat the code, and **not the object's change history** — a comment says why the current expression is the way it is, in one or two lines; what changed and when belongs to the project's documentation, not inside the object. Errors turned into controlled results/messages.
 
 Detail: docs **04-expression-rules**, **08-alm-testing-naming**.
 

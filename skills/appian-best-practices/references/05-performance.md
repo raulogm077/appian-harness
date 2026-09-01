@@ -20,6 +20,14 @@ Source: [Asynchronous Loading — Identifying slow-loading components](https://d
 
 ## 2. Record type queries
 
+> **The single home for query mechanics in this plugin.** `02-interfaces-sail.md` § 2 keeps only what
+> is specific to querying from a screen and points here for the rest. The official Appian skill goes
+> deeper still in `references/query-record-type-patterns.md` (1.463 lines: filters, sorting,
+> relationships, aggregations and paging, with a recipe per case) — **load it before writing a query
+> whose shape is not already in this section, and do not grow this one to match it.**
+> **Without that skill installed**, the platform sources cited under each rule are what it is built
+> from.
+
 How you retrieve data directly impacts your application's speed and responsiveness. Guiding principle: **only fetch the data you need.**
 
 ✅ **Specify the exact fields in the `fields` parameter; don't use `a!selectionFields()` in production.** The more data you query, the longer it takes to load. `a!selectionFields()` fetches all fields, including those of related record types, driving up load time. Reserve it for when you genuinely need every field.

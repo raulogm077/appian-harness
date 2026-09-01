@@ -65,6 +65,9 @@ Source: [Standard Object Names — Content-management objects (Folder)](https://
 
 **✅ Comment non-obvious logic with `/* ... */`.** Everything between `/*` and `*/` is ignored during evaluation.
 *Why:* comments explain intent to other developers and feed the test case Copilot.
+⚠️ **Keep them to the minimum that explains the current logic.** A comment that narrates the object's
+history —what it used to do, who changed it, when and why— makes the expression harder to read and
+goes stale silently. That record belongs to the project's documentation.
 Source: [Parts of an Expression — Comments](https://docs.appian.com/suite/help/latest/parts-of-an-expression.html#comments)
 
 **✅ Use the *Format expression* button and the editor's indentation guides** to keep SAIL readable before saving.
@@ -103,6 +106,13 @@ Source: [Decisions](https://docs.appian.com/suite/help/latest/Decisions.html) ·
 ---
 
 ## 5. Null-safety: nulls and empty lists
+
+> **Where the depth lives.** The official Appian skill specifies null handling in full in
+> `references/null-safety-patterns.md` (411 lines): which functions reject null, the safe pattern for
+> each one, and the casting traps. **This section keeps the criterion and what closes the gate, and
+> must not grow** — new mechanics belong there, not here.
+> **Reading this without that skill installed** (against Appian Designer, say): the platform sources
+> cited under each rule are what it is built from, and remain sufficient to apply them.
 
 **✅ Use `a!defaultValue(value, default[, default2, ...])` to supply a default value for null or empty.** `null`, `""` and `{}` all count as null/empty; it returns the first non-null default. (Careful: a list of nulls `{null, null}` or of empty strings `{"", ""}` is **not** considered empty.)
 *Why:* prevents errors when rendering dropdowns, choiceLabels, etc. when a related piece of data is missing.

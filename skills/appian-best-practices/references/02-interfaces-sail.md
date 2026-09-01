@@ -46,6 +46,11 @@ Source: https://docs.appian.com/suite/help/latest/offline-mobile-design-best-pra
 
 ## 2. Querying data in interfaces
 
+> **Where the depth lives.** Query mechanics —fields, paging, filters, aggregations, relationships and
+> their ceilings— are specified once for this plugin in **`05-performance.md` § 2**, and in full by the
+> official Appian skill in `references/query-record-type-patterns.md` (1.463 lines). **This section
+> keeps only what is specific to querying *from an interface*, and must not restate the rest.**
+
 ### 2.1 Choose the query function for the case
 - ✅ List of records from a **record type** → `a!queryRecordType()`.
 - ✅ A **single** record (and its related ones) for summary views or related actions → `a!queryRecordByIdentifier()`.
@@ -55,28 +60,22 @@ Source: https://docs.appian.com/suite/help/latest/offline-mobile-design-best-pra
 
 Source: https://docs.appian.com/suite/help/latest/about-queries.html#how-to-query-data · https://docs.appian.com/suite/help/latest/fnc_system_a_queryrecordbyidentifier.html#usage-considerations
 
-### 2.2 Query only the fields you need
-- ✅ Specify in `fields` exactly the fields (and related fields) you're going to display.
-- ❌ Don't use `a!selectionFields()` to bring back all fields unless it's unavoidable.
-- **Why:** the more data you query, the longer it takes to load and render. Expensive fields (real-time custom fields, Extra Long Text) make it worse. **Trap:** if you leave `fields` empty in `a!queryRecordByIdentifier()`, it only returns the primary key.
+### 2.2 Fields, paging and the N+1: the rules live in `05-performance.md` § 2
 
-Source: https://docs.appian.com/suite/help/latest/query-best-practices.html#specify-individual-fields-to-query-instead-of-using-aselectionfields · https://docs.appian.com/suite/help/latest/Query_Recipes.html#best-practice-only-specify-the-data-you-need
+Specify the exact `fields`, page with `a!pagingInfo()`, never run an unbounded query, and never query
+inside a loop. Those four rules, their ceilings and their traps —the empty-`fields` trap on
+`a!queryRecordByIdentifier()` among them— are stated once in **`05-performance.md` § 2**. They are not
+repeated here, because the same rule written twice drifts into two versions of itself.
 
-### 2.3 Page and filter: never run unbounded queries
-- ✅ Page with `a!pagingInfo()` using a reasonable `batchSize`, or apply filters (`a!queryFilter()`, `a!queryLogicalExpression()`) that limit the volume.
-- ❌ Don't use `batchSize: -1` (unlimited query).
-- **Why:** unlimited queries return an unpredictable amount of data — production holds far more volume than development — and it's kept in memory for as long as the variable lives. Also, queries against synced/unsynced record types **time out after 65 seconds**: reduce the batch, the fields, or tighten the filters.
+What is specific to an interface, and only lives here:
 
-Source: https://docs.appian.com/suite/help/latest/expressions-best-practices.html#page-and-filter-query-results · https://docs.appian.com/suite/help/latest/fnc_system_queryrecordtype.html#query-timeout
+- **An interface re-evaluates.** A query inside an interface runs again on every interaction that
+  touches its variable, so an expensive query costs once in a rule and costs *per click* here. This is
+  why § 1.1 puts queries in `a!localVariables` and § 8.3 limits interactions on data-heavy screens.
+- **The 65-second timeout is reached sooner from a screen** than from a rule, because the render adds
+  its own work on top. Reduce the batch, the fields, or tighten the filters.
 
-### 2.4 Don't query inside a loop
-- ❌ Don't use `a!queryRecordByIdentifier()` (or any query) inside a loop, and don't use it to bring back more than one base record or more than 100 related records.
-- ✅ If you need several records, query the related record type **once**, separately; for counts and totals use **aggregation** (`a!aggregationFields()` with `a!grouping()` and `a!measure()`), not a per-row query.
-- **Why:** querying per iteration multiplies calls and memory. Also limit loops: avoid iterating over more than 500 elements and don't nest loops more than 2 levels deep.
-
-Source: https://docs.appian.com/suite/help/latest/fnc_system_a_queryrecordbyidentifier.html#usage-considerations · https://docs.appian.com/suite/help/latest/expressions-best-practices.html#limit-looping-iterations
-
-### 2.5 For slow data, load asynchronously
+### 2.3 For slow data, load asynchronously
 - ✅ Use `a!asyncVariable()`, or the `loadDataAsync` parameter on read-only grids, charts and KPIs fed by records, when the data is slow to load.
 - **Why:** it's one of the most effective ways to improve perceived performance: the user interacts with the rest of the screen while the slow data loads behind a placeholder (skeleton). Note: in offline mobile and portals, async data loads together with everything else, not in the background.
 
@@ -348,6 +347,15 @@ Source: https://docs.appian.com/suite/help/latest/SAIL_Performance.html#phase4 �
 ---
 
 ## 9. Accessibility
+
+> **Where the depth lives.** The official Appian skill carries 602 lines across
+> `references/accessibility-audit.md`, `component-checks.md` and `accessibility-reference.md`: the
+> audit procedure and the per-component checks. **This section keeps the criterion and what closes the
+> gate, and must not grow.** What the harness adds and nobody else does is that accessibility is
+> *gated*: the automatable part is checked by the interface-tree script, and the part that needs a
+> person to look at the screen is recorded as an owned residue instead of being quietly skipped.
+> **Without that skill installed**, the platform sources cited under each rule are what it is built
+> from.
 
 ### 9.1 Always a text equivalent
 - ✅ Give `altText` to meaningful images and icons; for critical data and controls, express them in text.

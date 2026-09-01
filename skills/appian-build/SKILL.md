@@ -370,6 +370,16 @@ Ask the user before: deleting any object, deleting record data, removing a mappe
 field, or importing a package. An update is versioned and recoverable. A deletion
 is not, and neither is a dropped column.
 
+**One decision is asked once.** The official Appian skill owns the deletion
+mechanics — its Universal Workflow 1 is ten steps, and steps 1 to 8 are how you
+identify the object, gather its dependents and present the impact. Run them.
+**Its step 9 — the confirmation — is the harness's own prompt, not a second
+one.** So: do the official steps 1-8, write the assessment below, and let the
+gate ask. Do not stage your own confirmation first, and do not re-present the
+dependency list after the gate has already shown it. A person who is asked the
+same question twice stops reading the second one, which is precisely when a
+destructive answer gets waved through.
+
 **Before any delete, run the impact assessment and write down what it found.**
 `getObjectDependents` for the object, recorded at
 `<evidenceDir>/<task-id>/dependents.json`, keyed by the object it is about:
