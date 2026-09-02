@@ -54,6 +54,7 @@ at your project root, `.claude/appian-harness.json`:
   "activeRunFile": null,
   "designMcpServer": "appian-dev",
   "docsMcpServer": "appian-docs",
+  "appianMcpToolPrefixes": ["mcp__appian-dev__", "mcp__appian__"],
   "measure": false
 }
 ```
@@ -63,10 +64,15 @@ presence is the activation switch:** without it, every hook allows, approves or
 no-ops, so the plugin installed in a project that does not use it stays out of
 the way.
 
-**Nine keys, and the list is closed.** `evidenceDir`, `activeTaskFile`,
+**Ten keys, and the list is closed.** `evidenceDir`, `activeTaskFile`,
 `maxAllowedObjects`, `officialAppianSkillPath`, `leaseFile`, `activeRunFile`,
-`designMcpServer`, `docsMcpServer` and `measure` are the whole of what the
-hooks open today. `measure` is opt-in instrumentation, off by default: only
+`designMcpServer`, `docsMcpServer`, `appianMcpToolPrefixes` and `measure` are
+the whole of what the hooks open today. `appianMcpToolPrefixes` declares the
+gates' perimeter — the tool-name prefixes of your Appian MCP servers, the
+design one **and** the runtime one — so the gates match by declaration instead
+of guessing from the server's name; without it they fall back to matching
+names that contain `appian`, session start says so out loud, and the first
+write of each session asks once for the missing declaration. `measure` is opt-in instrumentation, off by default: only
 the literal `true` turns it on, and it is what makes `manualEstimateMinutes`
 in the active task file exist at all (anchored write-once to
 `manual-estimates.jsonl`; without it the field is inert and one row says so). Every other key
@@ -97,6 +103,7 @@ which reads as evidence to a person and as an absence to the gate.
 | `<evidenceDir>/evidence-writes.jsonl` | the evidence-write log, on any `Write` or `Edit` aimed at a file the gates read | a person, afterwards |
 | `<evidenceDir>/task-closures.jsonl` | the closure gate, one row per close outcome: `closed`, `closed-pending-human` or `closed-with-debt` | a person, afterwards — and `measure_evidence.py`, reporting closes by state |
 | `<evidenceDir>/manual-estimates.jsonl` | the hooks, anchoring `manualEstimateMinutes` write-once when `measure: true` | `measure_evidence.py`, as the manual metric's denominator |
+| `<evidenceDir>/sessions.jsonl` | the hooks, one row per session: its id and its transcript path | the suspended-scope expiry count (sessions, not clocks), and `measure_evidence.py` as the pointer to the transcript |
 
 The seven logs are append-only, and four of them are re-read before appending —
 the deferred-debt, risk-downgrade, task-closure and manual-estimate registers —

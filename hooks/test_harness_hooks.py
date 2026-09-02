@@ -1,7 +1,7 @@
 import json, os, sys, tempfile, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 from harness_hooks import (scope_gate, closure_gate, failure_notice, log_write,
-                           log_evidence_write, session_start, requirements_errors)
+                           state_gate, session_start, requirements_errors)
 from validate_verdict import DEFERRABLE_CRITERIA
 
 # The one shape of NOT_MEASURED that opens a gate: sanctioned, owned, with a
@@ -18,6 +18,10 @@ DEFERRAL = {
 def cfg(root, **over):
     c = {"pluginRoot": root, "evidenceDir": os.path.join(root, "evidence"),
          "activeTask": None, "maxAllowedObjects": 3,
+         # Declared so these fixtures model an adopted 0.7 project; the
+         # undeclared path and its once-per-session ask live in
+         # test_perimeter.py.
+         "appianMcpToolPrefixes": ["mcp__appian-dev__", "mcp__appian__"],
          "projectRoot": root,
          "configPath": os.path.join(root, ".claude", "appian-harness.json"),
          "activeTaskFile": os.path.join(root, "tasks", "current.json")}
@@ -470,7 +474,7 @@ class TestWriteLog(unittest.TestCase):
 class TestEvidenceWritesAreVisible(unittest.TestCase):
     """Every input the gates read is writable by the agent they constrain, so
     an agent can author its own passing verdict. This does not stop that (see
-    log_evidence_write's comment on why gating is the wrong trade); it makes
+    state_gate's comment on why gating is the wrong trade); it makes
     it visible."""
 
     def _log(self, config):
@@ -481,7 +485,7 @@ class TestEvidenceWritesAreVisible(unittest.TestCase):
             return [json.loads(line) for line in f if line.strip()]
 
     def _write(self, config, file_path, tool="Write"):
-        log_evidence_write({"tool_name": tool, "tool_input": {"file_path": file_path},
+        state_gate({"tool_name": tool, "tool_input": {"file_path": file_path},
                             "tool_response": {"success": True}}, config)
 
     def test_a_verdict_written_by_hand_is_recorded(self):
@@ -543,14 +547,14 @@ class TestEvidenceWritesAreVisible(unittest.TestCase):
         # PostToolUse, and deliberately so: this observes, it does not gate.
         with tempfile.TemporaryDirectory() as t:
             c = cfg(t)
-            out = log_evidence_write({"tool_name": "Write",
+            out = state_gate({"tool_name": "Write",
                                       "tool_input": {"file_path": c["configPath"]}}, c)
             self.assertEqual(out, {})
 
     def test_a_call_with_no_file_path_is_ignored_rather_than_crashing(self):
         with tempfile.TemporaryDirectory() as t:
             c = cfg(t)
-            self.assertEqual(log_evidence_write({"tool_name": "Write", "tool_input": {}}, c), {})
+            self.assertEqual(state_gate({"tool_name": "Write", "tool_input": {}}, c), {})
             self.assertEqual(self._log(c), [])
 
 

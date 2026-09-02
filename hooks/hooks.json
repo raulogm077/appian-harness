@@ -14,7 +14,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "mcp__[a-zA-Z0-9_-]*[Aa]ppian[a-zA-Z0-9_-]*__(appian_)?(create|update|add|insert|configure|reorder|upload|replace|delete|remove|invoke|start|execute|run|test).*",
+        "matcher": "mcp__[a-zA-Z0-9_-]+__(appian_)?(create|update|add|insert|configure|reorder|upload|replace|delete|remove|invoke|start|execute|run|test).*",
         "hooks": [
           {
             "type": "command",
@@ -26,7 +26,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "mcp__[a-zA-Z0-9_-]*[Aa]ppian[a-zA-Z0-9_-]*__(appian_)?(create|update|add|insert|configure|reorder|upload|replace|delete|remove|invoke|start|execute|run|test).*",
+        "matcher": "mcp__[a-zA-Z0-9_-]+__(appian_)?(create|update|add|insert|configure|reorder|upload|replace|delete|remove|invoke|start|execute|run|test).*",
         "hooks": [
           {
             "type": "command",
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.sh\" \"${CLAUDE_PLUGIN_ROOT}\" log-evidence-write",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.sh\" \"${CLAUDE_PLUGIN_ROOT}\" state-gate",
             "timeout": 15
           }
         ]
@@ -48,7 +48,7 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "mcp__[a-zA-Z0-9_-]*[Aa]ppian[a-zA-Z0-9_-]*__(appian_)?(create|update|add|insert|configure|reorder|upload|replace|delete|remove|invoke|start|execute|run|test).*",
+        "matcher": "mcp__[a-zA-Z0-9_-]+__(appian_)?(create|update|add|insert|configure|reorder|upload|replace|delete|remove|invoke|start|execute|run|test).*",
         "hooks": [
           {
             "type": "command",

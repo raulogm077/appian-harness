@@ -81,7 +81,7 @@ class TestTheTwoObservationPoints(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             c = cfg(t, measure=True,
                     activeTask={"id": TASK, "manualEstimateMinutes": 30})
-            HH.log_evidence_write(
+            HH.state_gate(
                 {"tool_name": "Write",
                  "tool_input": {"file_path": c["activeTaskFile"]}}, c)
             self.assertEqual([e["event"] for e in rows(t)], ["anchored"])
@@ -90,7 +90,7 @@ class TestTheTwoObservationPoints(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             c = cfg(t, measure=True,
                     activeTask={"id": TASK, "manualEstimateMinutes": 30})
-            HH.log_evidence_write(
+            HH.state_gate(
                 {"tool_name": "Write",
                  "tool_input": {"file_path": os.path.join(t, "elsewhere.md")}}, c)
             self.assertEqual(rows(t), [])

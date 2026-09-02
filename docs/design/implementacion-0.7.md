@@ -296,13 +296,112 @@ Sin reaperturas del DESIGN FREEZE: ninguna evidencia contradijo una decisión co
 
 ---
 
+## Fase 2 · El núcleo: alcance, permiso, perímetro y gate
+
+Estado: **código DONE (2026-09-02)** — las diez unidades con test propio, suite del repo en verde
+(627 tests + 39 subtests: 334 en `hooks/`, 293 en `scripts/`). DoD: dos de sus tres condiciones
+**PASS** con evidencia; la tercera
+(la pasada atendida de «un solo prompt») queda **NOT MEASURED con kit preparado** — ver el DoD al
+final de esta sección. Plan de ejecución y decisiones unidad a unidad:
+[`fase-2/plan-ejecucion.md`](fase-2/plan-ejecucion.md). Segunda opinión del enfoque: codex
+(la herramienta `advisor` volvió a colgar la API, como el 1-sep — no se usó).
+
+| # | Trabajo (§ 16 Fase 2) | Qué quedó en el código | Test propio |
+|---|---|---|---|
+| U1 | Perímetro declarado | `appianMcpToolPrefixes[]`; matchers por prefijo con el regex 0.6 solo como respaldo; frase literal de § 7.2 en `session-start`; sin clave ⇒ primera escritura de la sesión `ask` una vez, registrada (§ 15); **matchers de `hooks.json` ensanchados a `mcp__[a-zA-Z0-9_-]+__`** — el matcher estático no puede leer config, así que rutea todo verbo de escritura MCP y Python filtra | `test_perimeter.py` (13) |
+| U2 | Despacho + esquema v2 | `_scope_policy`: sin `schemaVersion` ⇒ **política 0.6 intacta** (cierra bajo sus reglas); `2` ⇒ v07; otro valor ⇒ nadie lo define, `ask`. `_scope_schema_errors` con esquema **cerrado** (un campo mal escrito falla, no cae al default); 7 estados como constantes | `test_scope_schema.py` (12) |
+| U3 | `task_min_kind` + `risk` | Clasificadores puros con § 5.2 y las 3 correcciones P6 (`visibilityExpression` en vistas/filtros vs `visibilityExpr` en acciones, por **presencia de clave** — un null que limpia también cuenta; sin ramas muertas); constantes con `USER_OR_GROUP` y `GROUP_TYPE`; lo desconocido compra `task`; **ningún umbral de magnitud**; `risk` como salida separada, escrito por el hook al observarlo | `test_task_min_kind.py` (20, incluye barrido del corpus real de 145 tools) |
+| U4 | Máquina de estados vertical | `state-gate` (renombrado desde `log-evidence-write` en hooks.json, run_hook.sh y COMMANDS); tabla § 4.4 como datos; **proyección propiedad del hook** (`evidence/scope-projection.json`, tmp+rename, snapshot completo) como «lo que el hook recuerda haber escrito» — la validación compara contra ella, no contra filas greppables; estados a mano se **revierten**; sin firma ⇒ el alcance **no existe** para el gate; **contaminación**: un Write/Edit del agente sobre un journal del hook ⇒ `ask` hasta abrir instancia nueva (Bash sigue detectable-no-impedible hasta 0.8, § 4.3); `closure-gate` v07 firma las transiciones 3/5/13 con deuda `never-closed` en el tercer Stop | `test_state_gate.py` (18) |
+| U5 | Grant A: identidad y contrato | Extractor **por herramienta** contra los esquemas reales (`_target_keys`): `appUuid`, carpetas padre y refs de relación/vista son contexto — el test de corpus comprueba que **todo** write tool declara un target que su schema contiene; sin grant/instancia ajena/`bypassPermissions` ⇒ `ask`; `creates[]` con tipo comparado contra la herramienta («se aprueba una superficie, no una cadena»); `maxAllowedObjects` **por entrada de `tasks{}`** | `test_grant.py` (13) |
+| U6 | Grant B: irreversibles | Borrado concedido con dependientes frescos **idénticos al snapshot** fluye sin re-prompt (esa es la autorización por lote); difieren o faltan ⇒ `ask` (anti-TOCTOU); `deleteRecordData` sin `{"rows": N}` ⇒ NO MEDIDO, no pasa el grant; arranques contra `grant.processStarts` (sin falso `ask` por `allowedObjects`); extensiones amplían cobertura; `permissionMode` sellado por el hook al aparecer el grant | `test_grant_irreversibles.py` (9) |
+| U7 | Vertical `pending`+`writeSeq` | El `allow` reserva N+1 bajo lock best-effort y deja la fila de intención **antes** de que salga la llamada; `log-write` resuelve **por `tool_use_id`** (nunca «último pending») contra las formas reales de P3 — incluida la del delete sin uuid — y todo lo demás ⇒ `ambiguous`; `PostToolUseFailure` resuelve como `failed` (P5: el error no produce PostToolUse); vínculos nombre↔UUID corroborados por **dos registros** (§ 4.1) — el flujo crear-y-refinar-por-UUID no fabrica `ask`; `risk` alto observado se sella en fichero+proyección | `test_pending_and_classifier.py` (18) |
+| U8 | Caducidad § 7.6 | `verdict_expiry_errors`: caduca solo ante escritura `inScope` + `behavioural` de **su instancia** con `writeSeq` mayor; lista blanca `description`/`documentation` (**`name` fuera**); hash `expression`+`inputs[]` en PostToolUse, `expressionFilePath` leído de disco, ilegible ⇒ conductual; `failed` no caduca (no cambió nada); `ambiguous`/`pending` caducan (lado caro); `design` exenta. Consumidor pleno: el certify de Fase 4 | `test_verdict_freshness.py` (+8; los 12 de la política 0.6 intactos) |
+| U9 | `suspendedScope` | Tope de uno; el hotfix **re-embebe la copia firmada** (la del agente no se cree); solape ⇒ `ask` con el detalle (§ 4.5: sí es decisión); cerrar el hotfix restaura el suspendido `in-flight` **sin nuevo grant**; caducidad por **sesiones** (`sessions.jsonl` + `sessionsSeen`, incremento una vez por sesión): a la 3.ª se anuncia y el grant muere — materializado como `grant: null` al reanudar | `test_suspended_scope.py` (8) |
+| U10 | Causas de `ask` + E2E | Los `ask` de persona llevan los cuatro campos de § 7.3 en castellano (qué se paró · por qué · arreglo ejecutable · qué pasa si no); las tres causas retiradas: `closing` ⇒ allow con remedio, deriva anclada **sin** escrituras ⇒ corrección registrada (error interno), **con** escrituras ⇒ `ask` (causa 5); E2E: micro y task con `tasks{}` abren-escriben-cierran **con cero `ask`** | `test_v07_end_to_end.py` (2) + mensajes en el resto |
+
+### Interpretaciones fijadas al codificar (ninguna reabre el freeze)
+
+- **El motivo del abandono viaja en `request`** (`"abandon: <motivo>"`): las filas 9-10 de § 4.4
+  exigen motivo y el esquema cerrado de § 4.1 no le da campo; un `"abandon"` a secas se rechaza
+  con el remedio que enseña la forma.
+- **Anclaje con enriquecimiento**: `instanceId`/`kind`/`risk` anclados al firmar; `grant` y
+  `allowedObjects` quedan anclados **desde que el grant existe** — rellenarlos después del
+  preflight es el orden obligatorio de § 4.1, no deriva.
+- **Cierre v07 en Fase 2 = máquina de estados + journal respetado** (`pending` sin resolver
+  bloquea). `_v07_closure_missing()` es el punto único que endurecen las fases siguientes: el
+  suelo por secuencias (F3) y los veredictos del juez (F4), donde § 16 los sitúa. «Cierra limpio»
+  hoy **no** significa suelo satisfecho.
+- **Idioma**: lo que lee la persona (asks, frase de perímetro, anuncios) en castellano — las
+  frases fijadas por la norma lo están; lo que lee el modelo sigue en inglés como el código.
+- **Frescura anti-TOCTOU por igualdad de contenido**, no por mtime: § 1.3 no admite relojes y la
+  igualdad con el snapshot es la garantía real. `removeGroupMember` va por la rama de borrado.
+- **Escritura sobre alcance `closed`** ⇒ `ask` por la causa 2 (el grant murió con la instancia),
+  no por la causa retirada «alcance en closing/closed» — esa se retiró para `closing`, donde la
+  escritura fluye con remedio y la protege la caducidad por `writeSeq`.
+- **Una escritura `failed` no caduca veredictos** (no cambió el artefacto); `ambiguous` y
+  `pending` sí — lado caro.
+- La caducidad por sesiones **no cuenta** el estado transitorio «suspendido en raíz sin hotfix
+  abierto»: el contador de § 4.5 vive en `suspendedScope.sessionsSeen`, que solo existe embebido.
+
+### Consecuencias absorbidas fuera de `hooks/`
+
+- `docs/configuration.md`: la clave 10 (`appianMcpToolPrefixes`) y la fila de `sessions.jsonl`
+  en la tabla de evidencia (los checks de documentación los exigen en la misma release).
+- `README.md`: contador de tests de hooks 212 → 334.
+- El test 0.6 «el matcher JSON no rutea otros servidores» quedó **invertido a propósito**: ahora
+  rutea cualquier verbo de escritura MCP y es Python quien no dice nada de los ajenos — sin eso,
+  un servidor renombrado jamás llegaría al código y § 7.2 sería papel.
+
+### Revisión independiente y hallazgos
+
+- **Enfoque** (antes de codificar): codex — reordenó las unidades (verticales, no capas), confirmó
+  `writeSeq` derivado del journal y el corte 0.6/0.7 como dos políticas, y encontró el hueco de la
+  fila `transition` falsificable, cerrado con la proyección + contaminación (ver arriba).
+- **Código** (después): la revisión con contexto limpio **quedó pendiente** — el agente revisor
+  cayó 3 de 3 veces por los cortes de API del día (el mismo síntoma que inutilizó `advisor`), y
+  codex no puede leer disco local en esta máquina. Se ejecutará cuando la API se estabilice; el
+  encargo exacto para relanzarla está en el plan (`fase-2/plan-ejecucion.md § Revisión pendiente`).
+- **Mitigación ejecutada en su lugar** (2-sep): una **batería adversarial automatizada**
+  ([`fase-2/probe-adversarial.py`](fase-2/probe-adversarial.py), reproducible) martillea los gates
+  con ~380 combinaciones hostiles — 6 formas de grant inválido × 5 herramientas × 12 payloads
+  degenerados, más objetivo fuera de grant, creación no concedida, tipo cambiado, borrado sin
+  `deletions`, arranque sin `processStarts`, `deleteRecordData` sin conteo, violación de
+  `task_min_kind`, los 4 terminales nacidos y escritos a mano, y la falsificación de proyección +
+  fichero vía `Write` observado. **Resultado: 0 fallos** — nunca `allow` sin grant válido, nunca
+  terminal sin firma, la contaminación dispara, y ninguna combinación tumba un hook con excepción.
+  No sustituye el juicio de un revisor (no ve diseño, solo invariantes), y por eso la revisión
+  sigue pendiente y dicha con estas palabras.
+- **Hallazgo propio durante la re-pasada** (corregido el 2-sep, con test): el sello de
+  `risk: "high"` observado podía convertirse en `ask` permanente inmerecido — un agente que
+  reescribiera el fichero de alcance desde una copia vieja (sin el `risk` sellado) disparaba
+  «deriva anclada» para siempre. Corrección: `risk` es campo del hook (§ 5.3) y ante discrepancia
+  se **re-impone** desde la proyección, nunca se cuenta como deriva del contrato; bajarlo a mano
+  tampoco pega (`TestRiskIsReimposedNotDrifted`).
+
+### DoD de Fase 2
+
+El «Hecha cuando» de § 16 Fase 2, releído literal:
+
+| Condición del DoD | Veredicto | Evidencia |
+|---|---|---|
+| La **sonda de perímetro falla en verde y en rojo** contra dos configuraciones distintas | **PASS** | [`fase-2/sonda-perimetro.md`](fase-2/sonda-perimetro.md): lanzador real, tres configs — declarada (sin frase), ausente (frase literal + ask de migración una vez por sesión), y servidor renombrado (invisible sin clave, gateado con ella) |
+| **Ningún `ask` falso sobre el corpus** | **PASS** (mitad determinista) | `test_grant.py::TestTheExtractorKnowsTheRealCorpus` (todo write tool tiene target en su schema real — sin él, falso `ask` garantizado), `test_task_min_kind.py::TestAgainstTheRealCorpus` (145 tools clasifican), y el E2E con **cero** `ask` en ciclos completos |
+| Un `micro` y un `task` (con y sin `tasks{}`) abren, escriben y cierran en un proyecto de pruebas con **un solo prompt cada uno** | **NOT MEASURED** (exige sesión atendida: P2 demostró que en headless un `ask` deniega sin preguntar) | Mecánica equivalente sin persona: `test_v07_end_to_end.py` (0 asks del harness, cierre firmado). Kit listo para la pasada con el dueño delante: [`fase-2/kit-atendido.md`](fase-2/kit-atendido.md) |
+
+Sin reaperturas del DESIGN FREEZE: ninguna evidencia contradijo una decisión congelada. El hueco
+que la segunda opinión (codex) encontró — la fila `transition` falsificable con `Write` — se cerró
+**dentro** de la clase de garantía que § 4.3 ya declara (detectable): proyección propiedad del
+hook + contaminación observable; Bash queda para 0.8 como estaba escrito.
+
+---
+
 ## Estado de fases
 
 | Fase | Estado |
 |---|---|
 | **0 · Sondas** | **DONE** (2026-09-01, DoD abajo) |
 | **1 · Coste y consistencia** | **DONE** (2026-09-02, DoD en su sección) |
-| 2 · Núcleo | pendiente |
+| **2 · Núcleo** | **código DONE** (2026-09-02); DoD 2/3 PASS, pasada atendida NOT MEASURED con kit |
 | 3 · Suelo y evidencia | pendiente |
 | 4 · Juez, matriz y skills | pendiente |
 | 5 · Onboarding y documentación | pendiente |

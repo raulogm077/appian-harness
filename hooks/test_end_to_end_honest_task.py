@@ -48,6 +48,7 @@ class TestOneHonestTaskEndToEnd(unittest.TestCase):
             "activeTaskFile": os.path.join(self.root, "tasks", "current.json"),
             "mcpServers": ["appian-dev", "appian-docs"],
             "designMcpServer": "appian-dev", "docsMcpServer": "appian-docs",
+            "appianMcpToolPrefixes": ["mcp__appian-dev__", "mcp__appian__"],
         }
         self.addCleanup(self._tmp.cleanup)
 

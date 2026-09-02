@@ -198,7 +198,7 @@ case "$SUBCOMMAND" in
             printf '%s\n' "{\"systemMessage\":\"$NOTE This write was NOT recorded in operations.jsonl: the write log is incomplete.\"}"
         fi
         ;;
-    log-evidence-write)
+    state-gate)
         # Cannot tell whether the file was one the gates read, so it says so
         # and lets the write stand: this observes, it does not gate.
         if [ "$CONFIGURED" -eq 0 ]; then

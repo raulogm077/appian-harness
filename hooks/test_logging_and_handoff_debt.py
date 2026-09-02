@@ -238,14 +238,21 @@ class TestAFailedReadIsNotAFailedWrite(unittest.TestCase):
         say nothing rather than assert that "unknown tool" failed to write."""
         self.assertEqual(failure_notice({}), {})
 
-    def test_the_json_matcher_no_longer_routes_every_mcp_server(self):
-        """Both halves narrow together: narrowing only Python leaves the hook
-        process woken by every failed Figma or Supabase call, to decide it has
-        nothing to say."""
+    def test_the_json_matcher_routes_write_verbs_and_python_declines_the_rest(self):
+        """The JSON matcher routes any server whose tool carries a write verb,
+        because `appianMcpToolPrefixes[]` (norm § 7.2) lets a project declare
+        servers the static matcher cannot know by name -- narrowing it back to
+        `appian` names would reproduce the perimeter failure it fixes. The
+        line is drawn in Python: a foreign write wakes the hook and gets
+        nothing said about it (asserted above); a verb-less read is not
+        routed at all."""
         matcher = re.compile(matcher_for("PostToolUseFailure", "failure-notice"))
-        for name in FOREIGN + PLAIN_READS:
+        for name in PLAIN_READS + ("mcp__claude_ai_Figma__get_metadata",):
             self.assertIsNone(matcher.match(name), name)
-        self.assertTrue(matcher.match(self.WRITE))
+        for name in ("mcp__claude_ai_Supabase__create_branch",
+                     "mcp__claude_ai_Google_Drive__create_file",
+                     self.WRITE):
+            self.assertTrue(matcher.match(name), name)
 
 
 if __name__ == "__main__":

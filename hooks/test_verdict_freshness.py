@@ -160,3 +160,102 @@ class TestTheAdversarialVerdictExpiresToo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestV07ExpiryIsBySequenceNotByClock(unittest.TestCase):
+    """§ 7.6: what expires a verdict is a behavioural in-scope write of its
+    instance with a higher sequence -- never a timestamp. The legacy class
+    above keeps guarding the 0.6 rulebook (§ 15)."""
+
+    INSTANCE = "inst-9"
+
+    def _cfg(self, root):
+        return cfg(root, activeTask={"schemaVersion": 2, "id": "F-x",
+                                     "instanceId": self.INSTANCE})
+
+    def _row(self, root, seq, result="ok", behavioural=True, in_scope=True,
+             instance=None):
+        import harness_hooks as HH
+        HH._append_jsonl(os.path.join(root, "evidence", "operations.jsonl"),
+                         {"instanceId": instance or self.INSTANCE,
+                          "writeSeq": seq, "toolUseId": "tu-%d" % seq,
+                          "inScope": in_scope, "behavioural": behavioural,
+                          "result": result})
+
+    def _verdict(self, covers, phase="certify", instance=None):
+        return {"phase": phase, "instanceId": instance or self.INSTANCE,
+                "coversThroughWriteSeq": covers}
+
+    def test_a_later_behavioural_write_expires_it(self):
+        from harness_hooks import verdict_expiry_errors
+        with tempfile.TemporaryDirectory() as root:
+            c = self._cfg(root)
+            self._row(root, 3)
+            errs = verdict_expiry_errors(c, c["activeTask"], self._verdict(2))
+            self.assertTrue(errs and "writeSeq 2" in errs[0])
+
+    def test_a_metadata_only_write_does_not(self):
+        from harness_hooks import verdict_expiry_errors
+        with tempfile.TemporaryDirectory() as root:
+            c = self._cfg(root)
+            self._row(root, 3, behavioural=False)
+            self.assertEqual(
+                verdict_expiry_errors(c, c["activeTask"], self._verdict(2)), [])
+
+    def test_a_failed_write_changed_nothing(self):
+        from harness_hooks import verdict_expiry_errors
+        with tempfile.TemporaryDirectory() as root:
+            c = self._cfg(root)
+            self._row(root, 3, result="failed")
+            self.assertEqual(
+                verdict_expiry_errors(c, c["activeTask"], self._verdict(2)), [])
+
+    def test_ambiguous_and_pending_sit_on_the_expensive_side(self):
+        from harness_hooks import verdict_expiry_errors
+        with tempfile.TemporaryDirectory() as root:
+            c = self._cfg(root)
+            self._row(root, 3, result="ambiguous")
+            self.assertTrue(
+                verdict_expiry_errors(c, c["activeTask"], self._verdict(2)))
+        with tempfile.TemporaryDirectory() as root:
+            c = self._cfg(root)
+            self._row(root, 3, result="pending", behavioural=None)
+            self.assertTrue(
+                verdict_expiry_errors(c, c["activeTask"], self._verdict(2)))
+
+    def test_a_foreign_write_does_not_expire(self):
+        # Eval safety-foreign-write-does-not-expire: another instance's
+        # write is another contract's history.
+        from harness_hooks import verdict_expiry_errors
+        with tempfile.TemporaryDirectory() as root:
+            c = self._cfg(root)
+            self._row(root, 3, instance="inst-OTRA")
+            self._row(root, 3, in_scope=False)
+            self.assertEqual(
+                verdict_expiry_errors(c, c["activeTask"], self._verdict(2)), [])
+
+    def test_design_is_exempt_and_meant_to_predate_writes(self):
+        from harness_hooks import verdict_expiry_errors
+        with tempfile.TemporaryDirectory() as root:
+            c = self._cfg(root)
+            self._row(root, 3)
+            self.assertEqual(
+                verdict_expiry_errors(c, c["activeTask"],
+                                      self._verdict(0, phase="design")), [])
+
+    def test_no_usable_covers_fails_closed(self):
+        from harness_hooks import verdict_expiry_errors
+        with tempfile.TemporaryDirectory() as root:
+            c = self._cfg(root)
+            for covers in (None, "3", True, -1):
+                self.assertTrue(
+                    verdict_expiry_errors(c, c["activeTask"],
+                                          self._verdict(covers)))
+
+    def test_another_instances_verdict_never_covers_this_one(self):
+        from harness_hooks import verdict_expiry_errors
+        with tempfile.TemporaryDirectory() as root:
+            c = self._cfg(root)
+            self.assertTrue(
+                verdict_expiry_errors(c, c["activeTask"],
+                                      self._verdict(9, instance="inst-vieja")))
