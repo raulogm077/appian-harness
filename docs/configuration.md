@@ -53,7 +53,8 @@ at your project root, `.claude/appian-harness.json`:
   "leaseFile": null,
   "activeRunFile": null,
   "designMcpServer": "appian-dev",
-  "docsMcpServer": "appian-docs"
+  "docsMcpServer": "appian-docs",
+  "measure": false
 }
 ```
 
@@ -62,10 +63,13 @@ presence is the activation switch:** without it, every hook allows, approves or
 no-ops, so the plugin installed in a project that does not use it stays out of
 the way.
 
-**Eight keys, and the list is closed.** `evidenceDir`, `activeTaskFile`,
+**Nine keys, and the list is closed.** `evidenceDir`, `activeTaskFile`,
 `maxAllowedObjects`, `officialAppianSkillPath`, `leaseFile`, `activeRunFile`,
-`designMcpServer` and `docsMcpServer` are the whole of what the
-hooks open today. Every other key
+`designMcpServer`, `docsMcpServer` and `measure` are the whole of what the
+hooks open today. `measure` is opt-in instrumentation, off by default: only
+the literal `true` turns it on, and it is what makes `manualEstimateMinutes`
+in the active task file exist at all (anchored write-once to
+`manual-estimates.jsonl`; without it the field is inert and one row says so). Every other key
 in this file is inert to the plugin: nothing rejects an extra one, and nothing
 acts on it either. A project is free to record more here for its own use — the
 five items above are worth writing down somewhere — as long as it does not
@@ -91,11 +95,13 @@ which reads as evidence to a person and as an absence to the gate.
 | `<evidenceDir>/risk-downgrades.jsonl` | the closure gate, when a task closes on the `trivial` tier | a person, afterwards. Cheaper ceremony is allowed; choosing it is recorded |
 | `<evidenceDir>/deferred-debt.jsonl` | the closure gate when forced to approve unverified work (`BLOCKING`), and either gate when an accepted deferral opens it (`DEFERRED`) | a person, afterwards |
 | `<evidenceDir>/evidence-writes.jsonl` | the evidence-write log, on any `Write` or `Edit` aimed at a file the gates read | a person, afterwards |
+| `<evidenceDir>/task-closures.jsonl` | the closure gate, one row per close outcome: `closed`, `closed-pending-human` or `closed-with-debt` | a person, afterwards — and `measure_evidence.py`, reporting closes by state |
+| `<evidenceDir>/manual-estimates.jsonl` | the hooks, anchoring `manualEstimateMinutes` write-once when `measure: true` | `measure_evidence.py`, as the manual metric's denominator |
 
-The five logs are append-only, and two of them are re-read before appending —
-the deferred-debt register and the risk-downgrade register — so that one
-deferral, or one task closing on the cheap tier, does not become one line per
-attempt. The closure gate can fire repeatedly for the same task, and a register
+The seven logs are append-only, and four of them are re-read before appending —
+the deferred-debt, risk-downgrade, task-closure and manual-estimate registers —
+so that one deferral, or one task closing on the cheap tier, does not become
+one line per attempt. The closure gate can fire repeatedly for the same task, and a register
 that repeats itself is a register nobody reads. They exist so that "how
 often did this gate stop something, and did anyone answer yes?" — and "who
 wrote this verdict?" — are questions with answers.

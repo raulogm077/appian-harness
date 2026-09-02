@@ -14,18 +14,100 @@ PLUGIN_ROOT=${1:-}
 SUBCOMMAND=${2:-}
 SCRIPT="$PLUGIN_ROOT/hooks/harness_hooks.py"
 
+# Opt-in timing (scripts/measure_evidence.py): with APPIAN_HARNESS_TIME_LOG
+# set, every invocation appends one row and nothing execs, so the interval
+# covers the probe, the interpreter start and the hook itself. Unset, the
+# cost is one parameter expansion.
+HOOK_T0=""
+if [ -n "${APPIAN_HARNESS_TIME_LOG:-}" ]; then
+    HOOK_T0=$(date +%s%N 2>/dev/null || true)
+    case "$HOOK_T0" in *[!0-9]*|"") HOOK_T0="" ;; esac
+fi
+
+finish() {
+    if [ -n "$HOOK_T0" ]; then
+        _t1=$(date +%s%N 2>/dev/null || true)
+        case "$_t1" in *[!0-9]*|"") ;; *)
+            printf '{"subcommand":"%s","t0Ns":%s,"t1Ns":%s,"exit":%s}\n' "$SUBCOMMAND" "$HOOK_T0" "$_t1" "$1" 2>/dev/null >> "$APPIAN_HARNESS_TIME_LOG" || true
+        ;; esac
+    fi
+    exit "$1"
+}
+
+# The probe result is cached per user, because the probe was paid on every
+# gated call. Only the three literal candidates below are ever run, so a
+# tampered cache is a miss, never a command. Re-probes when the resolved
+# path changes or the cached command cannot start (126/127).
+CACHE_FILE=""
+if [ -n "${XDG_CACHE_HOME:-}" ]; then
+    CACHE_FILE="$XDG_CACHE_HOME/appian-harness/interpreter.v1"
+elif [ -n "${HOME:-}" ]; then
+    CACHE_FILE="$HOME/.cache/appian-harness/interpreter.v1"
+fi
+
+run_candidate() {
+    case "$1" in
+        python3) python3 "$SCRIPT" "$SUBCOMMAND" ;;
+        python)  python "$SCRIPT" "$SUBCOMMAND" ;;
+        "py -3") py -3 "$SCRIPT" "$SUBCOMMAND" ;;
+    esac
+}
+
+use_cached_interpreter() {
+    [ -n "$CACHE_FILE" ] && [ -f "$CACHE_FILE" ] || return 1
+    _cand=""
+    _res=""
+    { IFS= read -r _cand && IFS= read -r _res; } < "$CACHE_FILE" 2>/dev/null || return 1
+    case "$_cand" in
+        python3|python) _first=$_cand ;;
+        "py -3") _first=py ;;
+        *) return 1 ;;
+    esac
+    case "$_res" in /*) ;; *) return 1 ;; esac
+    [ "$(command -v "$_first" 2>/dev/null)" = "$_res" ] || return 1
+    run_candidate "$_cand"
+    _rc=$?
+    # 126/127: the shell could not start it, so the payload is still unread
+    # and falling back to the probe cannot run the hook twice.
+    if [ "$_rc" -eq 126 ] || [ "$_rc" -eq 127 ]; then
+        rm -f "$CACHE_FILE" 2>/dev/null
+        return 1
+    fi
+    finish "$_rc"
+}
+
+write_cache() {
+    [ -n "$CACHE_FILE" ] || return 0
+    _res=$(command -v "$2" 2>/dev/null)
+    case "$_res" in /*) ;; *) return 0 ;; esac
+    (
+        umask 077
+        mkdir -p "${CACHE_FILE%/*}" &&
+            printf '%s\n%s\n' "$1" "$_res" > "$CACHE_FILE.$$" &&
+            mv -f "$CACHE_FILE.$$" "$CACHE_FILE"
+    ) 2>/dev/null || rm -f "$CACHE_FILE.$$" 2>/dev/null
+    return 0
+}
+
 # Probed, not trusted: `python` can be a Python 2 and Windows `python3` is
 # often an alias stub. Stdin from /dev/null keeps the hook payload intact.
 try_interpreter() {
     if "$@" -c 'import sys; sys.exit(0 if sys.version_info[0] >= 3 else 1)' \
             </dev/null >/dev/null 2>&1; then
+        write_cache "$*" "$1"
+        if [ -n "$HOOK_T0" ]; then
+            "$@" "$SCRIPT" "$SUBCOMMAND"
+            finish $?
+        fi
         exec "$@" "$SCRIPT" "$SUBCOMMAND"
     fi
 }
 
+use_cached_interpreter
+
 # Order is platform-dependent for a measured reason: on Windows the alias
 # stub answers ~2040ms against ~1070ms for `python`, and this runs on every
-# gated call. Measurements: docs/design-notes.md § run_hook.sh.
+# gated call that misses the cache. Measurements: docs/design-notes.md § run_hook.sh.
 if [ "${OS:-}" = "Windows_NT" ]; then
     try_interpreter python
     try_interpreter py -3
@@ -40,7 +122,8 @@ fi
 #
 # Everything below runs only when none of the three candidates works. It
 # never allows a write through quietly and it never denies one: fail-closed
-# in this plugin means "ask".
+# in this plugin means "ask" -- the only decision value that produces a
+# prompt; others are ignored silently (docs/design/implementacion-0.7.md § P1).
 
 NOTE="appian-harness: no working Python 3 interpreter was found (tried python3, python and py -3), so the harness hooks did not run."
 
@@ -135,4 +218,4 @@ case "$SUBCOMMAND" in
         printf '%s\n' '{}'
         ;;
 esac
-exit 0
+finish 0

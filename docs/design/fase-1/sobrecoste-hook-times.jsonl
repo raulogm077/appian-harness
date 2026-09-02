@@ -1,0 +1,8 @@
+{"subcommand":"session-start","t0Ns":1788305888317058100,"t1Ns":1788305889356832500,"exit":0}
+{"subcommand":"scope-gate","t0Ns":1788305902031733100,"t1Ns":1788305902464210300,"exit":0}
+{"subcommand":"scope-gate","t0Ns":1788305902927073100,"t1Ns":1788305903331158700,"exit":0}
+{"subcommand":"failure-notice","t0Ns":1788305903946976200,"t1Ns":1788305904404689300,"exit":0}
+{"subcommand":"closure-gate","t0Ns":1788305909783864100,"t1Ns":1788305910222666200,"exit":0}
+{"subcommand":"session-start","t0Ns":1788305948904655100,"t1Ns":1788305949560940800,"exit":0}
+{"subcommand":"scope-gate","t0Ns":1788305959440379100,"t1Ns":1788305959867703200,"exit":0}
+{"subcommand":"closure-gate","t0Ns":1788305980665478500,"t1Ns":1788305981063155200,"exit":0}

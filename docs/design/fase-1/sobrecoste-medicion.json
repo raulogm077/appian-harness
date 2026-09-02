@@ -1,0 +1,81 @@
+{
+  "metodo": "APPIAN_HARNESS_TIME_LOG en el entorno del hijo; el lanzador registra t0/t1 (date +%s%N) por invocacion sin exec; calibracion del spawn de sh medida aparte (mediana de 20 x sh -c exit = 68.3 ms) y etiquetada estimacion; claude -p claude-haiku-4-5-20251001, acceptEdits, --strict-mcp-config con el servidor appian real; scope-gate ejercitado por un invoke_process_model denegado (ask sin tarea activa) y un invoke_expression_rule con uuid falso (failure-notice). log-write y log-evidence-write no se ejercitaron (los Write fueron denegados por la capa de permisos de fichero en headless, la trampa ya conocida de Fase 0); comparten lanzador y arranque de interprete con los medidos.",
+  "sesion1_fria_cache": {
+    "hooks": {
+      "bySubcommand": {
+        "closure-gate": {
+          "ms": 438.8,
+          "n": 1
+        },
+        "failure-notice": {
+          "ms": 457.7,
+          "n": 1
+        },
+        "scope-gate": {
+          "ms": 836.6,
+          "n": 2
+        },
+        "session-start": {
+          "ms": 1039.8,
+          "n": 1
+        }
+      },
+      "cumulativeMs": 2772.9,
+      "invocations": 5,
+      "perInvocationMsMax": 1039.8,
+      "perInvocationMsMedian": 438.8,
+      "unionMs": 2772.9
+    },
+    "manualEstimate": {
+      "minutes": "NOT MEASURED",
+      "ratio": "NOT MEASURED"
+    },
+    "session": {
+      "wallMs": 21922.9
+    },
+    "share": {
+      "adjustedCumulative": 0.1421,
+      "adjustedIsAnEstimate": true,
+      "calibrationMsPerInvocation": 68.3,
+      "cumulative": 0.1265,
+      "observed": 0.1265
+    }
+  },
+  "sesion2_caliente_cache": {
+    "hooks": {
+      "bySubcommand": {
+        "closure-gate": {
+          "ms": 397.7,
+          "n": 1
+        },
+        "scope-gate": {
+          "ms": 427.3,
+          "n": 1
+        },
+        "session-start": {
+          "ms": 656.3,
+          "n": 1
+        }
+      },
+      "cumulativeMs": 1481.3,
+      "invocations": 3,
+      "perInvocationMsMax": 656.3,
+      "perInvocationMsMedian": 427.3,
+      "unionMs": 1481.3
+    },
+    "manualEstimate": {
+      "minutes": "NOT MEASURED",
+      "ratio": "NOT MEASURED"
+    },
+    "session": {
+      "wallMs": 32176.3
+    },
+    "share": {
+      "adjustedCumulative": 0.0524,
+      "adjustedIsAnEstimate": true,
+      "calibrationMsPerInvocation": 68.3,
+      "cumulative": 0.046,
+      "observed": 0.046
+    }
+  }
+}

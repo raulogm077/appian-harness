@@ -235,7 +235,7 @@ there.
 | `skills/appian-best-practices/references/` | Eleven domain references, numbered `01`–`11`. Every verdict cites into these |
 | `agents/` | Three judging agents: `appian-practices-auditor`, `appian-reviewer`, `appian-verifier` |
 | `hooks/` | One `hooks.json` declaring six hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
-| `scripts/` | Eleven modules: `validate_verdict.py`, `lint_skills.py`, `lint_agents.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `parallel_safety.py`, `check_readme_claims.py`, `check_manifest_agreement.py`, `check_package_integrity.py`, `check_evals.py`, and `exit_codes.py`, which holds the one constant six of them used to spell out separately |
+| `scripts/` | Twelve modules: `validate_verdict.py`, `lint_skills.py`, `lint_agents.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `parallel_safety.py`, `measure_evidence.py`, `check_readme_claims.py`, `check_manifest_agreement.py`, `check_package_integrity.py`, `check_evals.py`, and `exit_codes.py`, which holds the one constant six of them used to spell out separately |
 | `commands/` | One command: `/appian-init`, which adopts the harness into a project |
 | `evals/` | Six eval cases in the layout `claude plugin eval` expects — three routing, three safety. **Never executed**: the runner is in early access. `evals/README.md` says so first, because a suite of unrun cases is preparation, not coverage |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
@@ -244,7 +244,7 @@ there.
 | `CHANGELOG.md` | What each release changed for a project that upgrades and edits nothing. Read it before upgrading: a gate that *stops* firing announces nothing, so that is the only place it is announced |
 | `.github/workflows/` | The checks, on Linux and Windows × Python 3.9 and 3.13 |
 
-The Python carries its own tests — 285 for `scripts/`, 189 for `hooks/`, standard
+The Python carries its own tests — 293 for `scripts/`, 212 for `hooks/`, standard
 library only:
 
 ```

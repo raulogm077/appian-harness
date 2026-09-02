@@ -37,6 +37,12 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
 from validate_verdict import isfile_exact, load_verdict, validate_verdict
 
+# Rule 2's value, and load-bearing: "ask" is the only decision proven to
+# produce a prompt; an unrecognized value is ignored silently and the session
+# degrades toward allow. Evidence: docs/design/implementacion-0.7.md § P1
+# (Claude Code 2.1.248). test_destructive_guard.py guards the literal.
+PERMISSION_ASK = "ask"
+
 # Second half of a two-stage filter: hooks.json routes, this decides. The
 # invariant is that hooks.json must route everything this pattern gates --
 # narrower here is safe, broader is unsafe and silent. `test_matcher_parity`
@@ -90,6 +96,15 @@ DEFAULT_EVIDENCE_DIR = "evidence"
 DEFAULT_ACTIVE_TASK_FILE = os.path.join("tasks", "current.json")
 DEFAULT_MAX_ALLOWED_OBJECTS = 3
 CLOSURE_PHASES = ("implementation", "review", "qa")
+
+# The close outcomes 0.7 names (§ 4.2); the full seven-state machine and its
+# single writer arrive with the state-gate, not here. closed-pending-human is
+# kept apart from closed-with-debt on purpose: one is a judgement still owed
+# by a person, the other a task that ran out of remediation cycles.
+STATUS_IN_FLIGHT = "in-flight"
+STATUS_CLOSED = "closed"
+STATUS_CLOSED_PENDING_HUMAN = "closed-pending-human"
+STATUS_CLOSED_WITH_DEBT = "closed-with-debt"
 
 # Which phases a verdict may legitimately predate the writes for. An
 # allow-list of exemptions, not a list of what to check, so a phase added
@@ -738,9 +753,29 @@ def scope_gate(payload, config):
         reasons.extend(_phase_errors(config, task_id, "design"))
 
     if reasons:
-        return {"permissionDecision": "ask", "permissionDecisionReason": " · ".join(reasons)}
+        return {"permissionDecision": PERMISSION_ASK,
+                "permissionDecisionReason": " · ".join(reasons)}
     return {"permissionDecision": "allow",
             "permissionDecisionReason": "scope and design audit check out"}
+
+
+def _scope_status(active_task):
+    """The scope state as read, migrated: a pre-0.7 task file has no
+    `status` and is in flight by definition (norm § 15). Never rewrites."""
+    status = (active_task or {}).get("status")
+    if isinstance(status, str) and status.strip():
+        return status
+    return STATUS_IN_FLIGHT
+
+
+def _close_state(deferred):
+    """Which terminal state a clean close reaches (norm § 4.4 rows 3-4).
+
+    One accepted deferral means every gate the harness can measure is met
+    and a judgement is still a person's to give. Every criterion in
+    DEFERRABLE_CRITERIA is that kind of judgement; the § 9.5 split of
+    guarantee-residue ids arrives with that id vocabulary."""
+    return STATUS_CLOSED_PENDING_HUMAN if deferred else STATUS_CLOSED
 
 
 def _risk_tier(active_task):
@@ -815,6 +850,7 @@ def closure_gate(payload, config):
         return {"decision": "approve"}
 
     task_id = active_task["id"]
+    _note_manual_estimate(config)
     # Read once for all phases rather than once each: the write log grows
     # with the project and this is the only place they are all measured
     # against it.
@@ -824,17 +860,34 @@ def closure_gate(payload, config):
         _log_risk_downgrade(config, task_id, active_task.get("risk"))
     missing_phases = []
     missing_details = []
+    deferred = []
     for phase in required:
         errs = _phase_errors(config, task_id, phase, last_write)
         if errs:
             missing_phases.append(phase)
             missing_details.append("practices-%s (%s)" % (phase, "; ".join(errs)))
+        else:
+            verdict = load_verdict(_verdict_path(config, task_id, phase))
+            if verdict.get("verdict") == "NOT_MEASURED":
+                deferred.append((phase, verdict.get("deferredCriterion")))
 
     if not missing_details:
+        state = _close_state(deferred)
+        _log_task_closure(config, task_id, _scope_status(active_task), state, deferred)
+        if state == STATUS_CLOSED_PENDING_HUMAN:
+            return {"decision": "approve",
+                    "systemMessage": (
+                        "Task %r closes %s: every gate the harness can measure is met, "
+                        "and %s still needs a person. Owner and closing condition are in "
+                        "deferred-debt.jsonl; the close is recorded in task-closures.jsonl."
+                        % (task_id, STATUS_CLOSED_PENDING_HUMAN,
+                           ", ".join("practices-%s (%s)" % (p, c) for p, c in deferred)))}
         return {"decision": "approve"}
 
     if payload.get("stop_hook_active"):
         debt_path = _record_deferred_debt(config, task_id, missing_phases)
+        _log_task_closure(config, task_id, _scope_status(active_task),
+                          STATUS_CLOSED_WITH_DEBT, deferred)
         return {"decision": "approve",
                 "systemMessage": (
                     "Task %r is closing UNMEASURED: %s could not be produced. "
@@ -968,6 +1021,8 @@ def log_evidence_write(payload, config):
                    "target": target,
                    "path": (payload.get("tool_input") or {}).get("file_path"),
                    "result": _write_result(payload)})
+    if target == "active-task":
+        _note_manual_estimate(config)
     return {}
 
 
@@ -1020,7 +1075,7 @@ def _log_ask(config, task_id, tool_name, reason):
         "timestamp": _now(),
         "task": task_id,
         "tool": tool_name,
-        "decision": "ask",
+        "decision": PERMISSION_ASK,
         "reason": reason,
     }
     _append_jsonl(os.path.join(_evidence_dir(config),
@@ -1068,6 +1123,61 @@ def _record_deferral(config, task_id, phase, verdict):
                   "closing condition recorded here" % (phase, task_id, criterion),
     })
     return path
+
+
+def _log_task_closure(config, task_id, from_status, status, deferred):
+    """One durable row per close outcome -- the transition's record until
+    the hook signs `status` into the scope file itself (0.7 state-gate).
+    Deduped per (task, outcome); read for reporting, never as authority."""
+    path = os.path.join(_evidence_dir(config), "task-closures.jsonl")
+    for e in _read_jsonl(path):
+        if e.get("task") == task_id and e.get("status") == status:
+            return
+    _append_jsonl(path, {
+        "timestamp": _now(), "task": task_id,
+        "from": from_status, "status": status,
+        "deferred": [{"phase": p, "criterion": c} for p, c in deferred],
+    })
+
+
+def _note_manual_estimate(config):
+    """Anchors the constructor's manualEstimateMinutes: write-once with an
+    annotation. The first valid value is the denominator of the manual
+    metric (reported, never scored); a later different value is annotated
+    and does not replace it. Behind `measure: true` -- off, the field is
+    inert and one row says so."""
+    active_task = config.get("activeTask") or {}
+    task_id = active_task.get("id")
+    value = active_task.get("manualEstimateMinutes")
+    if not task_id or value is None:
+        return
+    path = os.path.join(_evidence_dir(config), "manual-estimates.jsonl")
+    rows = [e for e in _read_jsonl(path) if e.get("task") == task_id]
+    if not config.get("measure"):
+        if not any(e.get("event") == "ignored" for e in rows):
+            _append_jsonl(path, {
+                "timestamp": _now(), "task": task_id, "event": "ignored",
+                "value": value,
+                "reason": "manualEstimateMinutes only exists with measure: true"})
+        return
+    valid = (isinstance(value, (int, float)) and not isinstance(value, bool)
+             and value == value and value != float("inf") and value > 0)
+    anchored = next((e for e in rows if e.get("event") == "anchored"), None)
+    if anchored is None:
+        if valid:
+            _append_jsonl(path, {"timestamp": _now(), "task": task_id,
+                                 "event": "anchored", "minutes": value})
+        elif not any(e.get("event") == "invalid" for e in rows):
+            _append_jsonl(path, {"timestamp": _now(), "task": task_id,
+                                 "event": "invalid", "value": value})
+        return
+    if (valid and value != anchored.get("minutes")
+            and not any(e.get("event") == "changed" and e.get("minutes") == value
+                        for e in rows)):
+        _append_jsonl(path, {"timestamp": _now(), "task": task_id,
+                             "event": "changed", "minutes": value,
+                             "anchoredMinutes": anchored.get("minutes"),
+                             "reason": "write-once: the anchored value stands"})
 
 
 def _record_deferred_debt(config, task_id, missing_phases):
@@ -1231,6 +1341,9 @@ def _build_config(project_root):
                                                 project_config.get("activeRunFile")),
         # Server names are defaults, not assumptions: a project may call its
         # servers anything.
+        # Opt-in instrumentation (measure: true, off by default): it is
+        # what makes manualEstimateMinutes exist at all.
+        "measure": project_config.get("measure") is True,
         "designMcpServer": project_config.get("designMcpServer") or DEFAULT_DESIGN_MCP,
         "docsMcpServer": project_config.get("docsMcpServer") or DEFAULT_DOCS_MCP,
         "mcpServers": _discover_mcp_servers(project_root),
@@ -1260,13 +1373,13 @@ def cmd_scope_gate():
     if err or parse_err:
         _emit({"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
-            "permissionDecision": "ask",
+            "permissionDecision": PERMISSION_ASK,
             "permissionDecisionReason": "harness config unreadable: %s" % (err or parse_err),
         }})
         return 0
 
     decision = scope_gate(payload, config)
-    if decision["permissionDecision"] == "ask":
+    if decision["permissionDecision"] == PERMISSION_ASK:
         active_task = config.get("activeTask") or {}
         _log_ask(config, active_task.get("id"), payload.get("tool_name"),
                   decision["permissionDecisionReason"])
@@ -1365,7 +1478,7 @@ def main(argv):
         elif subcommand == "scope-gate":
             _emit({"hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
-                "permissionDecision": "ask",
+                "permissionDecision": PERMISSION_ASK,
                 "permissionDecisionReason": "harness hook error: %s" % e,
             }})
         else:

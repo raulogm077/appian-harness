@@ -225,6 +225,75 @@ ni `versionId`** — así que el clasificador debe reconocer también esa forma 
 `reorderRecordTypeViews` y `updateObjectSecurity` fueron idempotentes (sin cambio persistido); los
 dos intentos `failed` no crearon nada.
 
+
+---
+
+## Fase 1 · Coste y consistencia
+
+Estado: **DONE (2026-09-02)** — DoD comprobado condición a condición al final de esta sección.
+**Claude Code:** 2.1.248 (Windows 11) · sesiones de medida: `claude -p`, `claude-haiku-4-5-20251001`,
+entorno saneado, `--strict-mcp-config` con el servidor `appian` real (solo lecturas/denegaciones:
+ninguna escritura tocó el entorno).
+
+| # | Trabajo | Qué quedó en el código | Test propio |
+|---|---|---|---|
+| U1 | Caché del intérprete | `run_hook.sh` cachea el candidato ganador en `${XDG_CACHE_HOME:-$HOME/.cache}/appian-harness/interpreter.v1` (candidato + resolución de `command -v`). Solo los tres literales `python3`/`python`/`py -3` se ejecutan: una caché manipulada es un fallo de caché, nunca un comando. Re-sondea si la resolución cambia, el contenido no es de la allowlist o el arranque devuelve 126/127 — ahí el payload sigue sin leer, así que no hay doble ejecución del hook | `TestTheInterpreterCache` (4) en `test_run_hook_launcher.py`; los tests preexistentes quedaron herméticos (XDG por test) |
+| U2 | `closed-pending-human` | Enum `STATUS_*` (§ 4.2); `closure_gate` clasifica el cierre limpio — ≥ 1 aplazamiento aceptado ⇒ `closed-pending-human`, sin ninguno ⇒ `closed`, y el approve forzado del Stop repetido se registra `closed-with-debt` — y lo escribe en `evidence/task-closures.jsonl` (`from`→`status`, dedupe por tarea+estado). El registro tiene consumidor (§ 17.5, `measure_evidence`) y **no es autoridad**: la firma del estado en el fichero de alcance llega con el `state-gate` de Fase 2. Migración § 15: sin `status` ⇒ `in-flight`, nada se reescribe — un fichero 0.6 cierra igual que antes | `test_close_states.py` (7) |
+| U3 | Estimación manual | `measure` (solo el literal `true`) en la config; `manualEstimateMinutes` se ancla **write-once con anotación** en `evidence/manual-estimates.jsonl` desde los dos puntos de observación (edición del fichero de tarea vía `log_evidence_write`, y el cierre como respaldo); un valor posterior distinto se **anota y no sustituye**; los inválidos nunca anclan; sin `measure`, una fila declara el campo inerte. `measure_evidence.py` reporta el denominador anclado y deja el **ratio** en NOT MEASURED: su numerador necesita la cuchilla de espera humana de § 17.6 (Fase 6) | `test_manual_estimate.py` (8) + 2 en `test_measure_evidence.py` |
+| U4 | Valor de decisión | `PERMISSION_ASK = "ask"` como única constante en los cinco puntos de emisión/comparación, con el porqué citando P1; `run_hook.sh` apunta a la misma evidencia junto a su rama degradada | `TestTheFailClosedValueIsThePlatformsOnlyPromptingValue` (4) en `test_destructive_guard.py`: falla si cualquier camino fail-closed deja de emitir el literal que produce prompt en 2.1.248 |
+| U5 | Sobrecoste de hooks | `scripts/measure_evidence.py` (nuevo): cuota de reloj como **unión de intervalos** contra la ventana más ancha (transcript ∪ hooks), suma acumulada aparte, calibración del spawn **etiquetada estimación**, NOT MEASURED cuando falta el insumo — nunca estimado en silencio. Captura opt-in en `run_hook.sh` (`APPIAN_HARNESS_TIME_LOG`): coste cero sin la variable | `test_measure_evidence.py` (8) |
+
+### El número (la mitad del «Hecha cuando» que es una medición)
+
+Dos sesiones reales con los hooks del plugin activos (evidencia:
+[`fase-1/sobrecoste-hook-times.jsonl`](fase-1/sobrecoste-hook-times.jsonl) y
+[`fase-1/sobrecoste-medicion.json`](fase-1/sobrecoste-medicion.json), con el método dentro):
+
+- **Caché caliente (régimen permanente): 427 ms de mediana por invocación; 4,6 % del reloj** de una
+  sesión de 32,2 s (5,2 % ajustado con la calibración del spawn de `sh`, 68,3 ms/invocación,
+  **estimación**). Subcomandos medidos: `session-start`, `scope-gate`, `closure-gate`.
+- Caché fría (primera sesión tras instalar): mediana 439 ms, máximo 1039,8 ms (el `session-start`
+  que paga sonda y escritura de caché); 12,7 % de 21,9 s (14,2 % ajustado). `failure-notice`
+  también medido aquí.
+- La caché deja la invocación caliente en ~2/5 de lo que costaba: en el banco del repo, la segunda
+  invocación pasó de 646 a 320 ms; en sesión real, `session-start` de 1040 a 656 ms.
+- Lectura honesta de la cuota: dispara por **evento**, no por segundo — en sesiones de trabajo
+  largas la proporción baja; la fila de § 17.5 se re-medirá sobre el caso ácido (Fase 6) con este
+  mismo instrumento. `log-write` y `log-evidence-write` no se ejercitaron (los `Write` del hijo los
+  denegó la capa de permisos de fichero en headless — la trampa que Fase 0 ya documentó); comparten
+  lanzador y arranque de intérprete con los medidos, y esa paridad es expectativa de ingeniería,
+  no medición.
+
+### Interpretaciones fijadas al codificar (ninguna reabre el freeze)
+
+- **DEFERRED ≙ clase a de § 9.5.** Los cinco criterios de `DEFERRABLE_CRITERIA` (validate_verdict)
+  son todos «juicio humano pendiente»; los ids de residuo de clase b son **inalcanzables hoy**
+  (el validador los rechaza), así que la exclusión se escribirá cuando llegue ese vocabulario
+  (Fase 4) — regla P6: no se codifican ramas muertas.
+- **El mapeo `kind`→`task` de § 15 no se implementó**: no tiene consumidor hasta `task_min_kind`
+  (Fase 2); implementarlo ahora sería código muerto.
+- **«Write-once con anotación» = anclaje auditable por observación**: el hook 0.6 no es el escritor
+  del fichero de alcance (eso es el `state-gate` de Fase 2), así que write-once se garantiza por
+  registro — el primer valor válido es el denominador y los cambios quedan anotados sin sustituirlo.
+  El esquema de § 4.1 muestra el campo escalar, sin campo compañero: la anotación es del registro,
+  no del fichero.
+- **`task-closures.jsonl` es registro, no autoridad** — puente hasta que el hook firme `status`.
+- Pendiente de alinear en Fase 5 (documentación de la release): `docs/design-notes.md § run_hook.sh`
+  aún describe la sonda pagada en cada llamada; sigue siendo cierto **en el fallo de caché**, pero
+  la frase debe citar la caché.
+
+### DoD de Fase 1
+
+El «Hecha cuando» de § 16 Fase 1, releído literal antes de este veredicto:
+
+| Condición del DoD | Veredicto | Evidencia |
+|---|---|---|
+| El sobrecoste de hooks está **medido en una sesión real** | **PASS** | Dos sesiones `claude -p` reales con los hooks activos; 8 invocaciones cronometradas dentro de la sesión (no en banco sintético) |
+| …y **reportado como número** | **PASS** | 427 ms/invocación (mediana, caliente); 4,6 % del reloj (32,2 s); tabla completa en `fase-1/sobrecoste-medicion.json` y arriba |
+| Los **cuatro cambios tienen test propio** | **PASS** | U1: 4 tests · U2: 7 · U3: 8+2 · U4: 4 — nombrados en la tabla; suite completa del repo en verde tras la fase |
+
+Sin reaperturas del DESIGN FREEZE: ninguna evidencia contradijo una decisión congelada.
+
 ---
 
 ## Estado de fases
@@ -232,7 +301,7 @@ dos intentos `failed` no crearon nada.
 | Fase | Estado |
 |---|---|
 | **0 · Sondas** | **DONE** (2026-09-01, DoD abajo) |
-| 1 · Coste y consistencia | pendiente |
+| **1 · Coste y consistencia** | **DONE** (2026-09-02, DoD en su sección) |
 | 2 · Núcleo | pendiente |
 | 3 · Suelo y evidencia | pendiente |
 | 4 · Juez, matriz y skills | pendiente |

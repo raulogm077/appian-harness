@@ -62,6 +62,9 @@ def run(subcommand, project_root, starve=False, payload=None, extra_env=None):
     """
     env = dict(os.environ)
     env["CLAUDE_PROJECT_DIR"] = project_root
+    # Hermetic by default: the launcher caches its interpreter probe under
+    # XDG_CACHE_HOME, and tests must not write into the user's real cache.
+    env["XDG_CACHE_HOME"] = os.path.join(project_root, "xdg-cache")
     if starve:
         keep = os.path.dirname(SH) if os.name == "nt" else ""
         env["PATH"] = keep
@@ -194,6 +197,101 @@ class TestLauncherWithAnInterpreter(unittest.TestCase):
             out = json.loads(run("scope-gate", t).stdout)["hookSpecificOutput"]
             self.assertEqual(out["permissionDecision"], "allow")
             self.assertIn("not configured", out["permissionDecisionReason"])
+
+
+@unittest.skipIf(SH is None, "no POSIX shell available to run the launcher")
+@unittest.skipIf(SKIP_SLOW, SKIP_REASON)
+class TestTheInterpreterCache(unittest.TestCase):
+    """The probe is paid once per user, not once per gated call.
+
+    The cache may only ever run the three literal candidates, so a tampered
+    entry is a miss, never a command; and a resolution that no longer holds
+    re-probes instead of failing."""
+
+    def _fake_bin(self, root):
+        """A logging `python3` that satisfies the probe and says when it ran."""
+        bindir = os.path.join(root, "fakebin")
+        os.makedirs(bindir, exist_ok=True)
+        log = os.path.join(root, "fake-python.log")
+        path = os.path.join(bindir, "python3")
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write("#!/bin/sh" + chr(10) + 'printf %s'
+                    + chr(92) + chr(92) + "n " + '"$*" >> "'
+                    + log.replace(os.sep, "/") + '"' + chr(10) + "exit 0" + chr(10))
+        os.chmod(path, 0o755)
+        return bindir, log
+
+    def _env(self, bindir):
+        # OS unset takes the POSIX probe order, so the fake python3 is the
+        # first candidate on every platform this test runs on.
+        return {"OS": "", "PATH": bindir + os.pathsep + os.environ.get("PATH", "")}
+
+    def _cache_file(self, project_root):
+        return os.path.join(project_root, "xdg-cache", "appian-harness",
+                            "interpreter.v1")
+
+    def _log_lines(self, log):
+        if not os.path.isfile(log):
+            return []
+        with open(log, encoding="utf-8") as f:
+            return [l for l in f.read().splitlines() if l.strip()]
+
+    def test_the_second_run_skips_the_probe(self):
+        with tempfile.TemporaryDirectory() as t:
+            bindir, log = self._fake_bin(t)
+            run("scope-gate", t, extra_env=self._env(bindir))
+            first = self._log_lines(log)
+            run("scope-gate", t, extra_env=self._env(bindir))
+            second = self._log_lines(log)
+            probes = [l for l in second if "-c" in l.split()]
+            self.assertEqual(len(first), 2, first)   # probe + real run
+            self.assertEqual(len(second), 3, second) # + real run only
+            self.assertEqual(len(probes), 1, second) # no second probe
+
+    def test_a_stale_resolution_reprobes_and_heals_the_cache(self):
+        with tempfile.TemporaryDirectory() as t:
+            bindir, log = self._fake_bin(t)
+            cache = self._cache_file(t)
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            with open(cache, "w", encoding="utf-8", newline="") as f:
+                f.write("python3" + chr(10) + "/nonexistent/python3" + chr(10))
+            p = run("scope-gate", t, extra_env=self._env(bindir))
+            self.assertEqual(p.returncode, 0)
+            probes = [l for l in self._log_lines(log) if "-c" in l.split()]
+            self.assertEqual(len(probes), 1)  # it re-probed
+            with open(cache, encoding="utf-8") as f:
+                healed = f.read().splitlines()
+            self.assertEqual(healed[0], "python3")
+            self.assertNotEqual(healed[1], "/nonexistent/python3")
+
+    def test_a_tampered_cache_is_a_miss_never_a_command(self):
+        with tempfile.TemporaryDirectory() as t:
+            marker = os.path.join(t, "evil-ran")
+            evil = os.path.join(t, "evil")
+            with open(evil, "w", encoding="utf-8", newline="") as f:
+                f.write("#!/bin/sh" + chr(10) + 'touch "'
+                        + marker.replace(os.sep, "/") + '"' + chr(10))
+            os.chmod(evil, 0o755)
+            cache = self._cache_file(t)
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            with open(cache, "w", encoding="utf-8", newline="") as f:
+                f.write(evil.replace(os.sep, "/") + chr(10)
+                        + evil.replace(os.sep, "/") + chr(10))
+            p = run("scope-gate", t)
+            self.assertEqual(p.returncode, 0)
+            json.loads(p.stdout)  # the real probe still answered
+            self.assertFalse(os.path.exists(marker),
+                             "a tampered cache entry was executed")
+
+    def test_an_unwritable_cache_location_is_harmless(self):
+        with tempfile.TemporaryDirectory() as t:
+            blocker = os.path.join(t, "not-a-dir")
+            with open(blocker, "w", encoding="utf-8") as f:
+                f.write("file, so mkdir -p under it fails")
+            p = run("scope-gate", t,
+                    extra_env={"XDG_CACHE_HOME": os.path.join(blocker, "xdg")})
+            self.assertEqual(p.returncode, 0)
+            json.loads(p.stdout)
 
 
 if __name__ == "__main__":
