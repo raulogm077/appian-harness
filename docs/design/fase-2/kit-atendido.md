@@ -25,7 +25,10 @@
 
 ## La pasada `micro` (Raúl delante)
 
-1. Frase: *«cambia la descripción de la constante `RGM_…` a “…”»* (o un label de interfaz).
+1. Frase: *«cambia el label de la interfaz `RGM_…`»*. **No la constante a secas**: el preflight del
+   3-sep midió que `updateConstant` **sin `type`** en la llamada compra `task` (§ 5.2), así que un
+   alcance `micro` se para y la pasada cuenta un prompt de más. Con `type` en la llamada sí es
+   `micro` — que es lo que § 5.2 pide desde la reformulación del 3-sep (`decision-log.md` D-29).
 2. Lo que debe verse: preflight de lecturas → `tasks/current.json` v2 con `grant` → **UN**
    `AskUserQuestion` con la lista completa → escritura → `request: "close"` → Stop cierra
    `closed` firmado.
@@ -33,7 +36,9 @@
    de la capa de permisos de plataforma sobre herramientas MCP se dejan en allowlist para no
    contaminar la cuenta, § 6.2 cuenta los de confirmación importados, no los del sistema de
    permisos de Claude Code sobre cada tool).
-4. Repetir como `task` con `tasks{}` (dos objetos RGM_* en dos entradas).
+4. Repetir como `task` **con** `tasks{}` (dos objetos RGM_* en dos entradas) y como `task`
+   **sin** `tasks{}` (los mismos dos objetos en `allowedObjects`, sin entradas). El DoD pide las
+   tres formas, y la de sin entradas recorre el grant por otra rama.
 
 ## Qué registrar al terminar
 

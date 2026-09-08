@@ -194,6 +194,18 @@ class TestV07ExpiryIsBySequenceNotByClock(unittest.TestCase):
             errs = verdict_expiry_errors(c, c["activeTask"], self._verdict(2))
             self.assertTrue(errs and "writeSeq 2" in errs[0])
 
+    def test_a_boolean_sequence_is_not_a_sequence(self):
+        # `True` is an int in Python and compares as 1, so a row carrying
+        # `"writeSeq": true` read as a real write and expired verdicts. The
+        # other four sequence comparisons already excluded bools; this was
+        # the one that did not.
+        from harness_hooks import verdict_expiry_errors
+        with tempfile.TemporaryDirectory() as root:
+            c = self._cfg(root)
+            self._row(root, True)
+            self.assertEqual(
+                verdict_expiry_errors(c, c["activeTask"], self._verdict(0)), [])
+
     def test_a_metadata_only_write_does_not(self):
         from harness_hooks import verdict_expiry_errors
         with tempfile.TemporaryDirectory() as root:

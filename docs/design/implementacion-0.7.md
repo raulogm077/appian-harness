@@ -298,10 +298,14 @@ Sin reaperturas del DESIGN FREEZE: ninguna evidencia contradijo una decisión co
 
 ## Fase 2 · El núcleo: alcance, permiso, perímetro y gate
 
-Estado: **código DONE (2026-09-02)** — las diez unidades con test propio, suite del repo en verde
-(627 tests + 39 subtests: 334 en `hooks/`, 293 en `scripts/`). DoD: dos de sus tres condiciones
+Estado: **DONE (2026-09-08) — DoD 3/3 PASS** (código 2026-09-02; correcciones de la revisión con contexto limpio el 2026-09-03; pasada atendida cerrada el 2026-09-08) — las diez unidades con test propio, suite del repo en verde
+(687 tests: 394 en `hooks/`, 293 en `scripts/`, contados por `python -m unittest discover` el
+2026-09-08; los ciclos
+E2E y los tests de la
+reconciliación del 2-sep, al final de esta sección). DoD: sus tres condiciones
 **PASS** con evidencia; la tercera
-(la pasada atendida de «un solo prompt») queda **NOT MEASURED con kit preparado** — ver el DoD al
+(la pasada atendida de «un solo prompt») se midió con Raúl delante en las tres formas que el DoD
+nombra — ver el DoD y la pasada atendida al
 final de esta sección. Plan de ejecución y decisiones unidad a unidad:
 [`fase-2/plan-ejecucion.md`](fase-2/plan-ejecucion.md). Segunda opinión del enfoque: codex
 (la herramienta `advisor` volvió a colgar la API, como el 1-sep — no se usó).
@@ -317,7 +321,7 @@ final de esta sección. Plan de ejecución y decisiones unidad a unidad:
 | U7 | Vertical `pending`+`writeSeq` | El `allow` reserva N+1 bajo lock best-effort y deja la fila de intención **antes** de que salga la llamada; `log-write` resuelve **por `tool_use_id`** (nunca «último pending») contra las formas reales de P3 — incluida la del delete sin uuid — y todo lo demás ⇒ `ambiguous`; `PostToolUseFailure` resuelve como `failed` (P5: el error no produce PostToolUse); vínculos nombre↔UUID corroborados por **dos registros** (§ 4.1) — el flujo crear-y-refinar-por-UUID no fabrica `ask`; `risk` alto observado se sella en fichero+proyección | `test_pending_and_classifier.py` (18) |
 | U8 | Caducidad § 7.6 | `verdict_expiry_errors`: caduca solo ante escritura `inScope` + `behavioural` de **su instancia** con `writeSeq` mayor; lista blanca `description`/`documentation` (**`name` fuera**); hash `expression`+`inputs[]` en PostToolUse, `expressionFilePath` leído de disco, ilegible ⇒ conductual; `failed` no caduca (no cambió nada); `ambiguous`/`pending` caducan (lado caro); `design` exenta. Consumidor pleno: el certify de Fase 4 | `test_verdict_freshness.py` (+8; los 12 de la política 0.6 intactos) |
 | U9 | `suspendedScope` | Tope de uno; el hotfix **re-embebe la copia firmada** (la del agente no se cree); solape ⇒ `ask` con el detalle (§ 4.5: sí es decisión); cerrar el hotfix restaura el suspendido `in-flight` **sin nuevo grant**; caducidad por **sesiones** (`sessions.jsonl` + `sessionsSeen`, incremento una vez por sesión): a la 3.ª se anuncia y el grant muere — materializado como `grant: null` al reanudar | `test_suspended_scope.py` (8) |
-| U10 | Causas de `ask` + E2E | Los `ask` de persona llevan los cuatro campos de § 7.3 en castellano (qué se paró · por qué · arreglo ejecutable · qué pasa si no); las tres causas retiradas: `closing` ⇒ allow con remedio, deriva anclada **sin** escrituras ⇒ corrección registrada (error interno), **con** escrituras ⇒ `ask` (causa 5); E2E: micro y task con `tasks{}` abren-escriben-cierran **con cero `ask`** | `test_v07_end_to_end.py` (2) + mensajes en el resto |
+| U10 | Causas de `ask` + E2E | Los `ask` de persona llevan los cuatro campos de § 7.3 en castellano (qué se paró · por qué · arreglo ejecutable · qué pasa si no); las tres causas retiradas: `closing` ⇒ allow con remedio, deriva anclada **sin** escrituras ⇒ corrección registrada (error interno), **con** escrituras ⇒ `ask` (causa 5); E2E: micro, task **sin** `tasks{}` y task **con** `tasks{}` abren-escriben-cierran **con cero `ask`** | `test_v07_end_to_end.py` (3) + mensajes en el resto |
 
 ### Interpretaciones fijadas al codificar (ninguna reabre el freeze)
 
@@ -386,12 +390,205 @@ El «Hecha cuando» de § 16 Fase 2, releído literal:
 |---|---|---|
 | La **sonda de perímetro falla en verde y en rojo** contra dos configuraciones distintas | **PASS** | [`fase-2/sonda-perimetro.md`](fase-2/sonda-perimetro.md): lanzador real, tres configs — declarada (sin frase), ausente (frase literal + ask de migración una vez por sesión), y servidor renombrado (invisible sin clave, gateado con ella) |
 | **Ningún `ask` falso sobre el corpus** | **PASS** (mitad determinista) | `test_grant.py::TestTheExtractorKnowsTheRealCorpus` (todo write tool tiene target en su schema real — sin él, falso `ask` garantizado), `test_task_min_kind.py::TestAgainstTheRealCorpus` (145 tools clasifican), y el E2E con **cero** `ask` en ciclos completos |
-| Un `micro` y un `task` (con y sin `tasks{}`) abren, escriben y cierran en un proyecto de pruebas con **un solo prompt cada uno** | **NOT MEASURED** (exige sesión atendida: P2 demostró que en headless un `ask` deniega sin preguntar) | Mecánica equivalente sin persona: `test_v07_end_to_end.py` (0 asks del harness, cierre firmado). Kit listo para la pasada con el dueño delante: [`fase-2/kit-atendido.md`](fase-2/kit-atendido.md) |
+| Un `micro` y un `task` (con y sin `tasks{}`) abren, escriben y cierran en un proyecto de pruebas con **un solo prompt cada uno** | **PASS** (2026-09-08, sesión atendida con el dueño delante) | Las tres formas contra `indra-spain`, sobre objetos `RGM_*` propios, **un solo prompt cada una — el del grant — y 0 `ask` del harness**: `micro` P2-PASADA-6, `task` sin `tasks{}` P2-PASADA-8, `task` con `tasks{}` P2-PASADA-9. `closed` firmado en las tres (`evidence/task-closures.jsonl`, `trigger: stop-clean`). Detalle en *Pasada atendida* abajo; mecánica equivalente sin persona en `test_v07_end_to_end.py` |
 
 Sin reaperturas del DESIGN FREEZE: ninguna evidencia contradijo una decisión congelada. El hueco
 que la segunda opinión (codex) encontró — la fila `transition` falsificable con `Write` — se cerró
 **dentro** de la clase de garantía que § 4.3 ya declara (detectable): proyección propiedad del
 hook + contaminación observable; Bash queda para 0.8 como estaba escrito.
+
+### Pasada atendida · las tres formas (8-sep-2026)
+
+Medida con el dueño delante, en el proyecto `harness-pasada-atendida` contra `indra-spain` y sobre
+objetos `RGM_*` propios. **Un solo prompt por alcance en las tres**: el del grant, un
+`AskUserQuestion` con la lista completa y el impacto. El harness no añadió ninguno —
+`evidence/gate-decisions.jsonl` no registra un solo `ask` para esas tres instancias, únicamente
+sus transiciones firmadas.
+
+| Forma | Alcance | Objetos | Prompts (harness / total) | Cierre |
+|---|---|---|---|---|
+| `micro` | P2-PASADA-6 (04-sep) | 1 interfaz | 0 / 1 (grant) | `closed` firmado |
+| `task` **sin** `tasks{}` | P2-PASADA-8 (04-sep) | 2 interfaces, `tasks: null` | 0 / 1 (grant) | `closed` firmado |
+| `task` **con** `tasks{}` | P2-PASADA-9 (08-sep) | 2 interfaces en 2 entradas | 0 / 1 (grant) | `closed` firmado |
+
+`ask` falsos: **0** en las tres. `pending` sin resolver: **0**. `permissionMode` sellado por el
+hook, no escrito por el constructor (`auto` en P2-PASADA-9, que lo dejó `null`). `grantedAt` leído
+del reloj **después** de la respuesta.
+
+**Dos fricciones de flujo, ninguna del gate**, salieron de P2-PASADA-9 y se corrigieron el mismo
+día en `appian-build` — documentación y tests, ni una línea de `harness_hooks.py`:
+
+1. `tasks{}` aparecía en la skill solo como `"tasks": null`, así que la forma poblada hubo que
+   buscarla en el documento normativo. Ahora la skill trae las dos formas y sus cinco reglas.
+2. La evidencia de la pasada se escribió antes de abrir el alcance, así que
+   `evidence-writes.jsonl` la atribuyó a P2-PASADA-8, la anterior y ya cerrada. El Core Process no
+   tenía **ningún** paso numerado que abriera el alcance; ahora es el 3a, y la secuencia completa
+   está escrita en un solo sitio.
+
+Las dos quedan fijadas contra regresión en `hooks/test_tasks_partition_contract.py` — 15 tests: 6
+sobre lo que el gate hace de verdad con `tasks{}`, 9 documentales sobre lo que la skill tiene que
+seguir diciendo.
+
+### Reconciliación de cierre (2026-09-02, tras los cortes de API)
+
+La fase se implementó con la API cayéndose a ratos y hubo que relanzar el trabajo varias veces. Esta
+pasada volvió a leer el repositorio como única fuente de verdad, re-ejecutó lo que solo constaba por
+escrito, y corrigió lo que los relanzamientos dejaron torcido.
+
+**Re-verificado hoy contra HEAD, no heredado del registro:**
+
+- Suite completa: **641 pass** (348 `hooks/`, 293 `scripts/`) y las **seis
+  comprobaciones** del repo en verde.
+- `fase-2/probe-adversarial.py` re-ejecutado: **0 fallos**, igual que el 2-sep.
+- **Sonda de perímetro re-lanzada por `sh hooks/run_hook.sh`** contra las tres configuraciones de
+  `fase-2/sonda-perimetro.md`: salidas idénticas a las documentadas — verde sin frase, rojo con la
+  frase literal de § 7.2 + `ask` de migración **una sola vez por sesión**, y el servidor renombrado
+  invisible sin la clave / gateado con ella.
+
+**Corregido (nada de arquitectura nueva, ninguna reapertura del freeze):**
+
+1. **El DoD nombra tres formas y el E2E cubría dos.** `test_v07_end_to_end.py` no tenía el `task`
+   **sin** `tasks{}` — la rama en que el grant cubre `allowedObjects` como una superficie, en vez de
+   por entrada. Añadido como tercer ciclo; contador de `hooks/` en README 334 → 335.
+2. **El kit atendido repetía el mismo hueco** («repetir como task con `tasks{}`»): ahora pide las
+   tres formas.
+3. **`fase-2/plan-ejecucion.md` había quedado desincronizado consigo mismo**: cinco unidades seguían
+   marcadas `pendiente` y cuatro filas tenían una columna de más, mientras su propio «Cierre del
+   plan» las daba por HECHAS. Tabla normalizada, con el matiz de que `test_ask_causes.py` nunca
+   existió.
+4. **`hooks/hooks.json` describía un subcomando con su nombre viejo** (`evidence-write log`) tras el
+   renombrado a `state-gate`.
+5. **`docs/design/prompt.md` se borró en el commit de la fase sin relación con ella.** Era la lápida
+   del encargo movido a `docs/audit/`, y `final-consolidation-audit.md` sigue afirmando que existe.
+   Restaurada.
+
+**Revisión de código, pasada parcial.** Se ejecutó una lectura del código contra los puntos A-H del
+encargo (`fase-2/plan-ejecucion.md § Revisión pendiente`), que **no sustituye a la revisión con
+contexto limpio**: quien la hizo ya conocía las conclusiones del autor. Cubrió los ocho puntos
+A-H del encargo y dejó **dos hallazgos verificados**, ambos documentados en el plan:
+
+- **`G-1` · un `pending` cuyo evento no trae `tool_use_id` no se resuelve nunca** y bloquea el cierre
+  limpio. Es **fail-closed** y hoy **latente** —P2/P5 midieron que el campo llega siempre—, y **no se
+  corrige aquí**: elegir el criterio de correlación de respaldo es una decisión de diseño, no una
+  corrección mínima. **Decidido por Raúl el 2-sep: entra como entrada de la Fase 3**, que ya toca
+  el registro de operaciones y su rotación; no bloquea el cierre de la Fase 2.
+- **`H-1` · la invariante estrella de U7 no tenía test.** Romper `log-write` para que resolviera por
+  «último pending» dejaba las 335 pruebas **en verde**: el test de fuera de orden resuelve la
+  reserva que ya era la última fila, así que las dos reglas coincidían por casualidad. **Corregido**
+  con un test que fija el `writeSeq` de la reserva anterior; repetida la mutación, ahora falla.
+
+Además, **C** se midió extremo a extremo sobre el corpus real: las **herramientas de escritura del corpus** (contadas entonces como 78; la reconciliación del 3-sep las cuenta como **79**, que es lo que `_is_write_tool` reconoce y lo que el revisor independiente reportó como 79/79)
+pasadas por `scope_gate` completo dan **0 falsos `ask`** (41 allow, 37 asks que el diseño exige).
+
+### La revisión con contexto limpio, por fin ejecutada (2026-09-02/03)
+
+Se lanzó con la API ya estable, con `implementacion-0.7.md` y `fase-2/plan-ejecucion.md` **vedados**
+al revisor hasta terminar su análisis. **12 hallazgos, 4 de gravedad alta**, tabulados en
+`fase-2/plan-ejecucion.md § Revisión con contexto limpio`. Los cuatro altos se **reverificaron con
+sondas propias** antes de aceptarse.
+
+Justificó su coste de sobra: **los cuatro altos son fail-open y ninguna de las comprobaciones
+previas los vio** — ni la batería adversarial, ni el barrido de falsos `ask`, ni las mutaciones. El
+motivo es instructivo y queda escrito para las fases siguientes: **todas aquellas probaban romper el
+gate de frente; estos hallazgos lo rodean** por la vía del `request`, del `suspendedScope` embebido
+y del grant presente ya en la apertura.
+
+- **Corregido en esta pasada:** el hallazgo 1 — `cmd_failure_notice` usaba una variable que nunca se
+  ligó, así que lanzaba `NameError` en **todo** proyecto activo y `main()` lo convertía en un `{}`
+  silencioso con salida 0. El subcomando estaba **muerto**, no degradado: como P5 midió que un fallo
+  de herramienta va a `PostToolUseFailure` y no a `PostToolUse`, **toda escritura fallida** quedaba
+  `pending`, el cierre se bloqueaba con un diagnóstico falso y § 7.6 caducaba veredictos que una
+  escritura `failed` no debe caducar. Arreglado y **cubierto por un test que ejecuta el subcomando**,
+  no la función — que era justo el accidente del hallazgo 10.
+- **Corregidos también, por decisión de Raúl del 3-sep:** los tres fail-open sobre el contrato del
+  grant (2, 3, 4) y los menores 5, 8, 9, 11 y 12.
+  - **2** — la reimposición de `risk` y el cálculo de deriva corren ahora **antes** de honrar el
+    `request`. Con deriva y escrituras aplicadas **no se firma nada** y el `request` queda sin
+    consumir: un `Write` que ampliaba el contrato mientras pedía cerrar ya no lo lava.
+  - **3** — `suspendedScope` y `resumeFrom` son campos anclados, y al cerrar el hotfix se restaura
+    la copia **firmada por el hook**, no la del agente.
+  - **4** — `_seal_permission_mode` sella el modo dondequiera que el grant aparezca por primera vez
+    (apertura, hotfix o edición posterior), y un grant **sin** modo registrado ⇒ `ask`: el harness no
+    lo vio nacer, que es indistinguible de tener los permisos apagados.
+  - **5** — el aviso de perímetro viaja en lista aparte, así que ya no tapa la razón de debajo.
+  - **8** — guarda de `bool` en la comparación de `writeSeq`. **9** — la fila marca `lockless`.
+    **11** — siete tests nuevos donde había cobertura cero. **12** — `unittest.main()` al final.
+- **Cada arreglo, verificado por mutación**: reintroducido el fallo, la suite falla; restaurado,
+  pasa. Seis de seis. Sin esa comprobación, dos de los arreglos habrían quedado sin red — se
+  descubrió y se corrigió en la misma pasada.
+- **Una reapertura del freeze, la primera de la 0.7:** el hallazgo 6 no era un defecto del código
+  sino de la norma — § 5.2 nombraba un canal («lo aporta el grant desde el preflight») que el
+  esquema cerrado de § 4.1 no puede albergar. Reabierto por la **causa 1** de § 21 y reformulado: el
+  canal es la llamada. `decision-log.md` D-29.
+
+### Preflight de la pasada atendida (3-sep) — y la trampa que evitó
+
+Antes de sentar a nadie se ejecutó el **ciclo micro entero por el lanzador real**
+(`sh hooks/run_hook.sh`, cwd del proyecto de pruebas): `session-start` sin aviso de perímetro,
+apertura firmada, escritura, cierre `closed` firmado con `statusWriteSeq: 1`.
+
+Encontró un defecto **del propio kit**: su ejemplo `micro` era «cambia la descripción de la
+constante», y eso produce un **segundo prompt** — sin `type` en la llamada, § 5.2 clasifica todo
+`updateConstant` como `task` y el alcance `micro` se para. Medido: `updateConstant(description)` sin
+`type` ⇒ `task`; con `type: "TEXT"` ⇒ **`micro`**; con `type: "GROUP"` ⇒ `task` + `risk: high` (que
+es la garantía funcionando); `updateInterface(expression)` ⇒ `micro`. El kit pasa a usar la interfaz,
+y anota la condición para la constante. **Sin este preflight la pasada habría salido FAIL por el
+guion, no por el harness.** De paso confirma que la reformulación de § 5.2 (D-29) era la correcta:
+con el tipo en la llamada, el caso canónico de § 5.7 vuelve a ser `micro`.
+
+**Lo que sigue abierto:** solo la **pasada atendida** de «un solo prompt» (NOT MEASURED, kit y
+proyecto listos y preflight pasado) y `G-1`, decidido para Fase 3.
+
+### Reconciliación de cierre · 3-sep-2026 (segunda pasada, pedida por Raúl)
+
+Encargo: no reimplementar nada, leer el repositorio como única fuente de verdad y comprobar
+literalmente el DoD. Nada de lo que sigue se hereda del registro — se volvió a medir hoy contra el
+árbol de trabajo, correcciones de la revisión incluidas (que siguen **sin commitear**).
+
+**Re-ejecutado y en verde:** la suite completa (641 tests: 348 en `hooks/`, 293 en
+`scripts/`), las seis comprobaciones del repo, y `probe-adversarial.py` con **0 fallos**.
+
+**Sonda de perímetro, relanzada por `sh hooks/run_hook.sh`** contra las tres configuraciones de
+[`sonda-perimetro.md`](fase-2/sonda-perimetro.md): las cuatro salidas idénticas a las documentadas
+— verde sin frase, rojo con la frase literal de § 7.2, `ask` de migración **una sola vez por
+sesión** (la segunda escritura ya solo dice `no active task`), y `mcp__lcp__` invisible sin la
+clave / gateado con ella. **DoD 1: PASS con evidencia propia.**
+
+**Falsos `ask`: barrido propio, y más exigente que el del 2-sep.** Para cada una de las **79**
+herramientas de escritura del corpus se montó el escenario que el diseño declara *correcto*
+—grant que cubre el objeto, creación concedida con su tipo, borrado con snapshot y reconsulta
+idéntica, arranque en `processStarts`, conteo de filas en `deleteRecordData`— y se ejecutó
+`scope_gate` entero: **79 allow, 0 `ask`**. Con el escenario correcto, cualquier `ask` sería falso
+por definición. Y el control sin el cual el barrido no mide nada: el mismo montaje con el objetivo
+**fuera** del grant da **79 `ask`, 0 allow indebido**. **DoD 2: PASS con evidencia propia.**
+
+**Las tres formas del DoD, por el lanzador real y en proyectos limpios.** `micro`, `task` **con**
+`tasks{}` y `task` **sin** `tasks{}`: abren firmadas, escriben con `allow` y **cero `ask` del
+harness**, y cierran `closed` firmado — `in-flight → closing → closed`, las tres transiciones en
+`gate-decisions.jsonl`, con `writeSeq` 1 y 2 y cada resolución por su propio `tool_use_id`. Sobre
+el mismo montaje se comprobó además, ya en producción y no solo en test: `permissionMode` **sellado
+en la apertura** (hallazgo 4), `failure-notice` respondiendo de verdad y resolviendo `failed`
+(hallazgo 1, que estaba muerto), una respuesta irreconocible resolviendo `ambiguous`, un `status`
+escrito a mano **revertido**, y una escritura sobre un objeto colado en `allowedObjects` **parada
+por el grant** — que es exactamente lo que defiende H-2.
+
+**Lo que esto no mide, y sigue sin medirse:** la pasada **atendida**. Todo lo anterior demuestra la
+mecánica sin persona; el DoD pide **un solo prompt humano por alcance** contra un entorno real.
+**NOT MEASURED**, con kit y preflight listos.
+
+**Corregido en esta pasada — solo coherencia, ni una línea de código:** la fecha del estado de la
+fase, que decía 2-sep cuando las correcciones de la revisión son del 3; y la cifra de herramientas
+de escritura del corpus, que constaba como 78 en dos documentos y son **79** — la que devuelve
+`_is_write_tool`, y la que el revisor independiente ya había reportado como 79/79.
+
+**Restos de los relanzamientos: ninguno nuevo.** Sin funciones ni clases duplicadas en
+`harness_hooks.py`, sin tests duplicados, sin ficheros temporales, sin filas `pending` sin resolver
+en el repositorio, sin trabajo de Fase 3 (ni `PostToolBatch`, ni `guaranteeClass`, ni
+`sail_static_check.py`, ni rotación) y sin referencias vivas al nombre viejo `log-evidence-write`.
+Queda **una** cosa pendiente para el commit: `docs/design/prompt.md`, restaurada el 2-sep, sigue
+**sin trackear** — si no se añade, la lápida vuelve a desaparecer y `final-consolidation-audit.md`
+seguirá apuntando a un fichero que no está.
+
 
 ---
 
@@ -401,7 +598,7 @@ hook + contaminación observable; Bash queda para 0.8 como estaba escrito.
 |---|---|
 | **0 · Sondas** | **DONE** (2026-09-01, DoD abajo) |
 | **1 · Coste y consistencia** | **DONE** (2026-09-02, DoD en su sección) |
-| **2 · Núcleo** | **código DONE** (2026-09-02); DoD 2/3 PASS, pasada atendida NOT MEASURED con kit |
+| **2 · Núcleo** | **DONE — DoD 3/3 PASS** (código 2026-09-02; correcciones de revisión el 2026-09-03, reconciliadas el 2026-09-03; pasada atendida en las tres formas el 2026-09-08, 0 `ask` falsos) |
 | 3 · Suelo y evidencia | pendiente |
 | 4 · Juez, matriz y skills | pendiente |
 | 5 · Onboarding y documentación | pendiente |

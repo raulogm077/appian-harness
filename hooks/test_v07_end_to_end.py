@@ -1,7 +1,12 @@
-"""One honest v07 lifecycle, end to end, twice (§ 16 Phase 2's DoD, the
-deterministic half): a micro and a task with tasks{} open, write and close
-with ZERO asks along the way -- every gate decision on the way is an allow,
-and the close is a signed terminal state, not a declared one.
+"""One honest v07 lifecycle, end to end, three times (§ 16 Phase 2's DoD, the
+deterministic half): a micro, and a task both WITH and WITHOUT tasks{}, open,
+write and close with ZERO asks along the way -- every gate decision on the way
+is an allow, and the close is a signed terminal state, not a declared one.
+
+The three shapes are the DoD's own list, not a sampling of it: a task without
+tasks{} takes a different route through the grant (scope-wide `allowedObjects`
+instead of per-entry atomicity), so covering only the tasks{} shape would leave
+the wider lane's close unproven.
 """
 import json, os, sys, tempfile, unittest
 
@@ -51,6 +56,20 @@ class TestAMicroOpensWritesAndCloses(LifecycleMixin, unittest.TestCase):
             with open(closures, encoding="utf-8") as f:
                 rows = [json.loads(l) for l in f if l.strip()]
             self.assertEqual(rows[-1]["status"], "closed")
+
+
+class TestATaskWithoutTasksOpensWritesAndCloses(LifecycleMixin, unittest.TestCase):
+    def test_the_scope_wide_lane_closes_signed_too(self):
+        with tempfile.TemporaryDirectory() as root:
+            # kind=task with tasks=None: the grant covers `allowedObjects` as
+            # one surface, and § 4.1 drops the intent sentence micro requires.
+            c = signed_cfg(root, kind="task", intent=None)
+            self._write(c, "mcp__appian-dev__updateInterface", "tu-1",
+                        uuid="_uuid-lista", expression="a!textField()")
+            c = self._close(c)
+            final = read_scope(c)
+            self.assertEqual(final["status"], "closed")
+            self.assertEqual(projection(c)["scope"]["status"], "closed")
 
 
 class TestATaskWithTasksOpensWritesAndCloses(LifecycleMixin, unittest.TestCase):

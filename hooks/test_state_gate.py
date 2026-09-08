@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import harness_hooks as HH
 from harness_hooks import closure_gate, scope_gate, state_gate
 from test_harness_hooks import cfg
+from test_grant import GRANT
 from test_scope_schema import v2_scope
 
 WRITE_TOOL = "mcp__appian-dev__updateConstant"
@@ -96,6 +97,22 @@ class TestOpeningSignsTheScope(unittest.TestCase):
             c = write_scope(cfg(root), v2_scope(status="closed"))
             observe(c)
             self.assertIsNone(projection(c))
+            self.assertEqual(gate(c)["permissionDecision"], "ask")
+
+    def test_a_file_born_open_fails_the_schema_before_the_state_machine(self):
+        # `open` is not one of the seven states of § 4.2, so this file never
+        # reaches `_enforce_state_machine`: it is refused one step earlier, by
+        # the schema, and the reader is told which field is wrong. A different
+        # branch from the terminal-status case above, and the one a builder
+        # actually hits -- P2-PASADA-8 reached for `open` because the skill
+        # only ever showed the 0.6 two-field shape.
+        with tempfile.TemporaryDirectory() as root:
+            c = write_scope(cfg(root), v2_scope(status="open"))
+            out = observe(c)
+            self.assertIn("schema v2", out.get("additionalContext", ""))
+            self.assertIn("status 'open'", out.get("additionalContext", ""))
+            self.assertIsNone(projection(c))
+            self.assertEqual(decisions(c, "transition"), [])
             self.assertEqual(gate(c)["permissionDecision"], "ask")
 
 
@@ -291,10 +308,6 @@ class TestClosureGateWritesTheTerminalStates(unittest.TestCase):
                 self.assertIn("never-closed", f.read())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestRiskIsReimposedNotDrifted(unittest.TestCase):
     def test_a_stale_rewrite_cannot_lower_the_observed_risk(self):
         # § 5.3: `risk` is the hook's field. An agent rewriting the scope
@@ -316,3 +329,128 @@ class TestRiskIsReimposedNotDrifted(unittest.TestCase):
             observe(c)
             self.assertEqual(read_scope(c)["risk"], "high")
             self.assertFalse(decisions(c, "anchored-drift"))
+
+
+class TestTheAnchorSurvivesARequest(unittest.TestCase):
+    """§ 4.1's anchor, on the path that used to walk around it.
+
+    A single Write can carry both a `request` and a widened contract. While
+    the request was handled first, `_sign_transition` signed the agent's
+    file -- widening included -- and no drift was ever recorded, so any
+    request laundered a bigger grant. These are the tests that were missing:
+    a mutation removing the anchor entirely left the whole suite green.
+    """
+
+    def _signed_with_a_write(self, root, **over):
+        c = write_scope(cfg(root), v2_scope(grant=GRANT, **over))
+        observe(c)
+        HH._reserve_write(c, read_scope(c),
+                          {"tool_name": WRITE_TOOL, "tool_use_id": "tu-0",
+                           "tool_input": {"name": "GDE_INT_Lista"}})
+        return c
+
+    def _widen(self, c, **extra):
+        scope = read_scope(c)
+        scope["allowedObjects"] = list(scope["allowedObjects"]) + ["GDE_INT_ROBADO"]
+        scope["grant"] = dict(scope["grant"],
+                              objects=list(scope["grant"]["objects"]) + ["GDE_INT_ROBADO"])
+        scope.update(extra)
+        return write_scope(c, scope)
+
+    def test_a_widened_contract_riding_a_request_is_drift_not_a_transition(self):
+        with tempfile.TemporaryDirectory() as root:
+            c = self._signed_with_a_write(root)
+            c = self._widen(c, request="close")
+            observe(c)
+            self.assertTrue(decisions(c, "anchored-drift"))
+            # Nothing signed: the transition would have carried the widening.
+            self.assertEqual(projection(c)["scope"]["status"], "in-flight")
+            self.assertNotIn("GDE_INT_ROBADO",
+                             projection(c)["scope"]["allowedObjects"])
+
+    def test_an_illegal_request_launders_nothing_either(self):
+        with tempfile.TemporaryDirectory() as root:
+            c = self._signed_with_a_write(root)
+            c = self._widen(c, request="resume")
+            observe(c)
+            self.assertTrue(decisions(c, "anchored-drift"))
+            self.assertNotIn("GDE_INT_ROBADO",
+                             projection(c)["scope"]["allowedObjects"])
+
+    def test_a_clean_request_still_transitions(self):
+        # The control: the fix must not cost the ordinary close its path.
+        with tempfile.TemporaryDirectory() as root:
+            c = self._signed_with_a_write(root)
+            scope = read_scope(c)
+            scope["request"] = "close"
+            c = write_scope(c, scope)
+            observe(c)
+            self.assertEqual(read_scope(c)["status"], "closing")
+            self.assertFalse(decisions(c, "anchored-drift"))
+
+    def test_the_anchor_covers_the_suspended_scope(self):
+        # § 4.5: the embedded copy carries its own grant and objects, so an
+        # unanchored one is a second contract -- and closing the hotfix
+        # would sign it straight back in.
+        with tempfile.TemporaryDirectory() as root:
+            c = write_scope(cfg(root), v2_scope(grant=GRANT))
+            observe(c)
+            base = read_scope(c)
+            c = write_scope(c, dict(base, request="suspend"))
+            observe(c)
+            suspended = read_scope(c)
+            hotfix = dict(base, id="F-hotfix", instanceId="inst-hot",
+                          status="in-flight", statusWriteSeq=0, request=None,
+                          allowedObjects=["_uuid-hot"],
+                          grant=dict(GRANT, instanceId="inst-hot",
+                                     objects=["_uuid-hot"]),
+                          suspendedScope=suspended)
+            c = write_scope(c, hotfix)
+            observe(c)
+            tampered = read_scope(c)
+            tampered["suspendedScope"] = dict(tampered["suspendedScope"],
+                                              allowedObjects=["_uuid-NUNCA"])
+            c = write_scope(c, tampered)
+            observe(c)
+            kept = read_scope(c)["suspendedScope"]["allowedObjects"]
+            self.assertNotIn("_uuid-NUNCA", kept)
+
+
+class TestThePermissionModeIsSealedWhereverTheGrantAppears(unittest.TestCase):
+    """§ 6.1. Sealing only fired when the grant arrived in a LATER edit, so
+    the flow § 4.1's table documents -- the constructor writing the grant as
+    it opens the scope -- produced a grant with no mode at all, which is
+    indistinguishable from the permission system having been off."""
+
+    def _grant_without_a_mode(self):
+        return {k: v for k, v in GRANT.items() if k != "permissionMode"}
+
+    def test_a_grant_present_at_opening_is_sealed(self):
+        with tempfile.TemporaryDirectory() as root:
+            c = write_scope(cfg(root), v2_scope(grant=self._grant_without_a_mode()))
+            state_gate({"tool_name": "Write", "permission_mode": "bypassPermissions",
+                        "tool_input": {"file_path": c["activeTaskFile"]}}, c)
+            self.assertEqual(read_scope(c)["grant"]["permissionMode"],
+                             "bypassPermissions")
+
+    def test_a_grant_arriving_later_is_still_sealed(self):
+        with tempfile.TemporaryDirectory() as root:
+            c = write_scope(cfg(root), v2_scope())
+            observe(c)
+            scope = read_scope(c)
+            scope["grant"] = self._grant_without_a_mode()
+            c = write_scope(c, scope)
+            state_gate({"tool_name": "Write", "permission_mode": "default",
+                        "tool_input": {"file_path": c["activeTaskFile"]}}, c)
+            self.assertEqual(read_scope(c)["grant"]["permissionMode"], "default")
+
+    def test_an_already_sealed_mode_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as root:
+            c = write_scope(cfg(root), v2_scope(grant=dict(GRANT)))
+            state_gate({"tool_name": "Write", "permission_mode": "bypassPermissions",
+                        "tool_input": {"file_path": c["activeTaskFile"]}}, c)
+            self.assertEqual(read_scope(c)["grant"]["permissionMode"], "default")
+
+
+if __name__ == "__main__":
+    unittest.main()

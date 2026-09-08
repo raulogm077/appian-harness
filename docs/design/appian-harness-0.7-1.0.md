@@ -534,8 +534,18 @@ en el payload, no en el nombre de la herramienta.
   `updateRecordTypeView` y `updateRecordTypeUserFilter` son micro-elegibles **solo** si la llamada no
   pasa `visibilityExpr`; si la pasa ⇒ `risk: high` y `kind ≥ task`. `reorderRecordTypeViews` fuerza
   `task` siempre: cambia qué pestaña ve primero el usuario con todas las expresiones byte-idénticas.
-- **Constantes de tipo GROUP o USER.** Una constante de grupo alimenta expresiones de seguridad. Si el
-  tipo no viaja en la llamada, lo aporta el grant desde el preflight, y su ausencia compra `task`.
+- **Constantes de tipo GROUP o USER.** Una constante de grupo alimenta expresiones de seguridad. **El
+  tipo viaja en la llamada**: `type` es un campo real —opcional— de `createConstant` y de
+  `updateConstant`, y el preflight, que ya lo ha leído, es quien debe hacer que la llamada lo lleve.
+  **Si no viaja, la escritura compra `task`.**
+  > *Reformulado el 3-sep-2026 (§ 21, causa 1: evidencia obtenida durante la implementación).* Decía
+  > «si el tipo no viaja en la llamada, lo aporta el grant desde el preflight», y **ese canal no
+  > existe**: el esquema de la unidad de alcance (§ 4.1) es cerrado y solo declara `creates[].type`,
+  > que cubre creaciones, no actualizaciones. La mitad inalcanzable dejaba la regla reducida a su
+  > rama de defecto, así que **todo** `updateConstant` sin `type` compraba `task` sin que el agente
+  > tuviera forma de evitarlo. La llamada sí es un canal, y el volcado de esquemas de P6 lo confirma.
+  > El parámetro `constant_type` del clasificador se conserva como costura para ese canal futuro; hoy
+  > solo lo ejercitan los tests.
 - **`parentFolderUuid` como campo mutado** de un `update*`: mover un objeto entre carpetas cambia la
   seguridad que hereda. Cuando acompaña a un `create`, es contexto.
 - **`risk: high`** (§ 5.3).

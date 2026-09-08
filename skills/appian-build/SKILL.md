@@ -29,6 +29,23 @@ work against the environment. Use it before issuing any create or update call
 against a live Appian environment: skipping straight to the write means skipping
 the preflight and the scope contract that everything downstream depends on.
 
+## Which lane this is, before anything else
+
+Two rulebooks are live at once, and the scope file says which one applies: a scope
+carrying `"schemaVersion": 2` is governed by the 0.7 state machine, and a scope
+without that field by the 0.6 rules it opened under. **A v2 scope with
+`"kind": "micro"` is described in full by
+[`references/micro-lane.md`](references/micro-lane.md) — read that file and stop
+reading this one.** It is the whole contract: seven steps, two templates, and what
+each gate actually checks. Where the two disagree, it wins for a micro; the rest of
+this file is written for the wider lane and for 0.6 scopes, and following it in a
+micro buys a design audit and two post-write phases that no gate in that lane will
+ever open.
+
+Everything a micro genuinely owes is in that file. Do not rebuild the contract by
+reading `hooks/harness_hooks.py`: a measured run spent five minutes doing exactly
+that, for a contract that fits on one page.
+
 ## What authorizes a write
 
 This skill used to carry `disable-model-invocation: true`, so it could only
@@ -67,7 +84,23 @@ granting a run is for.
    The remote state wins over any local document. This replaces the clean-tree
    check that version control gives you elsewhere: here the artifact lives on a
    server you do not own alone.
-3a. **Load the official Appian skill — before the design audit and before any
+3a. **Open and sign the new scope — with `Write`, and before this task puts
+    anything else on disk.** Preflight has just read the real identifiers back,
+    so this is the first moment the contract can be stated in full: write
+    `activeTaskFile` in the shape its rulebook requires (*The active task,
+    written where the gates can read it*), and let the `PostToolUse` state gate
+    observe that write and sign the opening.
+
+    **Nothing belonging to this task is written under `<evidenceDir>/<task-id>/`
+    until that signature exists.** The evidence log files every write it records
+    against whichever id `activeTaskFile` names at that instant, so a load
+    record, a SAIL source or a read-back saved while the file still names the
+    previous scope is attributed to a task that already closed. Measured in
+    P2-PASADA-9: two SAIL sources of the new task were recorded under
+    P2-PASADA-8, because they were written before the scope was. Preflight is
+    exempt because it is all reads and files nothing.
+
+3b. **Load the official Appian skill — before the design audit and before any
     write.** [`appian/dev-mcp-skills`](https://github.com/appian/dev-mcp-skills/)
     carries what the MCP tool schemas cannot: naming conventions, the fact
     that a relationship has to be declared on both sides, the order objects
@@ -75,7 +108,7 @@ granting a run is for.
     that is anything this plugin's gates measure** — they check the
     contract, atomicity and the presence of a verdict — so a write issued
     without it fails in exactly the way nothing here would catch. It comes
-    before 3b because domain knowledge is what a good design decision is
+    before 3c because domain knowledge is what a good design decision is
     made *with*; a design audited without it was audited against the wrong
     thing.
 
@@ -102,7 +135,12 @@ granting a run is for.
     exist."** If this session has no documentation MCP, stop and say so;
     do not write on an unverified function.
 
-3b. **Audit the design — still before any write.** Dispatch
+3c. **Audit the design — still before any write, when this scope owes one.**
+    A 0.6 scope always owes it. A v2 scope owes it when it is a **`task`** that
+    creates an object or touches data structure, security or a process model;
+    a v2 **`micro` never owes it**, and the gate returns early for it, so an
+    audit dispatched there is twelve minutes nobody will read. Where it is
+    owed: dispatch
     `appian-practices-auditor` with `phase=design`, handing it this task's id,
     its contract, and the design being proposed. Its verdict lands at
     `<evidenceDir>/<task-id>/practices-design.json`, where `evidenceDir` is the
@@ -128,6 +166,17 @@ granting a run is for.
    this skill produces is one task ending in a stop — never one phase, and
    never two tasks. That does not change inside a run: a run means fewer
    keystrokes between tasks, not bigger tasks.
+
+### The order those steps happen in, stated once
+
+Read-only preflight → **open and sign the new scope** → the evidence this task
+owes, starting with its load record → the grant → the Appian writes → the
+read-back that verifies them → `"request": "close"` → `closed` at the next stop.
+
+Only the first arrow is free to move. Everything after the opening is filed
+against the scope that was signed, so opening it early is what makes the rest of
+the sequence attributable at all — and a file this task wrote before the opening
+belongs, as far as every log is concerned, to whatever came before.
 
 ## The Task Contract
 
@@ -155,12 +204,14 @@ which should have to re-derive it. If any of the four parts is missing before
 step 3 begins, that is itself a reason to stop: building against an incomplete
 contract just moves the missing decision to later, where it is harder to catch.
 
-## The design audit comes before the first write
+## Where a design audit is owed, it comes before the first write
 
-Step 3b exists because this is the last moment where changing the answer is
-still free. That audit judges whether this is a *good* way to solve the
-problem — component choice, interaction pattern, the shape of the data model —
-which is a different question from whether the platform is willing to run it.
+Step 3c names which scopes owe one; a v2 `micro` is not among them, and this
+section is about the rest. It exists because this is the last moment where
+changing the answer is still free. That audit judges whether this is a *good*
+way to solve the problem — component choice, interaction pattern, the shape of
+the data model — which is a different question from whether the platform is
+willing to run it.
 Asked before the first write, its findings change a decision. Asked after, the
 same findings are a review of something already paid for.
 
@@ -190,7 +241,7 @@ accumulates every reason it finds rather than reporting the first:
 | The task is inside an authorized run | The project configured `activeRunFile` and this task is outside the grant, or its budget is spent. Inert when unconfigured |
 | No other task holds the object | The project configured `leaseFile` and somebody else has it. Inert when unconfigured |
 | Irreversible actions | **Always**, for a delete or a record-data overwrite — and it names whether the impact assessment exists |
-| The task is atomic | `allowedObjects` is longer than the configured budget |
+| The task is atomic | The canonical object count of `allowedObjects` — or of a single `tasks{}` entry, when the scope partitions — is over the configured budget |
 | The official skill was loaded | No load record for this task, or one that does not match |
 | The `design` verdict passes | Missing, structurally invalid, or an outcome the gate does not accept |
 
@@ -203,14 +254,16 @@ that many entries to describe was sized wrong before this skill ever started.
 Answering "yes, proceed" past the prompt does not fix that — it just carries the
 oversized contract into the build.
 
-The same gate asks for one thing the contract does not carry: a `design` audit
+The same gate asks for one thing the contract does not carry, in the scopes that
+owe it — every 0.6 scope, and a v2 `task` that creates or touches structure,
+security or a process model, never a v2 `micro`: a `design` audit
 for this task that passes, at `<evidenceDir>/<task>/practices-design.json`,
 where `evidenceDir` is the project's root from `.claude/appian-harness.json`.
 Judging whether this is a good way to solve the problem — before the first
 write, while changing the answer is still cheap — is what that half of the gate
 protects. Preflight is all reads, so it passes untouched; the stop lands on the
 first create or update in step 4, and the way past it is to have the design
-audited, not to approve around the prompt. Step 3b is what has it audited.
+audited, not to approve around the prompt. Step 3c is what has it audited.
 
 The gate logs every question it asks — task, tool and reason — and the write log
 records what actually got written afterward. Read together, they turn "do we
@@ -226,10 +279,15 @@ Its path is `activeTaskFile` in `.claude/appian-harness.json` at the project
 root — `tasks/current.json` when that file names none — and keeping it current
 is this skill's job, because this skill is what takes a task and what stops.
 
-**When step 1 takes a task, write that file.** At minimum it carries two
-fields, spelled exactly like this — the hooks look for these names and nothing
-close to them, and a field name that nearly matches fails the same way a path
-that nearly matches does:
+**Step 3a is where that file gets written** — after the preflight, so the real
+identifiers are already in hand, and before this task writes any evidence of its
+own. Which shape it takes depends on
+the rulebook the scope opens under, and the two are not interchangeable — the
+hooks look for these names and nothing close to them, and a field name that
+nearly matches fails the same way a path that nearly matches does.
+
+**Under the 0.6 rulebook** — a file carrying no `schemaVersion` — the minimum
+is two fields:
 
 ```json
 {
@@ -238,10 +296,127 @@ that nearly matches does:
 }
 ```
 
-`id` is also what the verdict path is built from, so it has to be the same
-string the design audit was dispatched with:
-`<evidenceDir>/<id>/practices-design.json` is one path assembled from two
-places, and they have to agree.
+**Under scope schema v2 that same two-field file is not a v2 scope.** With no
+`schemaVersion` the dispatch reads it as a 0.6 file, which is logged and never
+signed, so every Appian write afterwards asks. A v2 scope is born with all
+seventeen fields of the closed schema — the same seventeen the `micro` template
+in [`references/micro-lane.md`](references/micro-lane.md) carries, differing
+only in `kind` — and for a `task` it is born like this:
+
+```json
+{
+  "schemaVersion": 2,
+  "id": "<the task id>",
+  "instanceId": "<a new id for this opening>",
+  "kind": "task",
+  "risk": null,
+  "status": "in-flight",
+  "statusWriteSeq": 0,
+  "request": null,
+  "intent": "<one sentence, or null in a task that partitions>",
+  "tasks": null,
+  "allowedObjects": ["<name>", "<uuid>"],
+  "grant": null,
+  "suspendedScope": null,
+  "resumeFrom": null,
+  "manualEstimateMinutes": null,
+  "openedAt": "<UTC ISO-8601>",
+  "closedAt": null
+}
+```
+
+**`tasks` says whether this task partitions, and it is the only field that
+differs between the two shapes a `task` can take.** Built as one unit, it
+carries:
+
+```json
+"tasks": null
+```
+
+Partitioned — one entry per subtask, each holding that subtask's own objects:
+
+```json
+"tasks": {
+  "<taskId>": ["<object>", "<object>"],
+  "<taskId>": ["<object>"]
+}
+```
+
+Five rules, and each of them is something a hook actually checks:
+
+- **`kind` stays `"task"`.** A populated `tasks{}` does not introduce a third
+  kind: there are two, and partitioning is a property a `task` has rather than
+  a size of its own.
+- **`allowedObjects` is the union** of every entry. The scope gate matches an
+  incoming write against that list and nothing else, so an object that appears
+  only inside `tasks{}` is out of scope and asks.
+- **Each entry carries the objects of its own subtask**, by name or by UUID,
+  spelled exactly as the union spells them.
+- **Atomicity is measured per entry, never on the union**, whenever `tasks{}`
+  is populated: each entry's canonical object count — where a name and a UUID
+  of the same object count once, not twice — is compared against the configured
+  budget on its own, so a scope that partitions into small entries passes where
+  its union would not. With `"tasks": null` that same budget applies to
+  `allowedObjects` instead.
+- **`tasks` is `null` in a `micro`.** A partitioned scope is a `task` by
+  definition, so a `micro` carrying entries fails the schema check rather than
+  being read as something larger.
+
+`intent` is the field that moves with it: one sentence in a task built as one
+unit, `null` in a task that partitions, where the entries carry the detail.
+
+**A v2 scope is born `"status": "in-flight"` with `"statusWriteSeq": 0`, and
+never `"status": "open"`.** There is no `open` state: § 4.2 has seven and that
+is not one of them, so a file born that way fails the schema check outright,
+the opening is never signed, no projection is written, and the first Appian
+write asks for a state the harness was never shown. `in-flight` is not the
+constructor claiming the scope is running — it is the only status a file may be
+born with, and signing it is what the state gate does when it observes the
+opening.
+
+**After that birth the constructor never writes `status` or `statusWriteSeq`
+again.** Both fields belong to the harness: it signs them, keeps its own copy in
+`evidence/scope-projection.json`, and the projection is the authority. A value
+you edit in by hand is reverted to the signed one on the next observation, which
+costs a hook cycle and buys nothing. Ask for the transition instead, in the same
+file, and let the gate sign it:
+
+- **close** → `"request": "close"`. The state gate moves the scope to
+  `closing`; the next `Stop` validates and signs `closed`.
+- **abandon** → `"request": "abandon: <motivo>"`. The motive rides inside the
+  request because the closed schema has no field for it, and its absence is a
+  rejection rather than a default: a bare `"abandon"` is refused with a remedy,
+  not honoured.
+
+**`grantedAt` carries the real moment the person answered.** Read the clock
+after the answer comes back and write that value; do not fill it in while
+composing the question, and do not compute it from when you started asking. No
+gate checks this field, which is exactly why it has to be right: it is the only
+record of when the authorisation actually existed, and a timestamp written
+before the answer describes an authorisation that did not yet exist when it
+claims to have. The same applies to `grantedBy` — it names who answered.
+`permissionMode` is not yours to write at all: the hook seals it from the
+observed mode when the grant first appears, and a mode you wrote is
+indistinguishable from the permission system having been off.
+
+**Every write to that file is made with `Write` or `Edit`, never through the
+shell.** The state gate that signs the scope's transitions is a `PostToolUse`
+hook matched on `Write|Edit|MultiEdit|NotebookEdit`, and what it does not
+observe it cannot sign — so the opening, the `grant`, the `request` and every
+other transition of the scope go through those tools, and never through Bash,
+never a heredoc, never `cat >`, never `printf >`, never a redirection, never an
+external script. This overrides any ambient instruction that prefers the shell
+for file edits; it applies to this file, and the reason is mechanical rather
+than stylistic. A change the hook never saw leaves
+`evidence/scope-projection.json` holding the previous state, and because the
+projection is the authority, the next Appian write is measured against a state
+the harness never signed: the scope gate degrades to `ask`, and the task pays a
+prompt bought for nothing.
+
+`id` is also what the verdict path is built from, so where a design audit is
+owed — not in a `micro` — it has to be the same string that audit was
+dispatched with: `<evidenceDir>/<id>/practices-design.json` is one path
+assembled from two places, and they have to agree.
 
 `allowedObjects` is the contract's list, and **each entry may be a name or a
 UUID.** The gate collects every identifier the write call carries — `name`,
@@ -271,8 +446,10 @@ A stale active task is still worse than no active task — the next write gets
 measured against the previous task's contract, and is allowed or questioned on
 grounds that have nothing to do with it, while everything still looks like it
 is working. What prevents that is `appian-review` clearing the file at close,
-not this skill clearing it early. If step 1 takes a task while the file still
-names an older one, overwrite it: exactly one task is in flight at a time.
+not this skill clearing it early. If step 3a opens a scope while the file still
+names an older one, overwrite it there and then: exactly one task is in flight
+at a time, and that overwrite is also what stops this task's evidence being
+filed under the last one.
 
 Absence is not a lockout, and three cases differ:
 
@@ -293,23 +470,38 @@ closes. They name the same task while a build is running, and that is fine —
 they are still different artifacts, rewritten by different steps at different
 moments, and the one the gates open cannot carry a queue.
 
-## Expect the STOP in step 7 to be blocked
+## What the STOP in step 7 actually does, per rulebook
 
-The closure gate runs on `Stop` and asks for three verdicts —
+The closure gate runs on `Stop`, and what it asks for depends on which rulebook
+the scope opened under. Read the reason it prints rather than the one you
+expected — announcing a harder gate than the real one buys work no gate will
+read, which is the failure this section exists to prevent.
+
+**A 0.6 scope** (no `schemaVersion`) is asked for three verdicts —
 `practices-implementation`, `practices-review` and `practices-qa`. None of them
 exist yet when this skill finishes, because none of them can: they are produced
 by `appian-verify` and `appian-review`, which run after this. So the ordinary,
-correct outcome of a clean build is a blocked stop naming those three.
-
+correct outcome of a clean build there is a blocked stop naming those three.
 That block is not a failure and nothing has broken. It is the handoff, stated
 by the harness rather than left to memory: the task is genuinely unverified at
 that moment, and the gate is saying which phase runs next. Read the reason it
 prints, hand the task to `appian-verify`, and let review close it.
 
-What that block must not turn into is a reason to delete the active task file
-so the stop goes through. That trades a message for a silently unguarded task —
-the gate would then approve, having checked nothing, and the three phases it
-exists to enforce would go unmeasured with no record that they did.
+**A v2 scope** is asked for none of the three — the v2 closure gate never opens
+them, in either kind. It runs the state machine instead: a stop with writes
+applied and no close requested prints a handoff message and approves; the third
+one blocks, and the repeat after that block closes the scope with `never-closed`
+debt rather than deadlocking the session. The way to a clean close is
+one line in the scope file, `"request": "close"`, and then a stop, which the
+gate signs `closed` once no write is left unresolved. The scope file is **not**
+deleted at close under v2: `status: closed` is the terminal state, and it is the
+record.
+
+What a block must never turn into, under either rulebook, is a reason to delete
+the active task file so the stop goes through. That trades a message for a
+silently unguarded task — the gate would then approve, having checked nothing,
+and whatever it exists to enforce would go unmeasured with no record that it
+did.
 
 ## Building several tasks at once
 
@@ -443,8 +635,11 @@ first unverified result. If you cannot determine the state, stop and ask.
 - *"I'll get the design audited once there's something to look at."* Then it is
   not a design audit any more, it is a review: by the time there is something
   to look at, the decision it was supposed to inform has already been paid for
-  in objects that exist. Waiting also guarantees the first write is stopped,
-  because that verdict is what the scope gate opens before letting it through.
+  in objects that exist. Waiting also guarantees the first write is stopped
+  wherever design is owed, because that verdict is what the scope gate opens
+  before letting it through. Its mirror image is just as expensive: auditing the
+  design of a v2 `micro`, which owes none, blocks the grant behind a verdict the
+  gate returns early on.
 - *"I loaded the official Appian skill earlier in this session, that covers
   this task too."* The record is per task because the gate is per task, and
   because a session that has drifted through three tasks and a compaction is
@@ -470,15 +665,29 @@ first unverified result. If you cannot determine the state, stop and ask.
 - *"I know which task I'm on, writing it to a file is bookkeeping."* The gates
   cannot read what this skill knows; they read the active task file. Skipping it
   does not make the build faster, it makes every single write ask.
+- *"The evidence directory is named after this task, so when I write into it
+  cannot matter."* The directory name is yours to choose; the attribution is
+  not. Every write is filed against whichever task the active task file named at
+  that instant, so evidence written before step 3a lands under the previous
+  scope: the directory says one thing and the log says another, which is worse
+  than either alone.
 - *"The gate blocked my stop, so something is broken."* Nothing is broken. The
   block is the handoff: the task is built and not yet verified, which is exactly
-  what it says. The way past it is `appian-verify` and then `appian-review`, not
-  a change to the active task file.
+  what it says. In a 0.6 scope the way past it is `appian-verify` and then
+  `appian-review`; in a v2 scope it is `"request": "close"` and another stop.
+  Neither is a change to the active task file beyond that one line.
+- *"The v2 gate doesn't ask for the three verdicts, but running them anyway is
+  the careful thing to do."* It is not careful, it is unmeasured: nothing opens
+  `practices-implementation`, `practices-qa` or `practices-review` in that
+  rulebook, so the verdicts close nothing and the budget they spend was the
+  scope's. If the change deserves judgement, the lane that buys it is `certify`
+  (§ 5.4), not the three 0.6 phases.
 - *"I'm done, so I'll tidy up the active task file on my way out."* Deleting it
   here is not tidying, it is disabling the closure gate for this task — with no
-  task in flight the gate approves without checking anything, and the three
-  post-write verdicts stop being required by anything at all. The file is
-  cleared at close, by `appian-review`, and closing is not this skill's moment.
+  task in flight the gate approves without checking anything, and in a 0.6 scope
+  the three post-write verdicts stop being required by anything at all. In 0.6
+  the file is cleared at close by `appian-review`; in v2 it stays, carrying
+  `status: closed`. Either way, closing is not this skill's moment.
 
 ## Red Flags
 
@@ -490,16 +699,27 @@ first unverified result. If you cannot determine the state, stop and ask.
   function-availability checks come back empty there, and empty is
   indistinguishable from "the function does not exist."
 - Issuing the first write with no `phase=design` verdict for this task, or with
-  one whose outcome the gate does not accept.
+  one whose outcome the gate does not accept, in a scope that owes one — and
+  the mirror flag: dispatching that audit in a v2 `micro`, which owes none.
+- Dispatching any auditor, verifier or reviewer in a v2 `micro`. Nothing in that
+  lane reads their verdicts, and the close is one line in the scope file.
 - Taking a task without writing the active task file, or leaving it pointing at
   a task that already closed.
+- Writing this task's evidence — its load record, its SAIL sources, its
+  read-backs — while the active task file still names the previous scope. The
+  evidence log files them under that scope, and nothing surfaces the
+  misattribution until someone reads the log.
+- Declaring `tasks{}` and leaving one of its objects out of `allowedObjects`.
+  The entries describe the subtasks; the union is what the gate matches a write
+  against.
 - Building concurrently on the strength of a worktree alone. Worktrees isolate
   files; the Appian objects are still shared, and that is where the damage is.
 - Writing to an object leased by another task, or starting a concurrent build
   without claiming leases at all.
 - Running a destructive task alongside anything else.
-- Deleting the active task file at STOP, or to get past a blocked stop. It is
-  cleared at close, by `appian-review`, and this skill stopping is not a close.
+- Deleting the active task file at STOP, or to get past a blocked stop. In 0.6
+  it is cleared at close by `appian-review`; in v2 it stays and turns
+  `closed`. Either way this skill stopping is not a close.
 - Recreating an object that preflight already found PRESENT.
 - Retrying a write after an error or timeout without first reading back whether
   it persisted.
@@ -519,14 +739,22 @@ Before handing this task off:
   first write, and its load is recorded at
   `<evidenceDir>/<task-id>/appian-skill-loaded.json` naming this task, the
   version the skill itself declares, and this session's documentation MCP.
-- `appian-practices-auditor` ran with `phase=design` before the first write, and
+- Where this scope owes a design audit — a 0.6 scope, or a v2 `task` that
+  creates or touches structure, security or a process model —
+  `appian-practices-auditor` ran with `phase=design` before the first write, and
   its verdict at `<evidenceDir>/<task-id>/practices-design.json` came back
   `PASS`, or `NOT_MEASURED` with `notMeasuredClass` `DEFERRED` naming an
   `owner`, a `closingCondition` and a `deferredCriterion` off the plugin's
-  closed list — anything else stopped the build.
-- The active task file was written when this task was taken, carries this task's
-  `id` and its `allowedObjects` under exactly those names, and is still in place
-  at STOP — it is `appian-review` that removes it, at close.
+  closed list — anything else stopped the build. In a v2 `micro`, that it was
+  **not** dispatched.
+- The active task file was written and signed at step 3a — after the preflight,
+  and before this task wrote a single file of its own evidence — carries this
+  task's `id` and its `allowedObjects` under exactly those names, and is still
+  in place at STOP — in 0.6 it is `appian-review` that removes it at close;
+  under `schemaVersion: 2` it stays and turns `closed`.
+- Where the scope partitions, `tasks{}` has one entry per subtask and
+  `allowedObjects` is their union: no object named inside an entry is missing
+  from the union, and `kind` is still `"task"`.
 - Nothing outside `allowedObjects` was created, modified, or deleted.
 - Every gate in `requiredGates` has a recorded result — PASS, FAIL, or NOT
   MEASURED with a reason — not silence and not an assumed PASS.

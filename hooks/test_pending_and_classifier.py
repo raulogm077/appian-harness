@@ -6,7 +6,7 @@ never "the last pending", because parallel writes come back out of order --
 against the response shapes Phase 0 captured from the live environment. What
 no shape matches is `ambiguous`, which never counts and demands a re-read.
 """
-import json, os, sys, tempfile, unittest
+import io, json, os, sys, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
@@ -90,6 +90,24 @@ class TestResolutionIsByToolUseId(unittest.TestCase):
             self.assertEqual(last["writeSeq"], 2)
             self.assertEqual(self._last_for(c, "tu-1")["result"], "pending")
 
+    def test_the_earlier_reservation_keeps_its_own_sequence(self):
+        # The half of "never the last pending" the out-of-order test above
+        # cannot see: when tu-2 answers first, correlating by tool_use_id and
+        # taking the instance's last row agree by coincidence -- tu-2 IS the
+        # last row. Only the earlier reservation answering first tells them
+        # apart, and the stamp matters: writeSeq is what § 7.6 expires
+        # verdicts by, so a resolution wearing a later write's sequence would
+        # expire verdicts the write it belongs to never touched.
+        with tempfile.TemporaryDirectory() as root:
+            c = self._reserved(root)
+            resolve(c, "mcp__appian-dev__updateInterface", "tu-1",
+                    json.dumps({"uuid": "_uuid-lista", "versionId": 3}),
+                    uuid="_uuid-lista", expression="a!textField()")
+            first = self._last_for(c, "tu-1")
+            self.assertEqual(first["result"], "ok")
+            self.assertEqual(first["writeSeq"], 1)
+            self.assertEqual(self._last_for(c, "tu-2")["result"], "pending")
+
     def test_the_delete_shape_without_identity_is_still_ok(self):
         # The Phase 0 cleanup's gift: a successful delete answers
         # {"result": "Deleted successfully"} with no uuid and no versionId.
@@ -138,6 +156,37 @@ class TestResolutionIsByToolUseId(unittest.TestCase):
             failure_notice({"tool_name": "mcp__appian-dev__updateInterface",
                             "tool_use_id": "tu-1",
                             "tool_input": {"uuid": "_uuid-lista"}}, c)
+            self.assertEqual(self._last_for(c, "tu-1")["result"], "failed")
+
+    def test_the_subcommand_runs_it_not_just_the_function(self):
+        # The test above proves the function; Claude Code calls the
+        # SUBCOMMAND, and main() swallows any exception into `{}` with exit
+        # 0 -- so a broken wiring looks exactly like a quiet hook. Without
+        # this, `failure-notice` can be dead in production while the suite
+        # stays green, and every failed write dangles as `pending`: the
+        # close blocks on a false diagnosis and § 7.6 expires verdicts a
+        # failed write never earned.
+        with tempfile.TemporaryDirectory() as root:
+            c = self._reserved(root)
+            os.makedirs(os.path.join(root, ".claude"), exist_ok=True)
+            with open(os.path.join(root, ".claude", "appian-harness.json"),
+                      "w", encoding="utf-8") as f:
+                json.dump({"evidenceDir": "evidence",
+                           "activeTaskFile": os.path.join("tasks",
+                                                          "current.json")}, f)
+            payload = {"cwd": root,
+                       "tool_name": "mcp__appian-dev__updateInterface",
+                       "tool_use_id": "tu-1",
+                       "tool_input": {"uuid": "_uuid-lista"}}
+            stdin, stdout = sys.stdin, sys.stdout
+            sys.stdin, sys.stdout = io.StringIO(json.dumps(payload)), io.StringIO()
+            try:
+                rc = HH.main(["harness_hooks.py", "failure-notice"])
+                out = sys.stdout.getvalue()
+            finally:
+                sys.stdin, sys.stdout = stdin, stdout
+            self.assertEqual(rc, 0)
+            self.assertNotIn("harness hook error", out)
             self.assertEqual(self._last_for(c, "tu-1")["result"], "failed")
 
 

@@ -150,6 +150,23 @@ class TestTheFirstWriteWithoutTheKeyIsAnAsk(unittest.TestCase):
             self.assertNotIn("appianMcpToolPrefixes",
                              out.get("permissionDecisionReason", ""))
 
+    def test_the_notice_does_not_swallow_the_reason_underneath_it(self):
+        # The notice used to land in the same list the gate accumulates, so
+        # on a v07 scope it made the list non-empty and `_scope_v07_reasons`
+        # never ran: the person read a configuration reminder and approved
+        # an out-of-scope write with it. It must be a v07 scope -- the 0.6
+        # body runs either way, so a legacy fixture cannot see this.
+        from test_grant import signed_cfg
+        with tempfile.TemporaryDirectory() as root:
+            c = dict(signed_cfg(root), appianMcpToolPrefixes=None)
+            out = scope_gate({"tool_name": "mcp__appian-dev__updateInterface",
+                              "session_id": "s-1", "tool_use_id": "tu-1",
+                              "tool_input": {"uuid": "OBJETO_FUERA"}}, c)
+            self.assertEqual(out["permissionDecision"], "ask")
+            reason = out["permissionDecisionReason"]
+            self.assertIn("appianMcpToolPrefixes", reason)
+            self.assertIn("OBJETO_FUERA", reason)
+
 
 class TestHooksJsonRoutesAnyDeclarablePrefix(unittest.TestCase):
     """The static matcher cannot read configuration, so it must route every

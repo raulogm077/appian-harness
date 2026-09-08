@@ -378,7 +378,7 @@ into the build.
 Preflight is all reads, so the scope gate never sees it; the stop lands on the
 first create or update. The reason it prints will name every problem it found,
 and the one people hit first is a missing `phase=design` verdict at
-`<evidenceDir>/<task>/practices-design.json`. `appian-build` step 3b is what
+`<evidenceDir>/<task>/practices-design.json`. `appian-build` step 3c is what
 produces it — nothing else in the lifecycle does, and `appian-verify` scopes
 `design` out on purpose.
 

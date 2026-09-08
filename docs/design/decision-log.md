@@ -850,3 +850,119 @@ de payload tienen ejemplar real. Las tres discrepancias de esquema (vistas/filtr
 `visibilityExpression`, ningún `update*` lleva `parentFolderUuid`, `updateFolder` no tiene campos
 de seguridad) caen en la fila «se corrige la regla antes de escribirla» de la tabla de supuestos
 del propio freeze — salida prevista de la sonda, no reapertura.
+
+---
+
+## Addendum · 3-sep-2026 — la revisión de Fase 2 reabre el freeze una vez
+
+La revisión con contexto limpio del código de Fase 2 (12 hallazgos, 4 de gravedad alta; tabla
+completa en [`fase-2/plan-ejecucion.md`](fase-2/plan-ejecucion.md)) encontró **una** divergencia que
+no se arregla en el código porque el defecto está en la norma.
+
+**D-29 · La regla de las constantes de seguridad nombraba un canal inexistente (§ 5.2).**
+Decía: «si el tipo no viaja en la llamada, lo aporta el grant desde el preflight, y su ausencia
+compra `task`». La primera mitad **no es realizable**: el esquema de la unidad de alcance de § 4.1 es
+cerrado y solo declara `creates[].type`, que cubre creaciones y no actualizaciones. No hay dónde
+escribir el tipo de una constante que ya existe. Con la mitad viva reducida a la rama de defecto,
+**todo** `updateConstant` sin `type` compraba `task` y el agente no tenía forma de evitarlo — un
+`ask` sistemático en el caso canónico de § 5.7, que es justo la desproporción que la 0.7 existe para
+quitar.
+
+**Reabierto por la causa 1 de § 21** («evidencia nueva obtenida durante la implementación»): el
+volcado de esquemas de P6 muestra que `type` es un campo real y opcional de `createConstant` **y** de
+`updateConstant`. **El canal es la llamada, no el grant.** § 5.2 queda reformulado: el preflight, que
+ya conoce el tipo, debe hacer que la llamada lo lleve; si no viaja, la escritura compra `task`. La
+garantía no se toca — sigue fallando al lado caro — y el código no cambia: `_constant_security_type`
+ya leía `tool_input["type"]` primero. El parámetro `constant_type` del clasificador se conserva como
+costura declarada para un canal futuro, hoy solo ejercitada por los tests.
+
+**Ninguno de los otros once hallazgos reabre nada**: son defectos del código frente a lo que la norma
+ya decía, y se corrigieron contra ella.
+
+---
+
+## Addendum · 4-sep-2026 — la cola discrecional del `micro`, aplazada a Fase 4
+
+La pasada atendida midió lo que faltaba del DoD de Fase 2 (`P2-PASADA-4`, `kind: micro`, interfaz
+`PR_Rental_PricePerDay_Input` en `indra-spain`): **un solo prompt**. `gate-decisions.jsonl` de la
+pasada registra 18 decisiones de gate y **una** `ask`, la del grant.
+
+Pero la pasada dejó ver otra cosa, que Raúl detectó desde fuera al ver la sesión seguir viva:
+
+| Hito | Hora (UTC) |
+|---|---|
+| Alcance abierto | 22:34:37 |
+| Grant — el único prompt | 22:48:51 |
+| Escritura (`updateInterface`, v3→v4) | ~22:49:30 |
+| **Trabajo real terminado** (relectura v4) | ~22:50:00 |
+| Cierre firmado (`task-closures.jsonl`) | 22:57:37 |
+
+**~7,5 min de cola después de que el trabajo estuviera hecho**, y de esa cola el gate solo exigió
+**una edición de una línea**: `request: "close"`. El resto lo añadió el agente por su cuenta —
+evidencia ampliada y un subagente verificador escribiendo veredictos `implementation` y `qa` que
+**el closure-gate nunca pidió** en este carril.
+
+**El defecto no está en el gate, está en la skill.** `appian-build` anuncia que el `Stop` se
+bloqueará reclamando los tres veredictos. En el carril `micro` no se reclaman. La skill describe una
+puerta más dura que la real, y el agente trabaja para satisfacer la puerta que le han descrito. La
+cola *obligatoria* del `micro` es corta; la que se alarga es la **discrecional**, y la skill empuja
+hacia ella.
+
+**Aplazado a Fase 4** («Juez, matriz y skills»), que es donde se tocan las skills: condicionar ese
+aviso al `kind` de la tarea, de modo que un `micro` lea la puerta que de verdad va a encontrarse.
+No se toca ahora — no reabre el freeze ni cambia código de Fase 2, y la medición del DoD ya cuenta.
+
+**Por qué queda escrito aquí y no como hallazgo de la pasada:** es desproporción entre lo que se
+exige y lo que se hace, que es exactamente el problema que la 0.7 existe para quitar (§ 5.7). Que
+reaparezca por el lado de la documentación de la skill, y no del clasificador, es la parte que
+conviene recordar dentro de un año.
+---
+
+## Addendum · 4-sep-2026 (bis) — la cola del `micro` no se aplaza: la skill se alinea con el gate
+
+El addendum de esta misma fecha aplazaba la corrección a Fase 4. **Raúl lo revoca el mismo día**, con
+la descomposición de la pasada delante: para un cambio de label, ~1 min de trabajo y >20 de
+preparación y cola. Se trata como **evidencia nueva de implementación** y se corrige lo demostrado,
+nada más.
+
+**El reparto del tiempo de `P2-PASADA-4`**, reconstruido del transcript
+(`258a7631-…jsonl`) y de `evidence-writes.jsonl`, en UTC — las horas que Raúl citó son UTC+2:
+
+Los tramos son de reloj y **el último se solapa**: el cierre ocurrió mientras el verificador seguía vivo, así que las duraciones no se suman.
+
+| Tramo (UTC) | Duración | Clase |
+|---|---|---|
+| 22:26:51 → 22:28:39 · orientación, liveness del MCP, lectura del objetivo | ~1,8 min | garantía |
+| 22:28:39 → 22:33:59 · **lectura de `harness_hooks.py` y de cuatro ficheros de test** para reconstruir el contrato | ~5,3 min | **desperdicio** |
+| 22:33:59 → 22:35:20 · `getObjectDependents`, apertura firmada, `appian-skill-loaded.json` | ~1,4 min | garantía |
+| 22:35:20 → 22:47:54 · **subagente `phase=design` delante del grant** | **~12,6 min** | **desperdicio** |
+| 22:47:54 → 22:49:44 · grant (el único prompt), `updateInterface`, relectura | ~1,8 min | trabajo + garantía |
+| 22:50:36 → 22:50:38 · relectura cruda y `evidence.json` | segundos | garantía |
+| 22:51:20 → 23:08:03 · **subagente verificador (`implementation`/`qa`) y su parada** | ~16,7 min, **con el cierre dentro** | **desperdicio** |
+| 22:57:12 → 22:57:37 · `request: "close"` y Stop firmado *(dentro del tramo anterior)* | ~0,4 min | garantía |
+
+**Los 14 minutos entre apertura y grant son, casi enteros, una auditoría de diseño que el `micro` no
+debe.** § 5.4 y § 5.6 ya lo decían y `_design_requirement_reasons` ya lo implementaba —
+`if scope.get("kind") != "task": return []`—. Los pagó la skill, no el gate.
+
+**Qué se corrige, y solo eso.** `appian-build` describía el contrato de 0.6 en un proyecto gobernado
+por el de 0.7: anunciaba la auditoría de diseño sin condición y el `Stop` bloqueado por tres
+veredictos que el `closure_gate` v07 **nunca abre**. Se añade
+`skills/appian-build/references/micro-lane.md` —el carril `micro` entero: siete pasos, las dos
+plantillas y lo que cada gate comprueba— y `SKILL.md` enruta a él, condiciona el paso 3b y parte la
+sección del `Stop` por libro de reglas. **Ningún cambio en `harness_hooks.py`.**
+
+**Qué parte del freeze se reabre: ninguna.** La norma no cambia ni una línea; lo que cambia es una
+skill que no la decía. El defecto es de implementación —documentación de la skill— y su corrección
+adelanta un elemento de Fase 4 sin tocar el código de Fase 2.
+
+**Lo que la corrección NO quita**, porque la desproporción se arregla quitando ceremonia, no
+garantías: preflight de impacto, grant único, escritura gobernada, relectura atribuible, cierre
+firmado y las reglas cardinales siguen exactamente donde estaban. Lo que la pasada **omitió** y el
+carril ahora sí pide es `dependents.json` (§ 11.1 lo asigna a los dos carriles de `micro` y no cuesta
+ninguna llamada nueva): se pagaron veredictos que nadie lee y se dejó sin escribir el artefacto que
+la norma sí nombra.
+
+**Lo que sigue sin estar cableado, dicho sin adornos:** el `certify` del carril con revisor (§ 5.4)
+llega con el juez en Fase 4 y el suelo determinista de § 8 en Fase 3. El carril lo dice en una línea
+en vez de sustituirlo por la cola de 0.6.

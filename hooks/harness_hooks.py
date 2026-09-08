@@ -418,6 +418,15 @@ def _grant_reasons(config, scope, tool_name, tool_input, candidates):
                        "(bypassPermissions) y no cuenta como aprobado por una persona "
                        "(§ 6.1). Arreglo: repite la concesión con los permisos activos")
         return reasons
+    if not grant.get("permissionMode"):
+        # The hook seals the mode wherever the grant first appears, so an
+        # absent one means it never observed the concession -- which is
+        # indistinguishable from the permission system having been off.
+        reasons.append("el grant no registra bajo qué modo de permisos se concedió, "
+                       "así que el harness no lo vio nacer y no puede tratarlo como "
+                       "aprobado por una persona (§ 6.1). Arreglo: vuelve a escribir "
+                       "el grant en el fichero de alcance para que el hook lo selle")
+        return reasons
 
     action = _tool_action(tool_name, config)
     if action in _CREATE_TYPE_BY_ACTION:
@@ -646,13 +655,17 @@ def _scope_v07_reasons(config, payload, tool_name, scope):
         # § 15: evaluated per tasks{} entry, never on the union.
         for entry_id in sorted(tasks):
             objs = tasks[entry_id]
-            if isinstance(objs, list) and len(objs) > max_allowed:
-                reasons.append("task entry %r touches %d objects, more than "
-                               "maxAllowedObjects=%d: not atomic"
-                               % (entry_id, len(objs), max_allowed))
-    elif len(allowed) > max_allowed:
-        reasons.append("scope %r touches %d objects, more than maxAllowedObjects=%d: "
-                       "not atomic" % (task_id, len(allowed), max_allowed))
+            if isinstance(objs, list) \
+                    and _canonical_object_count(objs) > max_allowed:
+                reasons.append("task entry %r touches %d objects (%d entries), more "
+                               "than maxAllowedObjects=%d: not atomic"
+                               % (entry_id, _canonical_object_count(objs), len(objs),
+                                  max_allowed))
+    elif _canonical_object_count(allowed) > max_allowed:
+        reasons.append("scope %r touches %d objects (%d entries), more than "
+                       "maxAllowedObjects=%d: not atomic"
+                       % (task_id, _canonical_object_count(allowed), len(allowed),
+                          max_allowed))
 
     reasons.extend(_skill_record_errors(config, task_id))
     reasons.extend(_design_requirement_reasons(config, scope, action))
@@ -772,6 +785,41 @@ def _max_allowed_objects(config):
     value = config.get("maxAllowedObjects")
     return value if isinstance(value, int) and not isinstance(value, bool) \
         else DEFAULT_MAX_ALLOWED_OBJECTS
+
+
+# 8-4-4-4-12 hex anywhere in the string. It matches a bare Appian UUID
+# (`dad2b319-fee0-4114-90c7-2b64045f56cb`) and the content form that wraps
+# one (`_a-0000ee07-114d-8000-9c40-011c48011c48_2143653`); a design object
+# NAME cannot contain that shape, which is what makes the test safe.
+_UUID_SHAPE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
+                         r"-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+def _canonical_object_count(entries):
+    """How many OBJECTS a list of `allowedObjects` entries describes.
+
+    § 4.1 lets a scope name an object by name, by UUID, or by both -- the
+    plan knows the name, the environment answers with the UUID -- so the
+    entries are ALIASES, not objects. Counting entries made two objects
+    declared as name+UUID read as four and blow a budget of three
+    (measured in P2-PASADA-7).
+
+    Two distinct names are never one object, and neither are two distinct
+    UUIDs, so the smallest number of objects a declaration can describe is
+    max(#names, #uuids) -- and the budget counts that. Aliases repeated
+    verbatim collapse first, so restating one changes nothing.
+
+    Known limitation, deliberate: N names and M UUIDs of DIFFERENT objects
+    undercount to max(N, M). The budget is a heuristic about batch size;
+    what actually contains a write is membership in `allowedObjects` plus
+    the grant, and neither is computed here.
+    """
+    names, uuids = set(), set()
+    for entry in entries or []:
+        if not isinstance(entry, str) or not entry:
+            continue
+        (uuids if _UUID_SHAPE.search(entry) else names).add(entry)
+    return max(len(names), len(uuids))
 
 
 def _object_candidates(tool_input):
@@ -1432,8 +1480,12 @@ def scope_gate(payload, config):
     if not _is_write_tool(tool_name, config):
         return {"permissionDecision": "allow", "permissionDecisionReason": "not a write tool"}
 
+    # Kept apart from the gate's own reasons on purpose: folded into
+    # `reasons`, the once-per-session perimeter notice made the list
+    # non-empty and the v07 body never ran, so the person read a
+    # configuration reminder and approved an out-of-scope write with it.
+    perimeter = _perimeter_first_write_reason(config, payload)
     reasons = []
-    reasons.extend(_perimeter_first_write_reason(config, payload))
     active_task = config.get("activeTask")
     policy = _scope_policy(active_task)
     if policy == "unknown":
@@ -1455,9 +1507,9 @@ def scope_gate(payload, config):
     else:
         reasons.extend(_scope_shared_reasons(config, payload, tool_name, active_task))
 
-    if reasons:
+    if perimeter or reasons:
         return {"permissionDecision": PERMISSION_ASK,
-                "permissionDecisionReason": " · ".join(reasons)}
+                "permissionDecisionReason": " · ".join(perimeter + reasons)}
     if policy == "v07":
         # § 7.1: the allow reserves the sequence and leaves the intention
         # row BEFORE the call goes out, so a write that never answers is a
@@ -1565,10 +1617,12 @@ def _scope_shared_reasons(config, payload, tool_name, active_task):
     reasons.extend(_destructive_errors(config, task_id, tool_name, candidates))
 
     max_allowed = _max_allowed_objects(config)
-    if len(allowed_objects) > max_allowed:
+    if _canonical_object_count(allowed_objects) > max_allowed:
         reasons.append(
-            "task %r touches %d objects, more than maxAllowedObjects=%d: not atomic" %
-            (task_id, len(allowed_objects), max_allowed))
+            "task %r touches %d objects (%d entries), more than "
+            "maxAllowedObjects=%d: not atomic" %
+            (task_id, _canonical_object_count(allowed_objects),
+             len(allowed_objects), max_allowed))
 
     reasons.extend(_skill_record_errors(config, task_id))
     reasons.extend(_phase_errors(config, task_id, "design"))
@@ -1918,6 +1972,10 @@ def _reserve_write(config, scope, payload):
             "candidates": candidates,
             "inScope": True,
             "result": "pending",
+            # Best-effort means the lock can be missed; when it is, the row
+            # says so rather than passing for an exclusive reservation. §
+            # 7.3 declares 0.7 sequential, so this is a marker, not a race.
+            "lockless": fd is None,
         })
     finally:
         if fd is not None:
@@ -2104,7 +2162,10 @@ def verdict_expiry_errors(config, scope, verdict):
     expiring = []
     for row in last.values():
         seq = row.get("writeSeq")
-        if not (isinstance(seq, int) and seq > covers):
+        # `True` is an int in Python and would read as writeSeq 1: the only
+        # one of the five sequence comparisons that lacked the guard.
+        if not (isinstance(seq, int) and not isinstance(seq, bool)
+                and seq > covers):
             continue
         if not row.get("inScope"):
             continue
@@ -2371,10 +2432,12 @@ def _handle_request(config, scope, signed_status):
                        "reason": reason,
                        "detail": "scope abandoned without evidence; the grant is dead "
                                  "and rework means a new scope"})
-    _sign_transition(config, scope, signed_status, target,
-                     "request:%s" % verb)
+    signed_scope = _sign_transition(config, scope, signed_status, target,
+                                    "request:%s" % verb)
     if target in TERMINAL_STATUSES:
-        _restore_suspended_if_any(config, scope)
+        # The hook's own signed copy, never the agent's: what comes back
+        # in-flight carries a live grant (§ 4.5).
+        _restore_suspended_if_any(config, signed_scope)
     return {"additionalContext":
             "appian-harness: scope %r is now %r (signed)." % (scope.get("id"), target)}
 
@@ -2395,6 +2458,21 @@ def _restore_suspended_if_any(config, closed_scope):
     restored["resumeFrom"] = None
     _sign_transition(config, restored, STATUS_SUSPENDED, STATUS_IN_FLIGHT,
                      "hotfix-closed")
+
+
+def _seal_permission_mode(scope, payload):
+    """§ 6.1: the mode under which the grant arrived is the hook's to record,
+    and it is sealed wherever the grant first becomes visible -- including
+    the opening Write, which is the order § 4.1's table documents. Sealing
+    only on a later edit left the common flow with no mode at all, and a
+    grant with no mode is exactly what `bypassPermissions` looks like."""
+    grant = scope.get("grant")
+    if not isinstance(grant, dict) or grant.get("permissionMode"):
+        return scope, False
+    mode = (payload or {}).get("permission_mode")
+    if not isinstance(mode, str) or not mode.strip():
+        return scope, False
+    return dict(scope, grant=dict(grant, permissionMode=mode)), True
 
 
 def _enforce_state_machine(config, scope, payload=None):
@@ -2432,6 +2510,7 @@ def _enforce_state_machine(config, scope, payload=None):
                                 "próxima escritura preguntará." % overlap}
                     opened = dict(scope, suspendedScope=canonical,
                                   resumeFrom=canonical.get("id"))
+                    opened, _sealed = _seal_permission_mode(opened, payload)
                     _sign_transition(config, opened, None, STATUS_IN_FLIGHT,
                                      "open-hotfix")
                     return {"additionalContext":
@@ -2449,6 +2528,7 @@ def _enforce_state_machine(config, scope, payload=None):
                     "names another instance. Close, suspend or abandon the live one "
                     "first." % (projection.get("instanceId"), prior.get("status"))}
         if scope.get("status") == STATUS_IN_FLIGHT:
+            scope, _sealed = _seal_permission_mode(scope, payload)
             _sign_transition(config, scope, None, STATUS_IN_FLIGHT, "open")
             return {"additionalContext":
                     "appian-harness: scope %r opened and signed (instance %s)."
@@ -2478,12 +2558,11 @@ def _enforce_state_machine(config, scope, payload=None):
                 "`request`. The hand-written status %r was reverted to the signed %r."
                 % (scope.get("status"), signed_status)}
 
-    if scope.get("request"):
-        return _handle_request(config, scope, signed_status)
-
-    # An ordinary edit. Anchored fields cannot drift (§ 4.1); the rest of
-    # the contract may still be enriched -- the mandatory order is preflight
-    # first, scope and grant after -- so the projection follows it.
+    # § 4.1 and § 5.3 are enforced BEFORE the request is honoured. A single
+    # Write can carry both a `request` and a widened contract, and handling
+    # the request first meant `_sign_transition` signed the agent's file --
+    # the widening included -- without ever recording drift. Any request
+    # laundered it, legal or not, which made the anchor decorative.
     # `risk` is the hook's own field (§ 5.3): a file that lost or lowered it
     # -- an agent rewriting from a stale copy, or on purpose -- gets it
     # re-imposed rather than counted as contract drift, or one careless
@@ -2494,6 +2573,13 @@ def _enforce_state_machine(config, scope, payload=None):
     drifted = [f for f in ("kind",) if scope.get(f) != signed.get(f)]
     if signed.get("grant") is not None:
         drifted.extend(f for f in ("grant", "allowedObjects")
+                       if scope.get(f) != signed.get(f))
+    # § 4.5: the suspended scope carries its own grant and object list, so an
+    # unanchored copy is a second contract the agent could rewrite -- and
+    # closing the hotfix would sign it back in. `sessionsSeen` lives inside
+    # it, but the hook moves file and projection together, so it never drifts.
+    if isinstance(signed.get("suspendedScope"), dict):
+        drifted.extend(f for f in ("suspendedScope", "resumeFrom")
                        if scope.get(f) != signed.get(f))
     if drifted:
         if _observed_write_seq(config, instance_id) == 0:
@@ -2510,25 +2596,32 @@ def _enforce_state_machine(config, scope, payload=None):
             _record_state_event(config, "anchored-restored", instance_id,
                                 "restored %s from the signed projection"
                                 % ", ".join(drifted))
+            scope = restored
+            if not scope.get("request"):
+                return {"additionalContext":
+                        "appian-harness: %s cannot change during an instance (§ 4.1); "
+                        "no writes had happened, so the anchored values were restored "
+                        "from the signed copy." % ", ".join(drifted)}
+        else:
+            _record_state_event(config, "anchored-drift", instance_id,
+                                "fields changed under the instance: %s" % ", ".join(drifted))
+            # Nothing is signed: a transition asked for in the same Write that
+            # widened the contract would sign the widening with it. The
+            # request stays in the file, unconsumed, for a clean edit.
             return {"additionalContext":
-                    "appian-harness: %s cannot change during an instance (§ 4.1); "
-                    "no writes had happened, so the anchored values were restored "
-                    "from the signed copy." % ", ".join(drifted)}
-        _record_state_event(config, "anchored-drift", instance_id,
-                            "fields changed under the instance: %s" % ", ".join(drifted))
-        return {"additionalContext":
-                "appian-harness: %s cannot change during an instance (§ 4.1). The "
-                "change is recorded; the next write will ask. To change the contract, "
-                "close or abandon this scope and open a new one." % ", ".join(drifted)}
-    updated = dict(scope)
-    if signed.get("grant") is None and isinstance(updated.get("grant"), dict):
-        # § 6.1: the hook records the permission mode under which the grant
-        # arrived; `bypassPermissions` never counts as a person's approval,
-        # and the observed value is what the gate later reads.
-        mode = (payload or {}).get("permission_mode")
-        if isinstance(mode, str) and mode.strip():
-            updated["grant"] = dict(updated["grant"], permissionMode=mode)
-            _write_json_atomic(config["activeTaskFile"], updated)
+                    "appian-harness: %s cannot change during an instance (§ 4.1). The "
+                    "change is recorded; the next write will ask. To change the contract, "
+                    "close or abandon this scope and open a new one." % ", ".join(drifted)}
+
+    if scope.get("request"):
+        return _handle_request(config, scope, signed_status)
+
+    # An ordinary edit. The rest of the contract may still be enriched --
+    # the mandatory order is preflight first, scope and grant after -- so
+    # the projection follows it.
+    updated, sealed = _seal_permission_mode(scope, payload)
+    if sealed:
+        _write_json_atomic(config["activeTaskFile"], updated)
     _write_json_atomic(_projection_path(config),
                        {"instanceId": instance_id, "scope": updated,
                         "signedAt": _now()})
@@ -2852,6 +2945,48 @@ def _resolve_optional_path(project_root, value):
     return value if os.path.isabs(value) else os.path.join(project_root, value)
 
 
+def _configured_root(path):
+    """Whether this directory is the root of a project that uses the harness."""
+    return bool(path) and os.path.isfile(os.path.join(path, CONFIG_RELPATH))
+
+
+def _resolve_project_root(start):
+    """The project root behind the directory a hook payload reports.
+
+    The payload's `cwd` is the session's CURRENT directory, not the project
+    root, and it MOVES: a `cd` inside a Bash call persists, so every hook
+    fired afterwards arrives pointing at a subdirectory. Looking for the
+    config at exactly that path made a drifted session read as "not
+    configured" -- measured in P2-PASADA-7, where `state-gate` observed the
+    Edit that carried the grant, found no config under
+    `evidence/P2-PASADA-7/`, and returned `{}` without signing anything.
+    The same drift would have made the scope gate fail OPEN and the closure
+    gate approve in silence.
+
+    Resolution order, and why: the exact directory first, so a project that
+    already worked keeps its answer unchanged; then its ancestors, which is
+    how a subdirectory of a project finds the project; then
+    `CLAUDE_PROJECT_DIR`, the session's own root, for a `cwd` that wandered
+    outside the tree entirely. A directory belonging to no configured
+    project is returned untouched, so "not configured" still means inactive.
+    """
+    start = start or "."
+    here = os.path.abspath(start)
+    seen = set()
+    while os.path.normcase(here) not in seen:
+        seen.add(os.path.normcase(here))
+        if _configured_root(here):
+            return here
+        parent = os.path.dirname(here)
+        if parent == here:
+            break
+        here = parent
+    env_root = os.environ.get("CLAUDE_PROJECT_DIR")
+    if _configured_root(env_root):
+        return env_root
+    return start
+
+
 def _build_config(project_root):
     """Loads the project's harness config.
 
@@ -2862,6 +2997,7 @@ def _build_config(project_root):
       but could not be read. Fail closed, not silently-allow.
     - active=True, error=None: config is a usable dict.
     """
+    project_root = _resolve_project_root(project_root)
     config_path = os.path.join(project_root, CONFIG_RELPATH)
     project_config, err = _load_json_file(config_path)
     if project_config is None and err is None:
@@ -2988,9 +3124,9 @@ def cmd_state_gate():
 
 
 def cmd_failure_notice():
-    payload, _parse_err = _read_stdin_json()
-    _config, active, _err = _build_config(payload.get("cwd") or ".")
-    if not active:
+    payload, parse_err = _read_stdin_json()
+    config, active, err = _build_config(payload.get("cwd") or ".")
+    if not active or err or parse_err:
         _emit({})
         return 0
     result = failure_notice(payload, config)

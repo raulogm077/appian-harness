@@ -74,6 +74,33 @@ class TestAWriteWithoutAGrantAsks(unittest.TestCase):
             out = gate(c, "mcp__appian-dev__updateInterface", uuid="_uuid-lista")
             self.assertEqual(out["permissionDecision"], "ask")
 
+    def test_an_object_in_scope_but_outside_the_grant_still_asks(self):
+        # The grant's central comparison had no coverage of its own: every
+        # test that looked like it was exercising it was satisfied earlier
+        # by the allowedObjects check, so deleting the grant comparison
+        # entirely left the whole suite green. The two lists are anchored
+        # separately and can differ -- what the person approved is the
+        # grant, and that is what has to gate the write.
+        with tempfile.TemporaryDirectory() as root:
+            c = signed_cfg(root,
+                           allowedObjects=["_uuid-lista", "_uuid-colado"],
+                           grant=dict(GRANT, objects=["_uuid-lista"]))
+            out = gate(c, "mcp__appian-dev__updateInterface",
+                       uuid="_uuid-colado")
+            self.assertEqual(out["permissionDecision"], "ask")
+            self.assertIn("objetos concedidos", out["permissionDecisionReason"])
+
+    def test_a_grant_with_no_recorded_mode_is_not_a_persons_approval(self):
+        # § 6.1: the hook seals the mode wherever the grant first appears,
+        # so an absent one means it never saw the concession -- which is
+        # exactly what a bypassPermissions session leaves behind.
+        with tempfile.TemporaryDirectory() as root:
+            grant = {k: v for k, v in GRANT.items() if k != "permissionMode"}
+            c = signed_cfg(root, grant=grant)
+            out = gate(c, "mcp__appian-dev__updateInterface", uuid="_uuid-lista")
+            self.assertEqual(out["permissionDecision"], "ask")
+            self.assertIn("modo de permisos", out["permissionDecisionReason"])
+
     def test_bypass_permissions_did_not_come_from_a_person(self):
         # § 6.1: the hook records the mode and does not treat the grant as
         # human-approved when the whole permission system was off.
