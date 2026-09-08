@@ -59,7 +59,7 @@
 ## Cierre del plan (2026-09-02)
 
 **Las diez unidades HECHAS** (U7: 18 tests · U8: +8 · U9: 8 · U10: 3 E2E + causas retiradas), suite
-del repo en verde con **629 tests + 39 subtests** (336 en `hooks/`, 293 en `scripts/`; el tercer
+del repo en verde con **629 tests** (336 en `hooks/`, 293 en `scripts/`; el tercer
 ciclo E2E lo añadió la reconciliación del 2-sep). El registro normativo de lo hecho y medido, con
 el DoD condición a condición, está en `../implementacion-0.7.md` § Fase 2 — este plan queda como
 rastro de trabajo. Evidencia de la sonda: `sonda-perimetro.md`. Pasada atendida: `kit-atendido.md`.
