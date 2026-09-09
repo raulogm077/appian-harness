@@ -23,6 +23,7 @@ HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HOOKS_DIR)
 sys.path.insert(0, os.path.join(HOOKS_DIR, "..", "scripts"))
 import harness_hooks as HH
+from test_floor import interface_floor_batch
 
 SCRIPT = os.path.join(HOOKS_DIR, "harness_hooks.py")
 
@@ -197,6 +198,18 @@ def appian_write_landed(root, cwd, target=UUID_A, tool_use_id="toolu_1"):
                root)
 
 
+def appian_reads_credited(root, cwd, target=UUID_A):
+    """The PostToolBatch half: it credits the floor of § 8.
+
+    Without it the scope wrote and never read, and the closure gate
+    legitimately refuses to close -- so the cycle test has to run this leg
+    too or it would be proving the wrong thing.
+    """
+    return run("observe-reads",
+               {"cwd": cwd, "tool_calls": interface_floor_batch(target)},
+               root)
+
+
 def stop(root, cwd):
     return run("closure-gate", {"cwd": cwd, "stop_hook_active": False}, root)
 
@@ -238,6 +251,7 @@ class TestTheProjectRootSurvivesADriftedCwd(unittest.TestCase):
             self.assertEqual(decision["permissionDecision"], "allow",
                              decision.get("permissionDecisionReason"))
             appian_write_landed(root, here)
+            appian_reads_credited(root, here)
 
             # 4. The Edit that asks to close: signed into `closing`.
             current = read_scope(root)

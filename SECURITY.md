@@ -7,7 +7,7 @@ than after.
 
 ## What installing this grants
 
-The plugin declares six hook entries in `hooks/hooks.json`. Claude Code starts
+The plugin declares seven hook entries in `hooks/hooks.json`. Claude Code starts
 them as ordinary child processes, **with your user's permissions** — the same
 access as any command you run in that terminal. There is no sandbox between a
 hook and your filesystem. Nothing here drops privileges, and nothing here asks
@@ -39,7 +39,8 @@ installs no packages.
 | `SessionStart` | — | `session-start` | 15s | `additionalContext` only. Never blocks |
 | `PreToolUse` | Appian MCP write tools | `scope-gate` | 15s | `allow` or `ask`. **Never `deny`** |
 | `PostToolUse` | Appian MCP write tools | `log-write` | 15s | `{}`. Appends one log line |
-| `PostToolUse` | `Write\|Edit\|MultiEdit\|NotebookEdit` | `log-evidence-write` | 15s | `{}`. Appends one log line |
+| `PostToolUse` | `Write\|Edit\|MultiEdit\|NotebookEdit` | `state-gate` | 15s | `{}` or `additionalContext`. Appends one log line |
+| `PostToolBatch` | — (the event takes no matcher) | `observe-reads` | 15s | `{}`. Appends one line per verification read |
 | `PostToolUseFailure` | Appian MCP write tools | `failure-notice` | 15s | `additionalContext` only |
 | `Stop` | `*` | `closure-gate` | 20s | `approve` or `block` |
 
@@ -48,11 +49,15 @@ The Appian matcher is
 — it requires `appian` in the MCP server name, so tool calls to your other MCP
 servers are not routed to this plugin at all.
 
-Two entries are broader than that and worth knowing about. The
-`log-evidence-write` entry fires on **every** `Write`, `Edit`, `MultiEdit` and
-`NotebookEdit` in the session, and the `Stop` entry fires on every stop, in
-every project. Both exit immediately when the project is not configured (below);
-what they cost an unconfigured project is one process start.
+Three entries are broader than that and worth knowing about. The `state-gate`
+entry fires on **every** `Write`, `Edit`, `MultiEdit` and `NotebookEdit` in the
+session; the `Stop` entry fires on every stop; and `observe-reads` fires on
+**every batch of tool calls**, because `PostToolBatch` accepts no matcher — the
+filtering it needs is done in Python instead, and the first thing it does is
+return without touching disk when the project has no scope in flight or the
+batch holds nothing it credits. All three exit immediately when the project is
+not configured (below); what they cost an unconfigured project is one process
+start.
 
 ## What it reads
 

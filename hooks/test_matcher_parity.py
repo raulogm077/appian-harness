@@ -8,7 +8,8 @@ import json, os, re, sys, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-from harness_hooks import WRITE_TOOL_RE, DESTRUCTIVE_TOOL_RE, log_write
+from harness_hooks import (WRITE_TOOL_RE, DESTRUCTIVE_TOOL_RE,
+                           VERIFICATION_ACTIONS, log_write)
 
 HOOKS_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hooks.json")
 
@@ -302,6 +303,42 @@ class TestHooksJsonRoutesEverythingThePatternGates(unittest.TestCase):
                 self.assertFalse(
                     os.path.isfile(os.path.join(root, "evidence", "operations.jsonl")),
                     "%s is a read: it must not land in the write log" % name)
+
+    def test_the_read_channel_is_routed_in_python_not_by_a_matcher(self):
+        # PostToolBatch admits no matcher (Phase 0, P5), so the routing
+        # `observe-reads` needs cannot live in hooks.json: the entry has to
+        # exist and carry none, and the corpus filter is Python's job. A
+        # matcher written here would be silently ignored, which reads as
+        # "every batch is filtered" when nothing is.
+        with open(HOOKS_JSON, encoding="utf-8") as f:
+            hooks = json.load(f)["hooks"]
+        entries = [e for e in hooks.get("PostToolBatch", [])
+                   if any("observe-reads" in h["command"] for h in e["hooks"])]
+        self.assertEqual(len(entries), 1)
+        self.assertIsNone(entries[0].get("matcher"))
+
+    def test_the_two_corpora_are_disjoint(self):
+        # § 7.4 asserts the asymmetry: scope-gate and log-write share the
+        # write corpus; observe-reads has the verification one. A tool in
+        # both would let a write credit itself.
+        for name in self.ALL:
+            action = name.split("__")[-1]
+            if action in VERIFICATION_ACTIONS:
+                self.assertIsNone(WRITE_TOOL_RE.match(name),
+                                  "%s cannot be both a write and its own "
+                                  "verification" % name)
+
+    def test_test_process_model_is_a_write_and_not_a_check(self):
+        # It starts a real process. § 7.4 names it in as many words.
+        self.assertTrue(WRITE_TOOL_RE.match("mcp__appian-dev__testProcessModel"))
+        self.assertNotIn("testProcessModel", VERIFICATION_ACTIONS)
+
+    def test_the_verification_corpus_actually_covers_the_real_names(self):
+        # Same guard as the write side: without it the assertions above
+        # pass on an empty corpus.
+        present = [n for n in APPIAN_TOOLS
+                   if n.split("__")[-1] in VERIFICATION_ACTIONS]
+        self.assertGreater(len(present), 30)
 
     def test_another_vendors_write_tools_are_not_measured_against_appian_scope(self):
         # The server name has to carry `appian`, or another vendor's write --

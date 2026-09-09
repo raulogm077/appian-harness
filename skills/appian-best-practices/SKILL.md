@@ -59,9 +59,11 @@ Paths relative to this skill. **Open only what the change touches**; do not load
 | Sites, pages, navigation, branding | `references/09-sites-navigation.md` |
 | **Definition of Done: quality gates for any object** | `references/10-quality-gates.md` |
 | **Reliability: concurrency, idempotency, retries, observability, rollback** | `references/11-reliability-operations.md` |
+| **Render signals: what travels instead of a 218 KB tree, and what the render pair buys** | `references/12-render-signals.md` |
 
 A typical change touches 1–3. **10** applies to anything declared finished; **11**, to anything that
-writes data, calls an external system, or reaches production.
+writes data, calls an external system, or reaches production; **12**, to anything that renders an
+interface — which is every interface change, because the render pair is its floor.
 
 ## Discovering Project Context
 

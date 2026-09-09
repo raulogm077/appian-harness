@@ -12,12 +12,22 @@ import json, os, sys, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-from harness_hooks import closure_gate, log_write, scope_gate, state_gate
+from harness_hooks import (closure_gate, log_write, observe_reads, scope_gate,
+                           state_gate)
+from test_floor import interface_floor_batch, rule_floor_batch
 from test_grant import GRANT, signed_cfg
 from test_state_gate import projection, read_scope, write_scope
 
 
 class LifecycleMixin:
+    def _verify(self, c, batch):
+        # § 8: the floor is paid with reads the hook OBSERVES. A scope that
+        # wrote and never read cannot close clean any more, which is the
+        # whole point of Phase 3.
+        c = dict(c, activeTask=read_scope(c))
+        observe_reads({"tool_calls": batch}, c)
+        return c
+
     def _write(self, c, tool, tool_use_id, **tool_input):
         out = scope_gate({"tool_name": tool, "session_id": "s-e2e",
                           "tool_use_id": tool_use_id,
@@ -48,6 +58,7 @@ class TestAMicroOpensWritesAndCloses(LifecycleMixin, unittest.TestCase):
             c = signed_cfg(root)
             self._write(c, "mcp__appian-dev__updateInterface", "tu-1",
                         uuid="_uuid-lista", expression="a!textField()")
+            c = self._verify(c, interface_floor_batch("_uuid-lista"))
             c = self._close(c)
             final = read_scope(c)
             self.assertEqual(final["status"], "closed")
@@ -66,6 +77,7 @@ class TestATaskWithoutTasksOpensWritesAndCloses(LifecycleMixin, unittest.TestCas
             c = signed_cfg(root, kind="task", intent=None)
             self._write(c, "mcp__appian-dev__updateInterface", "tu-1",
                         uuid="_uuid-lista", expression="a!textField()")
+            c = self._verify(c, interface_floor_batch("_uuid-lista"))
             c = self._close(c)
             final = read_scope(c)
             self.assertEqual(final["status"], "closed")
@@ -84,13 +96,22 @@ class TestATaskWithTasksOpensWritesAndCloses(LifecycleMixin, unittest.TestCase):
                         uuid="_uuid-a", expression="a!textField()")
             self._write(c, "mcp__appian-dev__updateExpressionRule", "tu-2",
                         uuid="_uuid-b", expression="1+1")
+            c = self._verify(c, interface_floor_batch("_uuid-a")
+                             + rule_floor_batch("_uuid-b"))
             c = self._close(c)
             self.assertEqual(read_scope(c)["status"], "closed")
-            ops = os.path.join(c["evidenceDir"], "operations.jsonl")
+            # § 11.3: closing rotates this instance's journal under its own
+            # directory, so the root ledger does not grow without a ceiling.
+            # Both writes are still there, and still sequenced.
+            ops = os.path.join(c["evidenceDir"], c["activeTask"]["id"],
+                               "operations.jsonl")
             with open(ops, encoding="utf-8") as f:
                 rows = [json.loads(l) for l in f if l.strip()]
             resolved = [r for r in rows if r["result"] == "ok"]
             self.assertEqual({r["writeSeq"] for r in resolved}, {1, 2})
+            root_ledger = os.path.join(c["evidenceDir"], "operations.jsonl")
+            with open(root_ledger, encoding="utf-8") as f:
+                self.assertEqual([l for l in f if l.strip()], [])
 
 
 if __name__ == "__main__":

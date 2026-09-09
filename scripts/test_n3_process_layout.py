@@ -1,5 +1,6 @@
 import io, json, os, tempfile, unittest
 from contextlib import redirect_stdout, redirect_stderr
+import n3_process_layout as n3
 from n3_process_layout import check_layout, main
 
 # Coordinates in the shape the layout API returns them.
@@ -129,3 +130,106 @@ class TestEmptyLayoutIsNotAPass(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestProcessGraphChecks(unittest.TestCase):
+    """§ 8.3: what `change-review.md § Process Model Checks` specifies
+    without starting any process. It does not prove a gateway's condition is
+    right; it proves the gateway is not broken."""
+
+    START = {"id": 1, "type": "START", "name": "Start", "coordinates": [0, 0],
+             "connections": [{"targetNodeId": 3}]}
+    TASK = {"id": 3, "type": "USER_TASK", "name": "Review", "coordinates": [200, 0],
+            "connections": [{"targetNodeId": 2}]}
+    END = {"id": 2, "type": "END", "name": "End", "coordinates": [400, 0],
+           "connections": []}
+
+    def test_a_valid_path_from_start_to_end_is_clean(self):
+        self.assertEqual(
+            n3.process_graph_findings([self.START, self.TASK, self.END]), [])
+
+    def test_an_unreachable_node_is_G1(self):
+        stray = {"id": 4, "type": "SCRIPT_TASK", "name": "Orphaned",
+                 "coordinates": [200, 300], "connections": [{"targetNodeId": 2}]}
+        checks = [f["check"] for f in n3.process_graph_findings(
+            [self.START, self.TASK, self.END, stray])]
+        self.assertIn("G1", checks)
+
+    def test_a_gateway_pointing_at_a_node_that_does_not_exist_is_G2(self):
+        gateway = {"id": 5, "type": "XOR", "name": "Approved?",
+                   "coordinates": [200, 0],
+                   "decision": {"conditions": [{"expression": "=true",
+                                                "targetNodeId": 99}],
+                                "defaultPath": 2}}
+        start = dict(self.START, connections=[{"targetNodeId": 5}])
+        findings = n3.process_graph_findings([start, gateway, self.END])
+        self.assertIn("G2", [f["check"] for f in findings])
+        self.assertTrue(any("99" in f["detail"] for f in findings))
+
+    def test_a_gateway_whose_only_exits_are_conditions_is_connected(self):
+        # The false positive this guards: treating decision targets as
+        # non-edges reports every XOR as an orphan and every node past it
+        # as unreachable.
+        gateway = {"id": 5, "type": "XOR", "name": "Approved?",
+                   "coordinates": [200, 0],
+                   "decision": {"conditions": [{"expression": "=true",
+                                                "targetNodeId": 2}],
+                                "defaultPath": 2}}
+        start = dict(self.START, connections=[{"targetNodeId": 5}])
+        self.assertEqual(n3.process_graph_findings([start, gateway, self.END]), [])
+
+    def test_an_orphan_with_no_connections_at_all_is_G3(self):
+        orphan = {"id": 6, "type": "SCRIPT_TASK", "name": "Dead",
+                  "coordinates": [200, 600], "connections": []}
+        checks = [f["check"] for f in n3.process_graph_findings(
+            [self.START, self.TASK, self.END, orphan])]
+        self.assertIn("G3", checks)
+
+    def test_no_start_node_is_not_a_clean_graph(self):
+        checks = [f["check"] for f in n3.process_graph_findings([self.TASK, self.END])]
+        self.assertIn("G1", checks)
+
+    def test_the_layout_view_is_derived_from_the_same_input(self):
+        coords, edges = n3.layout_from_nodes([self.START, self.TASK, self.END])
+        self.assertEqual(sorted(coords), ["End", "Review", "Start"])
+        self.assertIn(["Start", "Review"], edges)
+
+
+class TestGraphCLI(unittest.TestCase):
+
+    def run_main(self, args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = n3.main(["n3_process_layout.py"] + args)
+        return code, out.getvalue(), err.getvalue()
+
+    def nodes_file(self, root, nodes):
+        p = os.path.join(root, "nodes.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(nodes, f)
+        return p
+
+    def test_a_clean_model_exits_zero(self):
+        g = TestProcessGraphChecks
+        with tempfile.TemporaryDirectory() as t:
+            p = self.nodes_file(t, [g.START, g.TASK, g.END])
+            code, out, _ = self.run_main(["--graph", p])
+            self.assertEqual(code, 0)
+            self.assertIn("OK", out)
+
+    def test_a_broken_model_exits_one_and_names_the_check(self):
+        g = TestProcessGraphChecks
+        orphan = {"id": 6, "type": "SCRIPT_TASK", "name": "Dead",
+                  "coordinates": [200, 600], "connections": []}
+        with tempfile.TemporaryDirectory() as t:
+            p = self.nodes_file(t, [g.START, g.TASK, g.END, orphan])
+            code, out, _ = self.run_main(["--graph", p])
+            self.assertEqual(code, 1)
+            self.assertIn("G3", out)
+
+    def test_nodes_without_ids_are_not_measured(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = self.nodes_file(t, [{"name": "no id"}])
+            code, out, _ = self.run_main(["--graph", p])
+            self.assertEqual(code, 3)
+            self.assertIn("NOT MEASURED", out)

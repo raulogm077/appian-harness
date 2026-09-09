@@ -49,7 +49,7 @@ SKIP_REASON = ("APPIAN_HARNESS_SKIP_SLOW=1: launcher subprocess tests skipped. "
                "Unset it before trusting a release.")
 
 SUBCOMMANDS = ("session-start", "scope-gate", "closure-gate", "log-write",
-               "state-gate", "failure-notice")
+               "observe-reads", "state-gate", "failure-notice")
 
 
 def run(subcommand, project_root, starve=False, payload=None, extra_env=None):
