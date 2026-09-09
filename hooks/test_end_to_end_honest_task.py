@@ -59,8 +59,11 @@ class TestOneHonestTaskEndToEnd(unittest.TestCase):
         with open(os.path.join(d, "practices-%s.json" % phase), "w", encoding="utf-8") as f:
             json.dump({"task": self.TASK, "phase": phase, "verdict": "PASS",
                        "referencesApplied": [self.ref],
-                       "findings": [{"criterion": "c", "verdict": "PASS",
-                                     "evidence": "e", "reference": self.ref}]}, f)
+                       # `id` because design is a v07 phase: the re-emission
+                       # cap of § 9.4 compares finding ids across versions.
+                       "findings": [{"id": "f-1", "criterion": "c",
+                                     "verdict": "PASS", "evidence": "e",
+                                     "reference": self.ref}]}, f)
 
     def _skill_record(self):
         d = os.path.join(self.evidence, self.TASK)

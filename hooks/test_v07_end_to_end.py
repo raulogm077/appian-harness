@@ -12,8 +12,9 @@ import json, os, sys, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-from harness_hooks import (closure_gate, log_write, observe_reads, scope_gate,
-                           state_gate)
+from harness_hooks import (certify_is_owed, closure_gate, log_write,
+                           observe_reads, scope_gate, state_gate)
+from test_certify import write_certify
 from test_floor import interface_floor_batch, rule_floor_batch
 from test_grant import GRANT, signed_cfg
 from test_state_gate import projection, read_scope, write_scope
@@ -40,6 +41,16 @@ class LifecycleMixin:
                                                 or "_uuid-nuevo",
                                                 "versionId": 1})}, c)
 
+    def _certify(self, c, objects):
+        # § 5.4: all three shapes touch an expression, so all three buy one
+        # certify. The judge is dispatched with the artifact and the
+        # contract; what lands on disk is the verdict, and that is what the
+        # gate reads.
+        scope = read_scope(c)
+        if certify_is_owed(c, scope):
+            write_certify(c, scope, objects=objects)
+        return c
+
     def _close(self, c):
         scope = read_scope(c)
         scope["request"] = "close"
@@ -59,6 +70,7 @@ class TestAMicroOpensWritesAndCloses(LifecycleMixin, unittest.TestCase):
             self._write(c, "mcp__appian-dev__updateInterface", "tu-1",
                         uuid="_uuid-lista", expression="a!textField()")
             c = self._verify(c, interface_floor_batch("_uuid-lista"))
+            c = self._certify(c, ["_uuid-lista"])
             c = self._close(c)
             final = read_scope(c)
             self.assertEqual(final["status"], "closed")
@@ -78,6 +90,7 @@ class TestATaskWithoutTasksOpensWritesAndCloses(LifecycleMixin, unittest.TestCas
             self._write(c, "mcp__appian-dev__updateInterface", "tu-1",
                         uuid="_uuid-lista", expression="a!textField()")
             c = self._verify(c, interface_floor_batch("_uuid-lista"))
+            c = self._certify(c, ["_uuid-lista"])
             c = self._close(c)
             final = read_scope(c)
             self.assertEqual(final["status"], "closed")
@@ -98,6 +111,7 @@ class TestATaskWithTasksOpensWritesAndCloses(LifecycleMixin, unittest.TestCase):
                         uuid="_uuid-b", expression="1+1")
             c = self._verify(c, interface_floor_batch("_uuid-a")
                              + rule_floor_batch("_uuid-b"))
+            c = self._certify(c, objects)
             c = self._close(c)
             self.assertEqual(read_scope(c)["status"], "closed")
             # § 11.3: closing rotates this instance's journal under its own

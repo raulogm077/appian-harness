@@ -272,6 +272,7 @@ cat > "$PROJ/evidence/TASK-3/practices-design.json" <<'JSON'
   "referencesApplied": ["10-quality-gates.md#three-outcomes-not-two"],
   "findings": [
     {
+      "id": "f-1",
       "criterion": "three outcomes are used, and N/A is not a fourth",
       "verdict": "PASS",
       "evidence": "the proposed design records PASS, FAIL or NOT MEASURED per gate",
@@ -324,10 +325,12 @@ The verdict above is also the **minimal passing example** of the schema. Every
 field in it is required: `task` and `phase` have to match the path the gate
 opens (`<evidenceDir>/TASK-3/practices-design.json`), `referencesApplied` must be
 non-empty with each entry resolving to a real file and heading under
-`skills/appian-best-practices/references/`, and each finding needs a
-`criterion`, a `verdict` and non-empty `evidence`. The full schema, including
-the fields a `NOT_MEASURED` verdict needs, is in
-`agents/appian-practices-auditor.md`.
+`skills/appian-best-practices/references/`, and each finding needs an `id`, a
+`criterion`, a `verdict` and non-empty `evidence`. The `id` is what the
+re-emission cap compares across versions of a verdict: without it, a third
+emission cannot be told apart from a restatement of the second. The full
+schema, including the matrix a `certify` carries and the fields a
+`NOT_MEASURED` verdict needs, is in `agents/appian-practices-auditor.md`.
 
 ### The validator rejects my citation
 

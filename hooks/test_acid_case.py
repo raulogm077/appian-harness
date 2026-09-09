@@ -16,8 +16,12 @@ single check**. What makes that possible, and what this file holds to:
     behaviour can be covered by the REST test-case run while accessibility
     -- which needs a tree that will not render -- stays NOT MEASURED.
 
-The full close WITH a reviewer belongs to Phase 4: the `certify` is the
-single judge's, which Phase 4 delivers. What is asserted here is the floor.
+The close is now the FULL one, reviewer included: the `certify` is the single
+judge's, and it arrives with Phase 4. Exposure bought this scope a reviewer and
+not a size, so the verdict is one object's matrix -- and the two halves of the
+case meet in it: gate 2 is accredited by the REST replay, gate 4 is
+NOT_MEASURED because accessibility needs a tree that will not render, and the
+scope still closes as `micro`.
 """
 import json
 import os
@@ -31,6 +35,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 import harness_hooks as hh  # noqa: E402
 from harness_hooks import (closure_gate, log_write, observe_reads, scope_gate,
                            state_gate)
+from test_certify import REF, certify_cells, write_certify
 from test_grant import GRANT, signed_cfg
 from test_state_gate import projection, read_scope, write_scope
 
@@ -92,6 +97,37 @@ class AcidCase(unittest.TestCase):
         observe_reads({"tool_calls": batch}, c)
         return c
 
+    def certify(self, c):
+        """The reviewer's half, which Phase 3 left to Phase 4.
+
+        Exposure through a published site bought this scope a reviewer, not
+        a size (§ 5.5), and the whole verdict is ONE object's matrix. Its
+        shape is what the case is really about: gate 2 is accredited by the
+        REST replay -- the alternative surface, because the 500 is the
+        servlet's -- while gate 4 stays NOT_MEASURED, because accessibility
+        needs a tree that will not render and no instrument can produce it.
+        `validateDesignObject` accredits nothing: it is green on anything
+        that parses, and the validator refuses it for that reason.
+        """
+        scope = read_scope(c)
+        cells = certify_cells([DASHBOARD], "tu-get",
+                              gate2={"toolUseId": "tu-rest"},
+                              gate4={"verdict": "NOT_MEASURED",
+                                     "evidence": "the render is the 500 of "
+                                                 "serialization; no tree exists to "
+                                                 "judge the screen on",
+                                     "impact": "the screen's accessibility and its "
+                                               "states are unjudged",
+                                     "remedy": "a person opens the screen in the site",
+                                     "reference": REF})
+        return write_certify(
+            c, scope, objects=[DASHBOARD], verdict="NOT_MEASURED",
+            notMeasuredClass="REQUIRES_HUMAN", owner="the scope's owner",
+            closingCondition="somebody opens GDE_INT_Dashboard in the site and "
+                             "says whether it reads correctly",
+            deferredCriterion="visual-judgement-on-rendered-screen",
+            matrix=cells)
+
     def close(self, c):
         scope = read_scope(c)
         scope["request"] = "close"
@@ -135,6 +171,7 @@ class TestTheAcidCaseClosesAsMicro(AcidCase):
             c = self.write(c)
             c = self.family_evidence(c)
             c = self.observe(c, self.floor_batch(c))
+            self.certify(c)
 
             report = hh.floor_report(c, read_scope(c))
             # Nothing is BLOCKING: there is no leg the person could go and
@@ -150,6 +187,44 @@ class TestTheAcidCaseClosesAsMicro(AcidCase):
             self.assertEqual(final["kind"], "micro")
             self.assertEqual(final["status"], "closed-pending-human")
             self.assertEqual(projection(c)["scope"]["kind"], "micro")
+
+    def test_it_buys_exactly_one_judge_and_no_chain(self):
+        # § 5.4: the reviewer lane costs ONE certify over the object. No
+        # design (a micro never pays it), no risk (the scope is not high),
+        # and no second opinion voting against the first.
+        with tempfile.TemporaryDirectory() as root:
+            c = self.scope(root)
+            c = self.write(c)
+            c = self.family_evidence(c)
+            c = self.observe(c, self.floor_batch(c))
+            self.certify(c)
+            c, out = self.close(c)
+            self.assertEqual(out["decision"], "approve", out)
+            scope_dir = os.path.join(c["evidenceDir"], read_scope(c)["id"])
+            verdicts = sorted(f for f in os.listdir(scope_dir)
+                              if f.startswith("practices-"))
+            # The design verdict is the fixture's, and a micro's close never
+            # asks for it: what this scope BOUGHT is the one certify.
+            self.assertEqual([f for f in verdicts if "certify" in f],
+                             ["practices-certify.json"])
+            self.assertEqual([f for f in verdicts if "risk" in f], [])
+
+    def test_the_instrument_failure_did_not_buy_a_second_judge(self):
+        # A failure of the instrument changes neither the kind (§ 8.7) nor
+        # the number of judges: the gap is carried as a pending judgement,
+        # not escalated into more ceremony.
+        with tempfile.TemporaryDirectory() as root:
+            c = self.scope(root)
+            c = self.write(c)
+            c = self.family_evidence(c)
+            c = self.observe(c, self.floor_batch(c))
+            self.certify(c)
+            c, _out = self.close(c)
+            dispatched = [r for r in hh._read_jsonl(
+                os.path.join(c["evidenceDir"], "gate-decisions.jsonl"))
+                if r.get("event") == "judge-dispatched"]
+            self.assertEqual(dispatched, [])
+            self.assertEqual(read_scope(c)["kind"], "micro")
 
     def test_no_check_is_issued_twice(self):
         # § 17.3's "comprobaciones repetidas: 0". Every credited row has its
@@ -240,6 +315,7 @@ class TestWhatTheCaseStillOwes(AcidCase):
             c = self.write(c)
             c = self.family_evidence(c)
             c = self.observe(c, self.floor_batch(c))
+            self.certify(c)
             c, _out = self.close(c)
             debts = hh._read_jsonl(os.path.join(c["evidenceDir"],
                                                 "deferred-debt.jsonl"))

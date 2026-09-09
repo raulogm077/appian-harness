@@ -46,7 +46,9 @@ import time
 # validate_verdict.py lives in ../scripts/; inserted unconditionally so this
 # module works both imported by the tests and run as the hook entry point.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-from validate_verdict import isfile_exact, load_verdict, validate_verdict
+from validate_verdict import (CARDINAL, CONTEXTUAL, RECOMMENDED, GATE_NAMES,
+                              gate_class, isfile_exact, load_verdict,
+                              validate_verdict)
 # The deterministic checkers, imported rather than shelled out to: a render
 # is 218 KB and there are 942 KB ones (§ 8.5), so the hook measures the
 # response it already holds and stores ~500 B. Nothing here reaches anyone's
@@ -1856,14 +1858,18 @@ def closure_gate(payload, config):
                        " | ".join(missing_details))}
 
 
-def _v07_closure_missing(config, scope):
+def _v07_closure_missing(config, scope, certify=None):
     """What a v07 close demands: the state machine, the § 7.1 rule about a
-    reservation nobody answered, and the deterministic floor of § 8.
+    reservation nobody answered, the deterministic floor of § 8 and, where
+    the lane buys one, the judge's certify (§ 9).
 
-    The judge's verdicts are Phase 4's (§ 16 places them there), so what
-    "closes clean" means here is: the machine and the write log were
-    respected, and every leg the floor asks for was paid by a read the hook
-    saw, taken at or after the write it accredits."""
+    The floor and the judge are asked in that order because the floor is
+    free and the judge is not: a scope that has not paid its legs is not
+    made closeable by a verdict.
+
+    A RECOMMENDED failure blocks once (§ 9.3). Whether this is that once is
+    read from `gate-decisions.jsonl`, so the count survives the session.
+    """
     unresolved = _unresolved_pendings(config, scope.get("instanceId"))
     if unresolved:
         return ["hay %d escritura(s) sin respuesta (pending) en operations.jsonl — "
@@ -1871,7 +1877,20 @@ def _v07_closure_missing(config, scope):
                 "Relee cada objeto afectado y registra lo que persistió antes de "
                 "cerrar (§ 7.1)" % len(unresolved)]
     report = floor_report(config, scope)
-    return report["blocking"] + report["missing"]
+    missing = report["blocking"] + report["missing"]
+    if certify is None:
+        certify = certify_report(config, scope)
+    missing.extend(certify["missing"])
+    missing.extend(certify["blocking"])
+    if certify["recommended"] \
+            and not _recommended_blocked(config, scope.get("instanceId")):
+        missing.extend(
+            "%s gate %s (%s) is RECOMMENDED and failed: %s. Apply every finding of "
+            "this cycle in one batch and re-certify once (§ 9.4); stopping again "
+            "closes with the finding recorded as debt"
+            % (f["object"], f["gate"], GATE_NAMES.get(f["gate"], "?"),
+               f["detail"]) for f in certify["recommended"])
+    return missing
 
 
 def _unresolved_pendings(config, instance_id):
@@ -1951,9 +1970,17 @@ def _closure_gate_v07(payload, config, scope):
                           "`never-closed` debt." % (signed.get("id"), seq)}
 
     # status == closing
-    missing = _v07_closure_missing(config, signed)
+    certify = certify_report(config, signed)
+    missing = _v07_closure_missing(config, signed, certify)
     if not missing:
-        return _close_on_the_floor(config, signed)
+        return _close_on_the_floor(config, signed, certify)
+    if certify["recommended"] and not _recommended_blocked(config, instance):
+        # Recorded at the moment it actually holds the close back, not when
+        # the finding is read: a scope blocked by the floor has not yet
+        # spent the one block a RECOMMENDED gate gets.
+        _record_state_event(config, "recommended-blocked", instance,
+                            "; ".join("%s gate %s" % (f["object"], f["gate"])
+                                      for f in certify["recommended"]))
     if payload.get("stop_hook_active"):
         _append_jsonl(_debt_register(config),
                       {"timestamp": _now(), "task": signed.get("id"),
@@ -1971,8 +1998,8 @@ def _closure_gate_v07(payload, config, scope):
             "reason": "the close is not complete: %s" % "; ".join(missing)}
 
 
-def _close_on_the_floor(config, signed):
-    """Which terminal state a floor-satisfying close earns (§§ 8.4, 8.7).
+def _close_on_the_floor(config, signed, certify=None):
+    """Which terminal state a floor-satisfying close earns (§§ 8.4, 8.7, 9.3).
 
     Three different things that used to look alike:
       a residue with an owner    -> `closed`. A residue is not a failure.
@@ -1982,8 +2009,21 @@ def _close_on_the_floor(config, signed):
       a type with no floor row   -> `closed-with-debt`, without waiting:
                                     the defect is the design's, not the
                                     scope's.
+
+    The judge's findings land in the same three shapes: a CONTEXTUAL FAIL is
+    debt that never blocked and does not change the state (§ 9.3, § 10.2), a
+    RECOMMENDED one that has already blocked once closes `closed-with-debt`
+    (§ 10.1), and a NOT_MEASURED cell is a judgement a person still owes.
     """
     report = floor_report(config, signed)
+    if certify is None:
+        certify = certify_report(config, signed)
+    # Gate findings go to the same register and the same summaries as the
+    # floor's residue: what differs is the state each produces, which is
+    # exactly what used to be confused under one label (§ 10.1).
+    report["debts"] = report["debts"] + certify["contextual"] \
+        + certify["recommended"]
+    report["notMeasured"] = report["notMeasured"] + certify["notMeasured"]
     for debt in report["debts"]:
         _append_jsonl(_debt_register(config),
                       dict(debt, timestamp=_now(), task=signed.get("id"),
@@ -2008,6 +2048,17 @@ def _close_on_the_floor(config, signed):
                    "Nothing here is yours to fix: a type this scope wrote has no row "
                    "in the floor table, and that is settled by widening the table "
                    "(§ 8.1)." % signed.get("id"))
+    elif certify["recommended"]:
+        # It blocked once and the finding is still open (§ 9.3, § 10.1). The
+        # bottom of the ladder is recorded debt, not another level of
+        # ceremony.
+        status, trigger = STATUS_CLOSED_WITH_DEBT, "stop-recommended-twice"
+        message = ("appian-harness: scope %r closed WITH DEBT. A RECOMMENDED gate "
+                   "failed and blocked once; it does not block twice. Open: %s. "
+                   "Owner and closing condition are in deferred-debt.jsonl."
+                   % (signed.get("id"),
+                      "; ".join("%s gate %s" % (f["object"], f["gate"])
+                                for f in certify["recommended"])))
     else:
         status, trigger, message = STATUS_CLOSED, "stop-clean", None
 
@@ -3014,7 +3065,37 @@ def observe_reads(payload, config):
     for row in rows:
         _append_jsonl(_checks_ledger(config), row)
     _observe_skill_trail(config, scope, entries)
+    _observe_judge_dispatch(config, scope, entries)
     return {}
+
+
+# The tool a subagent is dispatched with, under both names Claude Code has
+# used for it. Written from what the hook saw, like every other trail here.
+_AGENT_TOOLS = ("Task", "Agent")
+_JUDGE_AGENT = "appian-practices-auditor"
+_JUDGE_PHASE_RE = re.compile(r"\b(design|certify|risk)\b", re.I)
+
+
+def _observe_judge_dispatch(config, scope, entries):
+    """§ 9.1: a dispatch records its start, so "the judge never arrived" and
+    "the judge said FAIL" cannot reach the same terminal state.
+
+    The end is the verdict on disk -- there is no second event to write and
+    no file to sit polling, which this harness does not do anywhere.
+    """
+    for entry in entries:
+        if entry.get("tool_name") not in _AGENT_TOOLS:
+            continue
+        tool_input = entry.get("tool_input") or {}
+        if _norm_ident(str(tool_input.get("subagent_type") or "")) != _JUDGE_AGENT:
+            continue
+        prompt = str(tool_input.get("prompt") or "")
+        match = _JUDGE_PHASE_RE.search(prompt)
+        phase = match.group(1).lower() if match else None
+        _record_state_event(
+            config, "judge-dispatched", scope.get("instanceId"),
+            "the judge was dispatched for %s" % (phase or "an unstated phase"),
+            phase=phase, toolUseId=entry.get("tool_use_id"))
 
 
 # --- § 8 · the deterministic floor -------------------------------------
@@ -3693,6 +3774,202 @@ def floor_report(config, scope):
     return report
 
 
+# --- § 9 · the judge, where the close reads its verdict ----------------
+
+# § 5.4: in 0.7 the reviewer-less lane is exactly what the hook can decide
+# from the payload -- a write classified `behavioural: false`, and the types
+# with no expression of their own. Derived from the two sets that already
+# exist rather than restated, so a tool added to either lands here too.
+_VISIBILITY_MICRO_ACTIONS = frozenset(("updateRecordTypeView",
+                                       "updateRecordTypeUserFilter"))
+_EXPRESSIONLESS_MICRO_ACTIONS = (_MICRO_ELIGIBLE_ACTIONS
+                                 - _EXPRESSION_ACTIONS
+                                 - _VISIBILITY_MICRO_ACTIONS)
+
+_VERDICT_VERSION_RE = re.compile(r"^practices-([a-z]+)\.(\d{3})\.json$")
+
+
+def certify_is_owed(config, scope):
+    """Whether this scope owes a `certify`, and nothing beyond that (§ 11.1).
+
+    Zero judges is a result, not an omission: a `micro` whose writes cannot
+    change what data is shown or who sees it pays the deterministic floor
+    and closes. Buying a judge "just in case" is the waste of § 1.3 wearing
+    a responsible face.
+
+    The exemption is demonstrated rather than declared, and it fails to the
+    expensive side: an unclassified action buys the reviewer.
+    """
+    objects = _written_objects(config, scope)
+    if not objects:
+        return False
+    if scope.get("kind") == "task":
+        # § 11.1: every task except the delete-only profile. Nothing that
+        # only removed objects has a contract left to certify.
+        return not all(e["deleted"] for e in objects.values())
+    for entry in objects.values():
+        if entry["deleted"]:
+            return True
+        if not entry["behavioural"]:
+            continue
+        if entry["actions"] - _EXPRESSIONLESS_MICRO_ACTIONS:
+            return True
+    return False
+
+
+def latest_verdict(config, task_id, phase):
+    """The highest `practices-<phase>.NNN.json`, or the unsuffixed copy.
+
+    Verdicts are versioned so the re-emission cap has a corpus (§ 9.4); the
+    unsuffixed name stays as a copy of the current one for readers that
+    expect it (§ 11.1). The gate reads the highest version rather than the
+    copy, so a stale copy cannot certify a scope the judge has moved on
+    from.
+    """
+    scope_dir = os.path.join(_evidence_dir(config), task_id)
+    best = None
+    try:
+        entries = os.listdir(scope_dir)
+    except OSError:
+        entries = []
+    for name in entries:
+        match = _VERDICT_VERSION_RE.match(name)
+        if match and match.group(1) == phase:
+            number = int(match.group(2))
+            if best is None or number > best[0]:
+                best = (number, os.path.join(scope_dir, name))
+    if best:
+        return best[1]
+    plain = os.path.join(scope_dir, "practices-%s.json" % phase)
+    return plain if isfile_exact(plain, _evidence_dir(config)) else None
+
+
+def _judge_dispatches(config, instance_id, phase):
+    """Dispatches of one phase recorded for this instance (§ 9.1).
+
+    A dispatch that started and never finished is an instrument limit with
+    an automatic owner, not an absent verdict: "the judge never started" and
+    "the judge said FAIL" must not reach the same terminal state.
+    """
+    return [r for r in _read_jsonl(os.path.join(_evidence_dir(config),
+                                                "gate-decisions.jsonl"))
+            if r.get("event") == "judge-dispatched"
+            and r.get("instanceId") == instance_id
+            and r.get("phase") == phase]
+
+
+def _recommended_blocked(config, instance_id):
+    """How many times a RECOMMENDED gate has already held this scope back.
+
+    § 9.3: it blocks ONCE. The second Stop closes with the finding recorded
+    as debt rather than spending a remediation cycle on it.
+    """
+    return sum(1 for r in _read_jsonl(os.path.join(_evidence_dir(config),
+                                                   "gate-decisions.jsonl"))
+               if r.get("event") == "recommended-blocked"
+               and r.get("instanceId") == instance_id)
+
+
+def _cell_label(cell):
+    gate = cell.get("gate")
+    return "%s gate %s (%s)" % (cell.get("object"), gate,
+                                GATE_NAMES.get(gate, "?"))
+
+
+def certify_report(config, scope):
+    """What the judge's verdict still demands of this close (§§ 9.3, 9.5).
+
+    Four buckets, and they are different on purpose:
+      missing     -> block: no verdict, an invalid one, or one that expired
+      blocking    -> block: a CARDINAL FAIL. No exception and no cycles
+      recommended -> blocks once, then becomes debt
+      contextual  -> never blocks; debt with an owner, and it still shows up
+
+    Class and nature are independent (§ 9.3): this reads the class, and the
+    validator has already checked that the auditor did not judge a cell it
+    was supposed to import.
+    """
+    report = {"missing": [], "blocking": [], "recommended": [],
+              "contextual": [], "notMeasured": []}
+    if not certify_is_owed(config, scope):
+        return report
+
+    task_id, instance = scope.get("id"), scope.get("instanceId")
+    path = latest_verdict(config, task_id, "certify")
+    if not path:
+        started = _judge_dispatches(config, instance, "certify")
+        report["missing"].append(
+            "no certify verdict for this scope. %s"
+            % ("a certify was dispatched and never wrote its verdict: re-run that "
+               "one dispatch, and if it fails again record it as an instrument "
+               "limit rather than closing on nothing (§ 9.1)" if started else
+               "this scope's lane buys one certify over the object -- dispatch it "
+               "with the artifact and the contract, never with the builder's "
+               "conclusion (§ 9.1)"))
+        return report
+
+    plugin_root = config.get("pluginRoot")
+    if not plugin_root:
+        report["missing"].append("cannot validate the certify verdict: no pluginRoot "
+                                 "configured")
+        return report
+    errors = validate_verdict(path, plugin_root, expected_task=task_id,
+                              expected_phase="certify",
+                              evidence_dir=_evidence_dir(config),
+                              instance_id=instance)
+    if errors:
+        report["missing"].append("the certify verdict is invalid: %s"
+                                 % "; ".join(errors))
+        return report
+
+    verdict = load_verdict(path)
+    expired = verdict_expiry_errors(config, scope, verdict)
+    if expired:
+        report["missing"].extend(expired)
+        return report
+
+    for cell in verdict.get("matrix") or []:
+        if not isinstance(cell, dict):
+            continue
+        if cell.get("verdict") == "NOT_MEASURED":
+            # Same keys the floor's gaps use: § 10.1 sends all three debt
+            # classes to one table, and a second vocabulary there would make
+            # the summaries lie by omission.
+            report["notMeasured"].append(
+                {"class": "gate-%s" % cell.get("gate"),
+                 "object": cell.get("object"), "gate": cell.get("gate"),
+                 "detail": cell.get("evidence"),
+                 "owner": verdict.get("owner") or "the scope's owner",
+                 "condition": verdict.get("closingCondition")
+                              or cell.get("remedy")})
+            continue
+        if cell.get("verdict") != "FAIL":
+            continue
+        klass = gate_class(cell)
+        entry = {"kind": "gate-finding", "class": klass,
+                 "object": cell.get("object"), "gate": cell.get("gate"),
+                 "detail": cell.get("evidence"), "remedy": cell.get("remedy"),
+                 "owner": "the scope's owner"}
+        if klass == CARDINAL:
+            report["blocking"].append(
+                "%s is CARDINAL and failed: %s. It blocks the close without "
+                "exception and without cycles (§ 9.3). Remedy: %s"
+                % (_cell_label(cell), cell.get("evidence"),
+                   cell.get("remedy")))
+        elif klass == RECOMMENDED:
+            report["recommended"].append(entry)
+        else:
+            report["contextual"].append(entry)
+
+    if verdict.get("verdict") == "NOT_MEASURED" \
+            and verdict.get("notMeasuredClass") == "BLOCKING":
+        report["missing"].append(
+            "the certify verdict is NOT_MEASURED / BLOCKING: it could have been "
+            "measured and was not, which is a process failure rather than a "
+            "sanctioned limit")
+    return report
+
+
 # --- § 11 · retention and rotation, at the moment a scope goes terminal -
 
 # The fixed names of § 11.1. Anything else matching a render shape is an
@@ -3930,10 +4207,14 @@ def _sign_transition(config, scope, from_status, to_status, trigger):
     return signed
 
 
-def _record_state_event(config, event, instance_id, detail):
-    _append_jsonl(os.path.join(_evidence_dir(config), "gate-decisions.jsonl"),
-                  {"timestamp": _now(), "event": event,
-                   "instanceId": instance_id, "detail": detail})
+def _record_state_event(config, event, instance_id, detail, **extra):
+    """One line of `gate-decisions.jsonl`. `extra` carries the fields a
+    particular event is queried by later -- a judge dispatch by its phase --
+    so a reader does not have to parse them back out of the prose."""
+    row = {"timestamp": _now(), "event": event,
+           "instanceId": instance_id, "detail": detail}
+    row.update(extra)
+    _append_jsonl(os.path.join(_evidence_dir(config), "gate-decisions.jsonl"), row)
 
 
 def _handle_request(config, scope, signed_status):
