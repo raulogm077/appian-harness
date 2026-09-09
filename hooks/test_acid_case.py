@@ -204,9 +204,12 @@ class TestTheAcidCaseClosesAsMicro(AcidCase):
             verdicts = sorted(f for f in os.listdir(scope_dir)
                               if f.startswith("practices-"))
             # The design verdict is the fixture's, and a micro's close never
-            # asks for it: what this scope BOUGHT is the one certify.
+            # asks for it: what this scope BOUGHT is the one certify -- one
+            # emission (§ 9.4's version) plus the copy § 11.1 keeps for
+            # readers, and nothing else.
             self.assertEqual([f for f in verdicts if "certify" in f],
-                             ["practices-certify.json"])
+                             ["practices-certify.001.json",
+                              "practices-certify.json"])
             self.assertEqual([f for f in verdicts if "risk" in f], [])
 
     def test_the_instrument_failure_did_not_buy_a_second_judge(self):

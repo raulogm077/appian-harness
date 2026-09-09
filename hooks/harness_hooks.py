@@ -1884,6 +1884,7 @@ def _v07_closure_missing(config, scope, certify=None):
         certify = certify_report(config, scope)
     missing.extend(certify["missing"])
     missing.extend(certify["blocking"])
+    missing.extend(risk_errors(config, scope))
     if certify["recommended"] \
             and not _recommended_blocked(config, scope.get("instanceId")):
         missing.extend(
@@ -3894,6 +3895,88 @@ def _cell_label(cell):
                                 GATE_NAMES.get(gate, "?"))
 
 
+def _judge_verdict(config, scope, phase, absent_remedy):
+    """(verdict, errors) for one phase this scope owes.
+
+    Everything both phases need before anyone looks at the content: the
+    verdict exists, it is VERSIONED, it validates against the contract, and
+    it has not expired.
+
+    The versioning is not bookkeeping. § 9.4 makes the re-emission cap the
+    one anti-waste magnitude that goes from auditable to IMPOSSIBLE, and it
+    can only be impossible if there is a corpus to compare against: a judge
+    overwriting the fixed name three times leaves nothing on disk for the
+    third emission to be measured against. So the gate reads
+    `practices-<phase>.NNN.json`, and the unsuffixed name stays what § 11.1
+    calls it -- a copy, for readers that expect it.
+    """
+    task_id, instance = scope.get("id"), scope.get("instanceId")
+    path = latest_verdict(config, task_id, phase)
+    if not path:
+        if _judge_dispatches(config, instance, phase):
+            return None, ["a %s was dispatched and never wrote its verdict: re-run "
+                          "that one dispatch, and if it fails again record it as an "
+                          "instrument limit rather than closing on nothing (§ 9.1)"
+                          % phase]
+        return None, ["no %s verdict for this scope. %s" % (phase, absent_remedy)]
+
+    if not _VERDICT_VERSION_RE.match(os.path.basename(path)):
+        return None, ["the only %s verdict on disk is the unsuffixed copy. That name "
+                      "is for readers (§ 11.1); the gate reads "
+                      "`practices-%s.NNN.json`, because with a fixed name the second "
+                      "emission overwrites the first and the re-emission cap has "
+                      "nothing left to compare against (§ 9.4). Write the version, "
+                      "and keep the copy" % (phase, phase)]
+
+    plugin_root = config.get("pluginRoot")
+    if not plugin_root:
+        return None, ["cannot validate the %s verdict: no pluginRoot configured" % phase]
+    errors = validate_verdict(path, plugin_root, expected_task=task_id,
+                              expected_phase=phase,
+                              evidence_dir=_evidence_dir(config),
+                              instance_id=instance)
+    if errors:
+        return None, ["the %s verdict is invalid: %s" % (phase, "; ".join(errors))]
+
+    verdict = load_verdict(path)
+    expired = verdict_expiry_errors(config, scope, verdict)
+    if expired:
+        return None, expired
+    return verdict, []
+
+
+def risk_errors(config, scope):
+    """§ 5.8 row C: a high-risk scope buys a third invocation, and this is
+    what makes that a branch of the code rather than a sentence in a skill.
+
+    `risk` is read from the SIGNED scope because § 5.3 makes it a damage
+    class the hook observes and stamps -- never a label the agent declares,
+    and so never one it can drop to save an invocation.
+
+    No matrix here: `risk` asks how the thing fails, not whether it meets
+    its contract.
+    """
+    if scope.get("risk") != "high":
+        return []
+    verdict, errors = _judge_verdict(
+        config, scope, "risk",
+        "this scope was observed to be high risk, so it buys the judge's third "
+        "invocation: how does it fail? (§ 5.8)")
+    if errors:
+        return errors
+    if verdict.get("verdict") == "FAIL":
+        return ["the risk verdict says FAIL: %s"
+                % "; ".join(f.get("criterion", "?")
+                            for f in (verdict.get("findings") or [])
+                            if isinstance(f, dict)
+                            and f.get("verdict") == "FAIL") or "see the verdict"]
+    if verdict.get("verdict") == "NOT_MEASURED" \
+            and verdict.get("notMeasuredClass") == "BLOCKING":
+        return ["the risk verdict is NOT_MEASURED / BLOCKING: it could have been "
+                "measured and was not"]
+    return []
+
+
 def certify_report(config, scope):
     """What the judge's verdict still demands of this close (§§ 9.3, 9.5).
 
@@ -3912,38 +3995,13 @@ def certify_report(config, scope):
     if not certify_is_owed(config, scope):
         return report
 
-    task_id, instance = scope.get("id"), scope.get("instanceId")
-    path = latest_verdict(config, task_id, "certify")
-    if not path:
-        started = _judge_dispatches(config, instance, "certify")
-        report["missing"].append(
-            "no certify verdict for this scope. %s"
-            % ("a certify was dispatched and never wrote its verdict: re-run that "
-               "one dispatch, and if it fails again record it as an instrument "
-               "limit rather than closing on nothing (§ 9.1)" if started else
-               "this scope's lane buys one certify over the object -- dispatch it "
-               "with the artifact and the contract, never with the builder's "
-               "conclusion (§ 9.1)"))
-        return report
-
-    plugin_root = config.get("pluginRoot")
-    if not plugin_root:
-        report["missing"].append("cannot validate the certify verdict: no pluginRoot "
-                                 "configured")
-        return report
-    errors = validate_verdict(path, plugin_root, expected_task=task_id,
-                              expected_phase="certify",
-                              evidence_dir=_evidence_dir(config),
-                              instance_id=instance)
+    verdict, errors = _judge_verdict(
+        config, scope, "certify",
+        "this scope's lane buys one certify over the object -- dispatch it with "
+        "the artifact and the contract, never with the builder's conclusion "
+        "(§ 9.1)")
     if errors:
-        report["missing"].append("the certify verdict is invalid: %s"
-                                 % "; ".join(errors))
-        return report
-
-    verdict = load_verdict(path)
-    expired = verdict_expiry_errors(config, scope, verdict)
-    if expired:
-        report["missing"].extend(expired)
+        report["missing"].extend(errors)
         return report
 
     for cell in verdict.get("matrix") or []:

@@ -179,7 +179,7 @@ class TestTheBuildSkillAnnouncesOnlyTheGatesThatExist(unittest.TestCase):
                                          % (label, named, block[:120]))
         self.assertEqual(offenders, [], "\n".join(offenders))
 
-    def test_the_micro_lane_dispatches_nobody(self):
+    def test_the_micro_lane_dispatches_nobody_it_does_not_owe(self):
         with open(MICRO_LANE, encoding="utf-8") as f:
             lane = f.read()
         for agent in ("appian-practices-auditor", "appian-review"):

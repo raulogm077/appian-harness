@@ -826,7 +826,7 @@ Estado: **DONE — DoD 4/4 PASS** (DoD al final de esta sección). Depende de la
 | U6 | Las cinco skills | mueren `appian-verify/` y `appian-run/`; las cinco restantes sin una sola referencia a lo retirado | `lint_skills.py`, `check_readme_claims.py` |
 | U7 | Profundidad de referencia graduada, `referencesLoaded[]` (§ 12.2) | tabla por tamaño en `appian-build` paso 3b; el hook escribe `depth` y separa `referencesLoaded` (observado) de `referencesDeclared` (no verificado) | `test_checks_ledger.py` (+2) |
 | U8 | `appian-plan` planifica los tipos manuales por puntero (§ 8.8 pieza 1) | sección nueva: los seis tipos, citando `change-planning.md § How to Handle Manual Steps` sin reescribirlo, con `manual: true`, dueño y el residuo `manual-step-not-tooled` | — (doctrina; la pieza 2 tiene test desde la Fase 3) |
-| U9 | El cierre lee al juez | `certify_is_owed` + `certify_report` + enganche en `_v07_closure_missing` / `_close_on_the_floor`; `verdict_expiry_errors` estrena consumidor | `hooks/test_certify.py` (32) |
+| U9 | El cierre lee al juez, **en las dos fases que puede deber** | `certify_is_owed` + `certify_report` + `risk_errors` + enganche en `_v07_closure_missing` / `_close_on_the_floor`; `verdict_expiry_errors` estrena consumidor | `hooks/test_certify.py` (39) |
 
 ### Decisiones de codificación, y por qué
 
@@ -869,7 +869,21 @@ Estado: **DONE — DoD 4/4 PASS** (DoD al final de esta sección). Depende de la
     de artefactos, y va con `risk-downgrades.jsonl` a la Fase 5.
 13. **`check_readme_claims.py` acepta el singular** en «one judging agent». Con un solo juez, el
     patrón en plural dejaba el conteo sin sujetar o forzaba una frase agramatical.
-14. **Los conteos de prosa se actualizan; la narrativa de usuario, no.** Los conteos son **gate**
+14. **El `risk` del alcance se lee de la proyección firmada, no del fichero.** § 5.3 lo hace una
+    clase de daño que el hook **observa y estampa**, así que un agente no puede rebajarlo para
+    ahorrarse una invocación. El test lo **gana** con un `updateObjectSecurity` real en vez de
+    escribir la etiqueta.
+15. **El gate lee `practices-<fase>.NNN.json`, no la copia.** § 9.4 dice que el versionado existe
+    *para que* la comparación tenga corpus, y que esta es la única magnitud que pasa de auditable a
+    **impedible**. Aceptar la copia sin sufijo dejaba la puerta abierta a sobrescribir el mismo
+    nombre tres veces sin disparar nada: seguiría siendo auditable, que es justo lo que la norma
+    dice que deja de ser. La copia sigue existiendo y sigue siendo la de § 11.1 — para lectores.
+16. **La evidencia vive a nivel de alcance también con `tasks{}`.** § 11.1 escribe
+    `<id>/<taskId>/…`; lo que las Fases 2 y 3 dejaron construido —`_evidence_write_target`,
+    `_verdict_path`, la rotación— es `<id>/`, y `latest_verdict` lo hereda. Se registra aquí en vez
+    de cambiarlo: mover la evidencia de sitio es tocar el núcleo de la Fase 2, y hacerlo solo para
+    los veredictos dejaría el árbol partido en dos convenciones.
+17. **Los conteos de prosa se actualizan; la narrativa de usuario, no.** Los conteos son **gate**
     (`check_readme_claims.py` corre en CI y se cae al borrar dos skills y dos agentes); la
     realineación narrativa de `README.md` y `docs/` es § 16 Fase 5, y ahí se queda.
 
@@ -895,14 +909,14 @@ El «Hecha cuando» de § 16 Fase 4, releído literal:
 | **Un tercer veredicto sin hallazgo nuevo es rechazado por el validador** | **PASS** | `reissue_errors`, comparación de conjuntos sobre ficheros en disco: `test_a_third_verdict_with_no_new_finding_is_refused`, y el mismo caso llegando al gate en `test_a_third_emission_with_nothing_new_never_reaches_the_gate`. Contraste positivo: `test_but_a_real_cycle_is_accepted` |
 | **`lint_skills.py` pasa sobre las cinco** | **PASS** | `5 skill(s) passed`, y `check_readme_claims.py` en `OK` sujeta que sean exactamente cinco |
 
-**Fase 4: DONE.** Regresión final ejecutada una sola vez sobre el código estable: **537 tests en
-`hooks/` y 413 en `scripts/`, 950 en total, todos en verde**, más los ocho checkers de CI.
+**Fase 4: DONE.** Regresión final ejecutada una sola vez sobre el código estable: **544 tests en
+`hooks/` y 413 en `scripts/`, 957 en total, todos en verde**, más los ocho checkers de CI.
 
 **Fase 5 implementada por accidente: no.** No se ha tocado `commands/appian-init.md`, ni
 `.claude-plugin/`, ni `CHANGELOG.md`, ni `evals/`. De `README.md` y `docs/` solo se han corregido
 **conteos y una receta ejecutable** —lo que el CI sujeta hoy—, no la narrativa.
 
-**Design freeze reabierto: no.** Ninguna de las cinco causas de § 21 se dio. Las catorce
+**Design freeze reabierto: no.** Ninguna de las cinco causas de § 21 se dio. Las diecisiete
 interpretaciones de arriba son decisiones de codificación dentro de lo que la norma deja escrito.
 
 ### Trabajo aplazado por la Fase 4, con su motivo
