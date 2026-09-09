@@ -61,8 +61,8 @@ Hand it:
 
 - the object names or UUIDs the scope wrote, and the scope's contract;
 - `task`, `instanceId` and `coversThroughWriteSeq`;
-- **paths** to the evidence — renders, N2 trees, dependents — and derived
-  signals. Never their contents.
+- **paths, hashes and derived signals** — the evidence by reference: renders,
+  N2 trees, dependents. Never their contents.
 
 Never hand it: a render, a log or an object dump pasted inline; the builder's
 own assessment; another judge's verdict.

@@ -807,6 +807,115 @@ clases de puerta y el bucle de remediación siguen sin escribirse.
 interpretaciones de arriba son decisiones de codificación dentro de lo que la norma deja escrito, no
 cambios de la norma.
 
+## Fase 4 · Juez, matriz y skills
+
+**Fecha:** 2026-09-09 · **Rama:** `phase-4-judge-matrix-skills` · **Base:** `b729359`
+
+Estado: **DONE — DoD 4/4 PASS** (DoD al final de esta sección). Depende de las Fases 2 y 3: consume
+`writeSeq` y la clasificación conductual (§ 7.6), el registro `checks.jsonl` (§ 7.4) y el suelo (§ 8).
+
+### Las nueve unidades
+
+| # | Trabajo (§ 16 Fase 4) | Qué quedó en el código | Test propio |
+|---|---|---|---|
+| U1 | Juez único, tres invocaciones, rúbricas por fase | `agents/appian-practices-auditor.md` reescrito a `design`/`certify`/`risk`, 309 líneas; mueren `appian-verifier.md` y `appian-reviewer.md` | `lint_agents.py` + `TheShippedTree` |
+| U2 | Matriz objeto × puerta, tres naturalezas de celda (§ 9.2) | `matrix_errors` en `validate_verdict.py`: cobertura completa objeto × 7 puertas, celdas importadas resueltas contra `checks.jsonl`, juicio-sobre-evidencia que debe citar su fila, celdas proporcionadas, excepción `case-created-in-scope`, cabecera derivada | `scripts/test_verdict_matrix.py` (59) |
+| U3 | Clases CARDINAL / RECOMMENDED / CONTEXTUAL (§ 9.3) | `CLASS_BY_GATE` + `gate_class` (con los tres *never graded down*), la tabla en `10-quality-gates.md`, y el efecto en `certify_report` / `_close_on_the_floor` | `TestTheSevenGatesDoNotBlockAlike`, en los dos ficheros |
+| U4 | Tope de re-emisiones como enforcement (§ 9.4) | `reissue_errors`: versionado `practices-<fase>.NNN.json`, comparación de conjuntos de `findings[].id` sobre ficheros en disco, rechazo desde la tercera emisión | `TestTheReissueCapIsEnforcement` (7) |
+| U5 | Bucle de remediación: un lote, un re-certify, tope 3, una extensión | `skills/appian-review/SKILL.md` reescrita (175 líneas) | `TestATaskEmitsItsVerdictsWithoutBeingAskedTwice` |
+| U6 | Las cinco skills | mueren `appian-verify/` y `appian-run/`; las cinco restantes sin una sola referencia a lo retirado | `lint_skills.py`, `check_readme_claims.py` |
+| U7 | Profundidad de referencia graduada, `referencesLoaded[]` (§ 12.2) | tabla por tamaño en `appian-build` paso 3b; el hook escribe `depth` y separa `referencesLoaded` (observado) de `referencesDeclared` (no verificado) | `test_checks_ledger.py` (+2) |
+| U8 | `appian-plan` planifica los tipos manuales por puntero (§ 8.8 pieza 1) | sección nueva: los seis tipos, citando `change-planning.md § How to Handle Manual Steps` sin reescribirlo, con `manual: true`, dueño y el residuo `manual-step-not-tooled` | — (doctrina; la pieza 2 tiene test desde la Fase 3) |
+| U9 | El cierre lee al juez | `certify_is_owed` + `certify_report` + enganche en `_v07_closure_missing` / `_close_on_the_floor`; `verdict_expiry_errors` estrena consumidor | `hooks/test_certify.py` (32) |
+
+### Decisiones de codificación, y por qué
+
+1. **`PHASES` conserva `implementation`, `review` y `qa`.** § 15 lo manda literal: eliminarlas
+   convierte los veredictos de un alcance 0.6 de *insuficientes* en **inválidos**, y ese alcance ya no
+   podría cerrarse por ninguna vía. Se añade `certify` y se conservan las tres.
+2. **El nombre del agente no se toca.** § 16 Fase 4 fija el fichero `appian-practices-auditor.md`;
+   § 9.1 y § 13 llaman al concepto `appian-auditor`. En DESIGN FREEZE gana lo que la fase nombra, y
+   `lint_agents.py` exige además que `name` sea el nombre del fichero.
+3. **`READ_ONLY_AGENTS` se vacía y aparece `NO_MCP_AGENTS`.** Su única entrada era `appian-reviewer`,
+   y `stale_read_only_entries` habría puesto `lint_agents.py` en rojo al retirarlo. *Read-only* es la
+   forma equivocada de restricción para un juez que escribe su propio veredicto; la que § 9.1 sí le
+   pone es **sin acceso MCP**, y esa es la que se implementa.
+4. **El corpus de `test_lint_agents.py` se desacopla del árbol enviado.** Sus fixtures se llamaban
+   `appian-reviewer`, así que retirar ese agente se habría llevado por delante 28 tests de un
+   mecanismo que sigue siendo válido. Ahora inyectan su propia entrada.
+5. **La matriz es de `certify`, no de las tres fases.** § 9.1 da a `certify` la pregunta «¿contrato,
+   doctrina y evidencia por celda?»; `design` pregunta si es buena solución y `risk` cómo falla.
+   Exigir matriz ahí sería inventar trabajo.
+6. **`case-created-in-scope` marca la celda como juicio-sobre-evidencia.** § 9.2 dice «celda de
+   juicio» sin distinguir cuál de las dos; como la celda sigue citando la fila del caso, se implementa
+   como la que cita.
+7. **La cabecera del veredicto es derivada, no resumida.** No lo piden con esas palabras ni § 9.2 ni
+   § 9.3, pero un auditor que escribe `PASS` sobre una celda `FAIL` se está calificando a sí mismo,
+   que es justo lo que el rol existe para impedir.
+8. **`findings[].id` se exige en las tres fases v07.** Sin ids no hay contra qué comparar y el tope de
+   § 9.4 deja de existir en silencio. Las fases 0.6 no lo pagan.
+9. **Una CONTEXTUAL que falla no cambia el estado terminal.** § 9.3 dice «no bloquea», y § 10.1 solo
+   manda a `closed-with-debt` la deuda de hallazgo — ciclos agotados, o una RECOMENDADA que falló dos
+   veces. La CONTEXTUAL se registra con dueño y el alcance cierra `closed`; § 10.2 la enseña igual en
+   el resumen.
+10. **«Bloquea una vez» se cuenta en `gate-decisions.jsonl`**, con el evento `recommended-blocked`, y
+    se registra en el momento en que **de verdad** retiene el cierre: un alcance bloqueado por el
+    suelo no ha gastado todavía el único bloqueo de la puerta RECOMENDADA.
+11. **El despacho registra inicio, y el fin es el fichero.** § 9.1 pide inicio y fin; el fin es la
+    existencia del veredicto, y escribir un segundo evento obligaría a sondear un fichero, que es
+    exactamente lo que la misma sección prohíbe.
+12. **`activeRunFile` sigue en el hook.** § 15 lo da por desaparecido, pero la tabla de la Fase 4 no
+    nombra `harness_hooks.py` para eso y la clave es **opt-in e inerte** sin configurar. Es limpieza
+    de artefactos, y va con `risk-downgrades.jsonl` a la Fase 5.
+13. **`check_readme_claims.py` acepta el singular** en «one judging agent». Con un solo juez, el
+    patrón en plural dejaba el conteo sin sujetar o forzaba una frase agramatical.
+14. **Los conteos de prosa se actualizan; la narrativa de usuario, no.** Los conteos son **gate**
+    (`check_readme_claims.py` corre en CI y se cae al borrar dos skills y dos agentes); la
+    realineación narrativa de `README.md` y `docs/` es § 16 Fase 5, y ahí se queda.
+
+### El caso ácido, ahora completo
+
+La Fase 3 lo cerró sin revisor y lo dijo. Aquí se cierra entero, y las dos mitades se encuentran en la
+matriz: la puerta 2 la acredita **la reejecución por REST** —el 500 es del servlet— y la puerta 4
+queda `NOT_MEASURED`, porque la accesibilidad necesita un árbol que no va a renderizar.
+`validateDesignObject` **no acredita nada**: es verde con cualquier cosa que parsee, y el validador lo
+rechaza por eso. El alcance cierra `closed-pending-human`, **sigue siendo `micro`**, compra **un** juez
+y **ninguna cadena** — asertado como ausencia, no como comentario:
+`test_it_buys_exactly_one_judge_and_no_chain` y
+`test_the_instrument_failure_did_not_buy_a_second_judge`.
+
+### DoD de Fase 4
+
+El «Hecha cuando» de § 16 Fase 4, releído literal:
+
+| Condición del DoD | Veredicto | Evidencia |
+|---|---|---|
+| **Ningún juez recibe un volcado** | **PASS** | El contrato está en las dos superficies que despachan (`agents/appian-practices-auditor.md`, `skills/appian-review/SKILL.md`), sujeto por `test_every_document_that_dispatches_forbids_dumps`; y la forma del veredicto lo hace cierto: una celda importada lleva `toolUseId` + `result`, **nunca la respuesta**, y el veredicto entero mide < 40 KB, el techo de § 12.3 (`test_a_cell_cites_a_row_by_id_and_never_by_content`, `test_the_whole_verdict_stays_small`). El juez además **no puede** ir a buscar más: `NO_MCP_AGENTS` en `lint_agents.py` |
+| **Los veredictos de un `task` se emiten sin re-emisión a mano** | **PASS** | `test_one_clean_cycle_emits_one_certify_and_closes`: un ciclo limpio de `task` emite **un** `practices-certify.001.json` y cierra. Y los tres ciclos e2e (`micro`, `task` sin `tasks{}`, `task` con `tasks{}`) cierran con una sola emisión cada uno |
+| **Un tercer veredicto sin hallazgo nuevo es rechazado por el validador** | **PASS** | `reissue_errors`, comparación de conjuntos sobre ficheros en disco: `test_a_third_verdict_with_no_new_finding_is_refused`, y el mismo caso llegando al gate en `test_a_third_emission_with_nothing_new_never_reaches_the_gate`. Contraste positivo: `test_but_a_real_cycle_is_accepted` |
+| **`lint_skills.py` pasa sobre las cinco** | **PASS** | `5 skill(s) passed`, y `check_readme_claims.py` en `OK` sujeta que sean exactamente cinco |
+
+**Fase 4: DONE.** Regresión final ejecutada una sola vez sobre el código estable: **537 tests en
+`hooks/` y 413 en `scripts/`, 950 en total, todos en verde**, más los ocho checkers de CI.
+
+**Fase 5 implementada por accidente: no.** No se ha tocado `commands/appian-init.md`, ni
+`.claude-plugin/`, ni `CHANGELOG.md`, ni `evals/`. De `README.md` y `docs/` solo se han corregido
+**conteos y una receta ejecutable** —lo que el CI sujeta hoy—, no la narrativa.
+
+**Design freeze reabierto: no.** Ninguna de las cinco causas de § 21 se dio. Las catorce
+interpretaciones de arriba son decisiones de codificación dentro de lo que la norma deja escrito.
+
+### Trabajo aplazado por la Fase 4, con su motivo
+
+| Aplazado | A dónde | Por qué |
+|---|---|---|
+| Realineación narrativa de `README.md` y `docs/` al vocabulario de un solo juez y cinco skills | Fase 5 | § 16 la pone ahí literalmente («Documentación de usuario realineada en la misma release»). Lo que era **gate** —los conteos, y la receta de `troubleshooting.md` que un test ejecuta— sí está hecho |
+| El eval `routing-verify-not-review`, que rutea a una skill retirada | Fase 5 | § 16 pone los evals en la Fase 5. `check_evals.py` sigue en verde: valida forma, no destino |
+| `activeRunFile` fuera del hook (§ 15) | Fase 5 | Interpretación 12: es limpieza de artefactos, opt-in e inerte, y la tabla de la Fase 4 no nombra `harness_hooks.py` para ello |
+| Fila de record type «≥ 1 fila con el campo tocado en la proyección», y seguridad a nivel de campo en la fila de user filter | **sigue aplazado** | Los dejó la Fase 3 apuntando a la Fase 4, pero ninguno de los dos es trabajo de juez, matriz o skills: son **filas del suelo** (§ 8.1), y ampliarlas exige guardar el `tool_input` en `operations.jsonl` —núcleo de la Fase 2— o una marca que la superficie de lectura no expone. Se declaran aquí otra vez en vez de implementarlos a medias |
+
+---
+
 ### Trabajo aplazado, con su motivo
 
 | Aplazado | A dónde | Por qué |
@@ -828,7 +937,7 @@ cambios de la norma.
 | **1 · Coste y consistencia** | **DONE** (2026-09-02, DoD en su sección) |
 | **2 · Núcleo** | **DONE — DoD 3/3 PASS** (código 2026-09-02; correcciones de revisión el 2026-09-03, reconciliadas el 2026-09-03; pasada atendida en las tres formas el 2026-09-08, 0 `ask` falsos) |
 | **3 · Suelo y evidencia** | **DONE — DoD 5/5 PASS** (2026-09-09, DoD en su sección; caso ácido reproducido desde formas grabadas) |
-| 4 · Juez, matriz y skills | pendiente |
+| **4 · Juez, matriz y skills** | **DONE — DoD 4/4 PASS** (2026-09-09, DoD en su sección; caso ácido cerrado entero, con revisor) |
 | 5 · Onboarding y documentación | pendiente |
 | 6 · Puerta de salida | pendiente |
 

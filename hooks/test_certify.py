@@ -490,6 +490,111 @@ class TestTheFloorIsAskedBeforeTheJudge(unittest.TestCase):
             self.assertEqual(len(report["contextual"]), 1)
             self.assertEqual(report["missing"], [])
 
+class TestNoJudgeReceivesADump(unittest.TestCase):
+    """§ 9.1 and § 12.3, held where they can be held: the contract is that a
+    judge is handed paths, hashes and derived signals. The dispatch itself is
+    a subagent call this harness cannot inspect from inside, so what is
+    asserted is the shape of what a verdict is allowed to carry, and that
+    every document defining the dispatch says so."""
+
+    def test_a_cell_cites_a_row_by_id_and_never_by_content(self):
+        # The imported cells carry a `toolUseId` and the row's `result` --
+        # not the response. That is what keeps a 218 KB render out of the
+        # verdict and out of whoever reads it next.
+        with tempfile.TemporaryDirectory() as root:
+            cycle = Cycle()
+            c = cycle.build(root)
+            scope = read_scope(c)
+            path = write_certify(c, scope, objects=["_uuid-lista"])
+            with open(path, encoding="utf-8") as f:
+                verdict = json.load(f)
+            for cell in verdict["matrix"]:
+                if cell["nature"] == NATURE_IMPORTED:
+                    self.assertIn("toolUseId", cell)
+                    self.assertEqual(sorted(cell) , sorted(
+                        ["object", "gate", "nature", "verdict", "toolUseId",
+                         "result"]))
+
+    def test_the_whole_verdict_stays_small(self):
+        # A judge that fills its context with dumps stops fitting in one.
+        # 40 KB is the norm's own ceiling for what may reach a context
+        # without a summarising script in front of it (§ 12.3).
+        with tempfile.TemporaryDirectory() as root:
+            cycle = Cycle()
+            c = cycle.build(root)
+            path = write_certify(c, read_scope(c), objects=["_uuid-lista"])
+            self.assertLess(os.path.getsize(path), 40 * 1024)
+
+    def test_every_document_that_dispatches_forbids_dumps(self):
+        # The rule lives where the dispatch is written, or it lives nowhere.
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        for rel in (os.path.join("agents", "appian-practices-auditor.md"),
+                    os.path.join("skills", "appian-review", "SKILL.md")):
+            with open(os.path.join(root, rel), encoding="utf-8") as f:
+                text = f.read().lower()
+            self.assertIn("dump", text, rel)
+            self.assertTrue("paths, hashes and derived signals" in text, rel)
+            self.assertIn("builder's conclusion", text, rel)
+
+
+class TestATaskEmitsItsVerdictsWithoutBeingAskedTwice(unittest.TestCase):
+    """The DoD's own words: a task's verdicts are produced WITHOUT manual
+    re-emission. Seven re-emissions asked for by hand were the most expensive
+    defect of the session that motivated this redesign."""
+
+    def test_one_clean_cycle_emits_one_certify_and_closes(self):
+        with tempfile.TemporaryDirectory() as root:
+            cycle = Cycle()
+            c = signed_cfg(root, kind="task", intent=None)
+            cycle.write(c, "mcp__appian-dev__updateInterface", "tu-w1",
+                        uuid="_uuid-lista", expression="a!textField()")
+            c = cycle.verify(c)
+            write_certify(c, read_scope(c), objects=["_uuid-lista"], version=1)
+            # The unsuffixed copy § 11.1 keeps for readers expecting it.
+            write_certify(c, read_scope(c), objects=["_uuid-lista"])
+            out = cycle.stop(cycle.ask_to_close(c))
+            self.assertEqual(out["decision"], "approve", out)
+            scope_dir = os.path.join(c["evidenceDir"], read_scope(c)["id"])
+            versions = [f for f in os.listdir(scope_dir)
+                        if f.startswith("practices-certify.0")]
+            self.assertEqual(versions, ["practices-certify.001.json"])
+
+    def test_a_third_emission_with_nothing_new_never_reaches_the_gate(self):
+        # Enforcement, not a reported magnitude: the validator refuses it,
+        # so the close reads "invalid" rather than accepting the re-run.
+        with tempfile.TemporaryDirectory() as root:
+            cycle = Cycle()
+            c = cycle.build(root)
+            scope = read_scope(c)
+            row = credited_rows(c)[0]["toolUseId"]
+            same = [{"id": "f-1", "criterion": "c", "verdict": "FAIL",
+                     "evidence": "e"}]
+            for version in (1, 2, 3):
+                write_certify(c, scope, objects=["_uuid-lista"],
+                              version=version, verdict="FAIL",
+                              findings=same,
+                              matrix=certify_cells(["_uuid-lista"], row,
+                                                   gate6=fail_cell(6)))
+            out = cycle.stop(cycle.ask_to_close(c))
+            self.assertEqual(out["decision"], "block")
+            self.assertIn("raises no finding", out["reason"])
+
+    def test_but_a_real_cycle_is_accepted(self):
+        with tempfile.TemporaryDirectory() as root:
+            cycle = Cycle()
+            c = cycle.build(root)
+            scope = read_scope(c)
+            row = credited_rows(c)[0]["toolUseId"]
+            for version, ids in ((1, ["f-1"]), (2, ["f-1", "f-2"]),
+                                 (3, ["f-3"])):
+                write_certify(
+                    c, scope, objects=["_uuid-lista"], version=version,
+                    findings=[{"id": i, "criterion": "c", "verdict": "FAIL",
+                               "evidence": "e"} for i in ids],
+                    matrix=certify_cells(["_uuid-lista"], row))
+            out = cycle.stop(cycle.ask_to_close(c))
+            self.assertEqual(out["decision"], "approve", out)
+
 
 if __name__ == "__main__":
     unittest.main()
