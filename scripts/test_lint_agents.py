@@ -4,7 +4,7 @@ from contextlib import redirect_stdout
 import lint_agents as L
 
 GOOD = ("---\n"
-        "name: appian-reviewer\n"
+        "name: appian-read-only-probe\n"
         "description: Reviews one Appian change from a clean context. Use when a "
         "change creates an object or writes data.\n"
         "model: inherit\n"
@@ -83,9 +83,9 @@ READ_ONLY_SPELLINGS = (
 
 
 def agent_with_tools(tools_block):
-    """A well-formed appian-reviewer whose only variable is its tools line."""
+    """A well-formed appian-read-only-probe whose only variable is its tools line."""
     return ("---\n"
-            "name: appian-reviewer\n"
+            "name: appian-read-only-probe\n"
             "description: Reviews one change. Use when a change creates an object.\n"
             "model: inherit\n"
             + tools_block +
@@ -95,6 +95,14 @@ def agent_with_tools(tools_block):
 
 class AgentFrontmatter(unittest.TestCase):
     def setUp(self):
+        # The restriction is a mechanism, and the corpus that exercises it
+        # is this file's, not the shipped tree's. Until 0.7 they were the
+        # same name, so retiring the agent that held the only entry would
+        # have taken these tests with it.
+        L.READ_ONLY_AGENTS["appian-read-only-probe"] = (
+            "a reviewer that can edit what it reviews is not an independent "
+            "reviewer")
+        self.addCleanup(L.READ_ONLY_AGENTS.pop, "appian-read-only-probe", None)
         self.root = tempfile.mkdtemp()
         os.makedirs(os.path.join(self.root, "agents"))
         os.makedirs(os.path.join(self.root, "skills", "appian-best-practices"))
@@ -109,7 +117,7 @@ class AgentFrontmatter(unittest.TestCase):
         return path
 
     def test_a_well_formed_agent_passes(self):
-        path = self.write("appian-reviewer.md", GOOD)
+        path = self.write("appian-read-only-probe.md", GOOD)
         self.assertEqual(L.lint_agent(path, {"appian-best-practices"}), [])
 
     def test_name_must_match_the_filename(self):
@@ -120,14 +128,14 @@ class AgentFrontmatter(unittest.TestCase):
     def test_a_description_without_a_trigger_is_rejected(self):
         # Same rule as skills, imported rather than restated: an agent whose
         # description only says what it is never gets dispatched.
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("Use when a change creates an object or writes data.",
                                        "It is a reviewer."))
         errs = L.lint_agent(path, {"appian-best-practices"})
         self.assertTrue(any("trigger" in e for e in errs))
 
     def test_a_skill_that_does_not_exist_is_rejected(self):
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("[appian-best-practices]", "[nope]"))
         errs = L.lint_agent(path, {"appian-best-practices"})
         self.assertTrue(any("nope" in e for e in errs))
@@ -136,7 +144,7 @@ class AgentFrontmatter(unittest.TestCase):
         # A block sequence is valid YAML. It is read from the raw frontmatter
         # lines rather than from parse_frontmatter's space-joined fold, which
         # would deliver "- a - b" and recover neither name.
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("skills: [appian-best-practices]",
                                        "skills:\n  - appian-best-practices"))
         self.assertEqual(L.lint_agent(path, {"appian-best-practices"}), [])
@@ -145,7 +153,7 @@ class AgentFrontmatter(unittest.TestCase):
         # The half of the block-list reader that matters: reading it must not
         # mean waving it through, and the second entry is the one a fold
         # would have destroyed.
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("skills: [appian-best-practices]",
                                        "skills:\n  - appian-best-practices\n  - nope"))
         errs = L.lint_agent(path, {"appian-best-practices"})
@@ -157,16 +165,16 @@ class AgentFrontmatter(unittest.TestCase):
         self.assertTrue(any("'nope'" in e for e in errs))
 
     def test_missing_tools_is_rejected(self):
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("tools: Read, Grep, Glob, Skill\n", ""))
         errs = L.lint_agent(path, {"appian-best-practices"})
         self.assertTrue(any("tools" in e for e in errs))
 
     def test_an_agent_granted_write_tools_must_say_why(self):
-        # appian-reviewer is Read/Grep/Glob on purpose: a reviewer that can
+        # appian-read-only-probe is Read/Grep/Glob on purpose: a reviewer that can
         # edit the thing it reviews is not an independent reviewer. Granting
         # Write silently would dissolve that separation.
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("tools: Read, Grep, Glob, Skill",
                                        "tools: Read, Write, Edit"))
         errs = L.lint_agent(path, {"appian-best-practices"})
@@ -175,7 +183,7 @@ class AgentFrontmatter(unittest.TestCase):
     def test_a_read_only_agent_may_not_declare_every_tool(self):
         # The same separation, dissolved by a shorter edit: `*` grants every
         # tool without naming one.
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("tools: Read, Grep, Glob, Skill", "tools: *"))
         errs = L.lint_agent(path, {"appian-best-practices"})
         self.assertTrue(any("*" in e for e in errs), errs)
@@ -185,7 +193,7 @@ class AgentFrontmatter(unittest.TestCase):
         # the single token "[Write]", which is not the string "Write" -- the
         # read-only rule satisfied by two square brackets, the same hole as
         # `tools: *` in the spelling that looks most like a list.
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("tools: Read, Grep, Glob, Skill", "tools: [Write]"))
         errs = L.lint_agent(path, {"appian-best-practices"})
         self.assertTrue(any("Write" in e for e in errs))
@@ -194,14 +202,14 @@ class AgentFrontmatter(unittest.TestCase):
         # Where the brackets land on the first and last entries only, so a
         # reader that strips them from the whole string still has to split
         # correctly to see the middle.
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("tools: Read, Grep, Glob, Skill",
                                        "tools: [Read, Write, Glob]"))
         errs = L.lint_agent(path, {"appian-best-practices"})
         self.assertTrue(any("Write" in e for e in errs))
 
     def test_a_block_list_of_tools_does_not_hide_write(self):
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("tools: Read, Grep, Glob, Skill\n",
                                        "tools:\n  - Read\n  - Write\n"))
         errs = L.lint_agent(path, {"appian-best-practices"})
@@ -213,7 +221,7 @@ class AgentFrontmatter(unittest.TestCase):
         # that keeps the comment compares against a token that is not the
         # string "Write". A temporary grant is exactly the one that gets
         # written this way and then stays.
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("tools: Read, Grep, Glob, Skill",
                                        "tools: Read, Write # temporary, remove me"))
         errs = L.lint_agent(path, {"appian-best-practices"})
@@ -222,7 +230,7 @@ class AgentFrontmatter(unittest.TestCase):
     def test_a_commented_skill_resolves_without_its_comment(self):
         # The same strip, in the direction that produces a false alarm rather
         # than a miss: the comment must not become part of the skill name.
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("skills: [appian-best-practices]",
                                        "skills:\n  - appian-best-practices # the doctrine"))
         self.assertEqual(L.lint_agent(path, {"appian-best-practices"}), [])
@@ -233,7 +241,7 @@ class AgentFrontmatter(unittest.TestCase):
         # than read as an agent that declared none. appian-verifier is not
         # read-only, so Write here is exactly what it ships with.
         path = self.write("appian-verifier.md",
-                          GOOD.replace("name: appian-reviewer", "name: appian-verifier")
+                          GOOD.replace("name: appian-read-only-probe", "name: appian-verifier")
                               .replace("tools: Read, Grep, Glob, Skill\n",
                                        "tools:\n  - Read\n  - Write\n  - Bash\n"))
         self.assertEqual(L.lint_agent(path, {"appian-best-practices"}), [])
@@ -243,7 +251,7 @@ class AgentFrontmatter(unittest.TestCase):
         # a name not read at all. An item-by-item reader stops at the comment
         # and never sees `nope`, so the one key where a bad read is supposed
         # to be noisy goes silent too.
-        path = self.write("appian-reviewer.md",
+        path = self.write("appian-read-only-probe.md",
                           GOOD.replace("skills: [appian-best-practices]",
                                        "skills:\n  - appian-best-practices\n"
                                        "  # - retired-skill\n  - nope"))
@@ -254,17 +262,17 @@ class AgentFrontmatter(unittest.TestCase):
         # A checker that raises is a broken checker to whoever reads the CI
         # log, and it takes the other agents' results down with it: the run
         # reports nothing about the files it never got to.
-        path = os.path.join(self.root, "agents", "appian-reviewer.md")
+        path = os.path.join(self.root, "agents", "appian-read-only-probe.md")
         with open(path, "wb") as f:
-            f.write(b"---\nname: appian-reviewer\ndescription: \xff\xfe Use when.\n"
+            f.write(b"---\nname: appian-read-only-probe\ndescription: \xff\xfe Use when.\n"
                     b"---\n\nbody\n")
         errs = L.lint_agent(path, {"appian-best-practices"})
         self.assertTrue(any("UTF-8" in e for e in errs), errs)
 
     def test_a_non_utf8_agent_does_not_stop_the_run(self):
         self.write("appian-verifier.md",
-                   GOOD.replace("name: appian-reviewer", "name: appian-verifier"))
-        with open(os.path.join(self.root, "agents", "appian-reviewer.md"), "wb") as f:
+                   GOOD.replace("name: appian-read-only-probe", "name: appian-verifier"))
+        with open(os.path.join(self.root, "agents", "appian-read-only-probe.md"), "wb") as f:
             f.write(b"\xff\xfe not text at all")
         out = io.StringIO()
         with redirect_stdout(out):
@@ -279,7 +287,7 @@ class AgentFrontmatter(unittest.TestCase):
         # other than `-`, so the frontmatter is not recognised and every
         # field reads as missing: four findings, none of them the problem,
         # about a file that is correct.
-        path = os.path.join(self.root, "agents", "appian-reviewer.md")
+        path = os.path.join(self.root, "agents", "appian-read-only-probe.md")
         with open(path, "w", encoding="utf-8-sig") as f:
             f.write(GOOD)
         self.assertEqual(L.lint_agent(path, {"appian-best-practices"}), [])
@@ -291,25 +299,15 @@ class AgentFrontmatter(unittest.TestCase):
         # rule that matches no agent has no agent to complain about, and the
         # protection is gone in the direction that does not announce itself.
         self.write("appian-independent-reviewer.md",
-                   GOOD.replace("name: appian-reviewer",
+                   GOOD.replace("name: appian-read-only-probe",
                                 "name: appian-independent-reviewer")
                        .replace("tools: Read, Grep, Glob, Skill", "tools: *"))
         out = io.StringIO()
         with redirect_stdout(out):
             rc = L.main(self.root)
         self.assertEqual(rc, 1)
-        self.assertIn("appian-reviewer", out.getvalue())
+        self.assertIn("appian-read-only-probe", out.getvalue())
 
-    def test_the_shipped_tree_has_no_stale_read_only_entries(self):
-        # Stated against the real tree as well as the fixture: the fixture
-        # proves the check works and says nothing about whether this
-        # plugin's own entries still name agents it ships.
-        shipped = set()
-        agents_dir = os.path.join(os.path.dirname(__file__), "..", "agents")
-        for entry in os.listdir(agents_dir):
-            if entry.endswith(".md"):
-                shipped.add(os.path.splitext(entry)[0])
-        self.assertEqual(L.stale_read_only_entries(shipped), [])
 
     def test_a_missing_agents_directory_is_not_measured(self):
         # 3, not 1. Nothing was inspected, which is not the same as
@@ -334,23 +332,102 @@ class AgentFrontmatter(unittest.TestCase):
         self.assertEqual(rc, L.EXIT_NOT_MEASURED)
         self.assertIn("NOT MEASURED", out.getvalue())
 
+
+
+class TheShippedTree(unittest.TestCase):
+    """These look at what the plugin really ships, so they run against the
+    real restriction maps -- no fixture entry injected. The class exists so
+    that the corpus tests above, which do inject one, cannot make a stale
+    entry appear where there is none."""
+
     def test_the_shipped_agents_pass(self):
         out = io.StringIO()
         with redirect_stdout(out):
             rc = L.main(os.path.join(os.path.dirname(__file__), ".."))
         self.assertEqual(rc, 0, out.getvalue())
 
+    def test_no_restriction_names_an_agent_this_tree_does_not_ship(self):
+        # A rename removes a restriction in silence, and 0.7 renames two
+        # agents out of existence -- which is exactly when this fires.
+        shipped = set()
+        agents_dir = os.path.join(os.path.dirname(__file__), "..", "agents")
+        for entry in os.listdir(agents_dir):
+            if entry.endswith(".md"):
+                shipped.add(os.path.splitext(entry)[0])
+        self.assertEqual(L.stale_read_only_entries(shipped), [])
 
-class EverySpellingThatGrantsWrite(unittest.TestCase):
-    """The prohibition is measured against the corpus, not against intent."""
+    def test_the_judge_is_the_agent_that_may_not_reach_mcp(self):
+        # § 9.1, stated against the tree: whoever the single judge is, it is
+        # the one carrying this restriction.
+        self.assertEqual(sorted(L.NO_MCP_AGENTS), ["appian-practices-auditor"])
+
+
+class TheJudgeHoldsNoMcp(unittest.TestCase):
+    """§ 9.1: the judge is handed paths, hashes and derived signals. An
+    agent that can go and re-measure is not judging what the gate
+    credited."""
 
     def setUp(self):
         self.root = tempfile.mkdtemp()
         os.makedirs(os.path.join(self.root, "agents"))
         self.addCleanup(shutil.rmtree, self.root, True)
 
+    def lint(self, tools_block, name="appian-practices-auditor"):
+        path = os.path.join(self.root, "agents", "%s.md" % name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(agent_with_tools(tools_block)
+                    .replace("name: appian-read-only-probe", "name: %s" % name))
+        return L.lint_agent(path, {"appian-best-practices"})
+
+    def test_writing_its_own_verdict_is_allowed(self):
+        # The judge is not read-only: it writes the verdict and runs the
+        # validator against it. That is the whole shape of the restriction
+        # change in 0.7.
+        self.assertEqual(self.lint("tools: Read, Write, Grep, Glob, Bash, Skill\n"),
+                         [])
+
+    def test_an_mcp_tool_is_refused(self):
+        errs = self.lint("tools: Read, Write, mcp__appian-dev__getInterface\n")
+        self.assertTrue(any("reaches MCP" in e for e in errs), errs)
+
+    def test_a_star_reaches_mcp_too(self):
+        errs = self.lint("tools: *\n")
+        self.assertTrue(any("reaches MCP" in e for e in errs), errs)
+
+    def test_a_block_sequence_does_not_hide_it(self):
+        errs = self.lint("tools:\n  - Read\n  - mcp__appian__ping\n")
+        self.assertTrue(any("reaches MCP" in e for e in errs), errs)
+
+    def test_a_commented_mcp_name_is_not_a_declaration(self):
+        # Same rule the write whitelist follows: a comment's words are not
+        # tools, or every documented declaration becomes a false alarm.
+        self.assertEqual(
+            self.lint("tools: Read, Write # never mcp__appian-dev__getInterface\n"),
+            [])
+
+    def test_another_agent_may_hold_mcp(self):
+        # The restriction is the judge's, not a rule about agents at large.
+        self.assertEqual(
+            self.lint("tools: Read, mcp__appian-dev__getInterface\n",
+                      name="appian-something-else"),
+            [])
+
+
+class EverySpellingThatGrantsWrite(unittest.TestCase):
+    """The prohibition is measured against the corpus, not against intent."""
+
+    def setUp(self):
+        # Same reason as AgentFrontmatter's: the corpus is this file's.
+        L.READ_ONLY_AGENTS["appian-read-only-probe"] = (
+            "a reviewer that can edit what it reviews is not an independent "
+            "reviewer")
+        self.addCleanup(L.READ_ONLY_AGENTS.pop, "appian-read-only-probe", None)
+        self.root = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.root, "agents"))
+        self.addCleanup(shutil.rmtree, self.root, True)
+
     def lint(self, tools_block):
-        path = os.path.join(self.root, "agents", "appian-reviewer.md")
+        path = os.path.join(self.root, "agents", "appian-read-only-probe.md")
         with open(path, "w", encoding="utf-8") as f:
             f.write(agent_with_tools(tools_block))
         return L.lint_agent(path, {"appian-best-practices"})
@@ -373,7 +450,7 @@ class EverySpellingThatGrantsWrite(unittest.TestCase):
         # says the agent never writes data contains the forbidden word; a
         # search over the whole frontmatter would refuse the agent for
         # documenting the very property being enforced.
-        path = os.path.join(self.root, "agents", "appian-reviewer.md")
+        path = os.path.join(self.root, "agents", "appian-read-only-probe.md")
         with open(path, "w", encoding="utf-8") as f:
             f.write(agent_with_tools("tools: Read, Grep, Glob, Skill\n")
                     .replace("Reviews one change.",

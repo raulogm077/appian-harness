@@ -16,10 +16,24 @@ from lint_skills import (EXIT_NOT_MEASURED, MAX_DESCRIPTION,  # noqa: E402
 
 # Agents whose independence depends on not being able to write, mapped to the
 # reason: docs/design-notes.md § lint_agents.py · READ_ONLY_AGENTS
-READ_ONLY_AGENTS = {
-    "appian-reviewer": "a reviewer that can edit what it reviews is not an "
-                       "independent reviewer",
+# Empty since 0.7, and the mechanism stays. `appian-reviewer` held the only
+# entry; the single judge that replaced it writes its own verdict, so
+# read-only is the wrong shape of restriction for it. What that judge owes
+# instead is NO_MCP_AGENTS below -- the same independence, bought at the
+# layer where it now lives.
+READ_ONLY_AGENTS = {}
+
+# Norm § 9.1: the judge "never receives the builder's conclusion, nor MCP
+# access". One holding a write tool could fix what it is judging; one
+# holding a read tool could go and re-measure it, which is the builder's job
+# done again in the one context that must not depend on it. Its evidence
+# arrives as paths, hashes and derived signals.
+NO_MCP_AGENTS = {
+    "appian-practices-auditor": "the single judge holds no MCP access (§ 9.1): "
+                                "an agent that can go and look for more is not "
+                                "judging the artifact the gate credited",
 }
+MCP_TOOL = re.compile(r"^mcp__", re.I)
 
 # A whitelist, not the write tools negated -- Bash, Task and MCP write tools
 # cannot be enumerated: docs/design-notes.md § lint_agents.py · READ_ONLY_TOOLS
@@ -112,6 +126,17 @@ def disallowed_tools(text):
     return found
 
 
+def mcp_tools(text):
+    """Every MCP tool a `tools:` declaration names, plus `*` when it grants
+    everything without naming one -- which reaches MCP too."""
+    found = []
+    for region in declaration_regions(text, "tools"):
+        for token in TOOL_TOKEN.findall(COMMENT.sub("", region)):
+            if (token == "*" or MCP_TOOL.match(token)) and token not in found:
+                found.append(token)
+    return found
+
+
 def declares_tools(text):
     """True when a `tools:` declaration names anything at all.
 
@@ -182,18 +207,26 @@ def lint_agent(path, known_skills):
                           % (", ".join(disallowed), ", ".join(sorted(READ_ONLY_TOOLS)),
                              READ_ONLY_AGENTS[name]))
 
+    if name in NO_MCP_AGENTS:
+        reached = mcp_tools(text)
+        if reached:
+            errors.append("its 'tools' declaration reaches MCP through %s, and %s. "
+                          "Hand it paths, hashes and derived signals instead"
+                          % (", ".join(reached), NO_MCP_AGENTS[name]))
+
     if not body.strip():
         errors.append("has frontmatter and no body")
     return errors
 
 
 def stale_read_only_entries(shipped):
-    """Keys of READ_ONLY_AGENTS that name no agent in the tree.
+    """Keys of either restriction map that name no agent in the tree.
 
     A rename removes the restriction in silence:
     docs/design-notes.md § lint_agents.py · stale read-only entries
     """
-    return [name for name in sorted(READ_ONLY_AGENTS) if name not in shipped]
+    restricted = set(READ_ONLY_AGENTS) | set(NO_MCP_AGENTS)
+    return [name for name in sorted(restricted) if name not in shipped]
 
 
 def main(root):
