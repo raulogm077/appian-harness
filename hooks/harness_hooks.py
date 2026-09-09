@@ -47,6 +47,12 @@ import time
 # module works both imported by the tests and run as the hook entry point.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
 from validate_verdict import isfile_exact, load_verdict, validate_verdict
+# The deterministic checkers, imported rather than shelled out to: a render
+# is 218 KB and there are 942 KB ones (§ 8.5), so the hook measures the
+# response it already holds and stores ~500 B. Nothing here reaches anyone's
+# context. Normalization is defined once, in n2 (§ 8.5).
+from n2_interface_tree import normalized_hash, render_record
+from n3_process_layout import process_graph_findings
 
 # Rule 2's value, and load-bearing: "ask" is the only decision proven to
 # produce a prompt; an unrecognized value is ignored silently and the session
@@ -667,7 +673,6 @@ def _scope_v07_reasons(config, payload, tool_name, scope):
                        % (task_id, _canonical_object_count(allowed), len(allowed),
                           max_allowed))
 
-    reasons.extend(_skill_record_errors(config, task_id))
     reasons.extend(_design_requirement_reasons(config, scope, action))
     return reasons
 
@@ -1193,16 +1198,50 @@ def _installed_skill_version(config):
     return match.group(1) if match else None
 
 
+def skill_trail_note(config, task_id):
+    """The remedy when no OBSERVED load record backs this scope, or None.
+
+    § 7.5: the record is written by `observe-reads` from the invocation of
+    the skill and the reads under its root, so what it asserts is "the hook
+    saw how it was loaded" rather than "the agent says it did". That is why
+    this is no longer an `ask`: the five causes of § 7.3 are decisions a
+    person can take, and "load the skill first" is an instruction to the
+    model. A record the agent wrote by hand carries no `observedBy` and
+    credits nothing -- otherwise the file the hook took over would still be
+    forgeable, which was the whole defect.
+    """
+    if not task_id:
+        return None
+    path = os.path.join(_evidence_dir(config), task_id, SKILL_RECORD_NAME)
+    record = None
+    if os.path.isfile(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                record = loaded
+        except (ValueError, OSError):
+            record = None
+    if record is not None and record.get("observedBy") == "observe-reads" \
+            and record.get("skillInvoked"):
+        return None
+    hand_written = record is not None and not record.get("observedBy")
+    return ("appian-harness: no observed load of the official Appian skill (%s) for "
+            "this scope%s. Load it before writing: the tool schemas carry no naming "
+            "conventions, no both-sides-of-a-relationship rule, no creation order and "
+            "no UUID handling. The hook records the load itself from what it sees -- "
+            "you do not write %s."
+            % (OFFICIAL_SKILL_URL,
+               "; the record at %s was not written by the hook" % path
+               if hand_written else "", SKILL_RECORD_NAME))
+
+
 def _skill_record_errors(config, task_id):
-    """Names what's wrong with this task's official-skill load record.
+    """The 0.6 reading of the load record, kept for 0.6 scopes only.
 
-    Empty list means the record is present, is about THIS task, and names
-    all three links of the chain: the skill, the environment version it
-    declares, and the documentation MCP the skill itself depends on.
-
-    It does not prove the skill was loaded -- the agent writes this file.
-    What it removes is the silent case. Where the project points at the
-    installed skill, the version claim is checked against the file.
+    A v06 scope closes under the rules it opened with (§ 15), and under
+    those the agent writes this file and the gate validates its three
+    links. v07 uses `skill_trail_note` instead.
     """
     path = os.path.join(_evidence_dir(config), task_id,
                         SKILL_RECORD_NAME)
@@ -1469,12 +1508,12 @@ def scope_gate(payload, config):
       5. if the call is irreversible -- a delete, or a record-data
          overwrite -- an impact assessment exists, and it prompts either way
       6. the task is atomic (len(allowedObjects) <= maxAllowedObjects)
-      7. the official Appian skill's load record exists for this task
-      8. a present, valid and passing practices-design verdict
+      7. a present, valid and passing practices-design verdict
 
-    The skill record is checked before the design verdict because that is
-    the order the two happen in: a design audited without the domain
-    knowledge was audited against the wrong thing.
+    The official skill's load record is no longer among them on a v07
+    scope: the hook writes it from what it observed (§ 7.5), so its absence
+    is a remedy to the model in `additionalContext`, not a decision for a
+    person. On a 0.6 scope it stays where it was (§ 15).
     """
     tool_name = payload.get("tool_name", "")
     if not _is_write_tool(tool_name, config):
@@ -1507,9 +1546,18 @@ def scope_gate(payload, config):
     else:
         reasons.extend(_scope_shared_reasons(config, payload, tool_name, active_task))
 
+    notes = []
+    if policy == "v07" and isinstance(active_task, dict):
+        note = skill_trail_note(config, active_task.get("id"))
+        if note:
+            notes.append(note)
+
     if perimeter or reasons:
-        return {"permissionDecision": PERMISSION_ASK,
-                "permissionDecisionReason": " · ".join(perimeter + reasons)}
+        out = {"permissionDecision": PERMISSION_ASK,
+               "permissionDecisionReason": " · ".join(perimeter + reasons)}
+        if notes:
+            out["additionalContext"] = " · ".join(notes)
+        return out
     if policy == "v07":
         # § 7.1: the allow reserves the sequence and leaves the intention
         # row BEFORE the call goes out, so a write that never answers is a
@@ -1521,12 +1569,18 @@ def scope_gate(payload, config):
             # write is nobody's decision. The write goes through -- the
             # verdicts it may expire are protected by writeSeq -- and the
             # model gets the honest fix.
+            notes.append("el alcance está cerrando: abre uno nuevo o pide "
+                         "`request: \"resume\"`")
             return {"permissionDecision": "allow",
                     "permissionDecisionReason":
                         "el alcance está cerrando: abre uno nuevo o pide "
-                        "`request: \"resume\"`"}
-    return {"permissionDecision": "allow",
-            "permissionDecisionReason": "scope and design audit check out"}
+                        "`request: \"resume\"`",
+                    "additionalContext": " · ".join(notes)}
+    out = {"permissionDecision": "allow",
+           "permissionDecisionReason": "scope and design audit check out"}
+    if notes:
+        out["additionalContext"] = " · ".join(notes)
+    return out
 
 
 def _state_integrity_reasons(config, scope):
@@ -1791,19 +1845,21 @@ def closure_gate(payload, config):
 
 
 def _v07_closure_missing(config, scope):
-    """What a v07 close can demand in Phase 2: the state machine plus the
-    one § 7.1 rule that already has its data -- a reservation nobody ever
-    answered. The floor by sequences plugs in here in Phase 3 and the
-    judge's verdicts in Phase 4 (§ 16 places them there), so "closes clean"
-    today means the machine and the write log were respected, not that any
-    floor was satisfied."""
+    """What a v07 close demands: the state machine, the § 7.1 rule about a
+    reservation nobody answered, and the deterministic floor of § 8.
+
+    The judge's verdicts are Phase 4's (§ 16 places them there), so what
+    "closes clean" means here is: the machine and the write log were
+    respected, and every leg the floor asks for was paid by a read the hook
+    saw, taken at or after the write it accredits."""
     unresolved = _unresolved_pendings(config, scope.get("instanceId"))
     if unresolved:
         return ["hay %d escritura(s) sin respuesta (pending) en operations.jsonl — "
                 "ni ok, ni failed, ni ambiguous: MCP caído, timeout o sesión cortada. "
                 "Relee cada objeto afectado y registra lo que persistió antes de "
                 "cerrar (§ 7.1)" % len(unresolved)]
-    return []
+    report = floor_report(config, scope)
+    return report["blocking"] + report["missing"]
 
 
 def _unresolved_pendings(config, instance_id):
@@ -1883,12 +1939,9 @@ def _closure_gate_v07(payload, config, scope):
                           "`never-closed` debt." % (signed.get("id"), seq)}
 
     # status == closing
-    missing = _v07_closure_missing(config, scope)
+    missing = _v07_closure_missing(config, signed)
     if not missing:
-        _sign_transition(config, signed, STATUS_CLOSING, STATUS_CLOSED, "stop-clean")
-        _log_task_closure(config, signed.get("id"), STATUS_CLOSING, STATUS_CLOSED, [])
-        _restore_suspended_if_any(config, signed)
-        return {"decision": "approve"}
+        return _close_on_the_floor(config, signed)
     if payload.get("stop_hook_active"):
         _append_jsonl(_debt_register(config),
                       {"timestamp": _now(), "task": signed.get("id"),
@@ -1904,6 +1957,55 @@ def _closure_gate_v07(payload, config, scope):
                                  "missing: %s" % (signed.get("id"), "; ".join(missing))}
     return {"decision": "block",
             "reason": "the close is not complete: %s" % "; ".join(missing)}
+
+
+def _close_on_the_floor(config, signed):
+    """Which terminal state a floor-satisfying close earns (§§ 8.4, 8.7).
+
+    Three different things that used to look alike:
+      a residue with an owner    -> `closed`. A residue is not a failure.
+      a class nobody could measure -> `closed-pending-human`, and the kind
+                                      does NOT change: a defect of the
+                                      environment is not a change of scope.
+      a type with no floor row   -> `closed-with-debt`, without waiting:
+                                    the defect is the design's, not the
+                                    scope's.
+    """
+    report = floor_report(config, signed)
+    for debt in report["debts"]:
+        _append_jsonl(_debt_register(config),
+                      dict(debt, timestamp=_now(), task=signed.get("id"),
+                           instanceId=signed.get("instanceId")))
+    for gap in report["notMeasured"]:
+        _append_jsonl(_debt_register(config),
+                      dict(gap, timestamp=_now(), task=signed.get("id"),
+                           instanceId=signed.get("instanceId"),
+                           kind="NOT_MEASURED / REQUIRES_HUMAN"))
+
+    if report["notMeasured"]:
+        status, trigger = STATUS_CLOSED_PENDING_HUMAN, "stop-not-measured"
+        message = ("appian-harness: scope %r closed PENDING HUMAN. The floor was "
+                   "satisfied except for %d guarantee class(es) no instrument could "
+                   "measure; each is in deferred-debt.jsonl with its owner and its "
+                   "condition. The size did not change: an environment defect is not "
+                   "a change of scope (§ 8.7)."
+                   % (signed.get("id"), len(report["notMeasured"])))
+    elif any(d["kind"] == DEBT_TYPE_HAS_NO_FLOOR for d in report["debts"]):
+        status, trigger = STATUS_CLOSED_WITH_DEBT, "stop-no-floor"
+        message = ("appian-harness: scope %r closed WITH DEBT (type-has-no-floor). "
+                   "Nothing here is yours to fix: a type this scope wrote has no row "
+                   "in the floor table, and that is settled by widening the table "
+                   "(§ 8.1)." % signed.get("id"))
+    else:
+        status, trigger, message = STATUS_CLOSED, "stop-clean", None
+
+    _sign_transition(config, signed, STATUS_CLOSING, status, trigger)
+    _log_task_closure(config, signed.get("id"), STATUS_CLOSING, status, [])
+    _restore_suspended_if_any(config, signed)
+    out = {"decision": "approve"}
+    if message:
+        out["systemMessage"] = message
+    return out
 
 
 def failure_notice(payload, config=None):
@@ -2018,10 +2120,7 @@ def _behavioural_and_hash(action, tool_input):
             return True, None
     if not isinstance(expression, str):
         return behavioural, None
-    digest = hashlib.sha256(json.dumps(
-        {"expression": expression, "inputs": tool_input.get("inputs")},
-        sort_keys=True, default=str).encode("utf-8")).hexdigest()
-    return behavioural, digest
+    return behavioural, _expression_digest(expression, tool_input.get("inputs"))
 
 
 def _classify_write_response(payload):
@@ -2285,6 +2384,1289 @@ def _evidence_write_target(config, file_path):
     return None
 
 
+# --- § 7.4 · observe-reads: crediting what the hook saw ----------------
+
+CHECKS_LEDGER_NAME = "checks.jsonl"
+
+# One classification of the corpus by the object type each tool touches.
+# It is the single source for two things that must not drift apart: which
+# floor row a write falls under (§ 8.1), and which reads can credit it
+# (§ 7.4). Splitting them into two hand lists is how a type acquires a
+# floor nobody can ever satisfy.
+_TYPE_BY_ACTION = {
+    # interface
+    "createInterface": "interface", "updateInterface": "interface",
+    "deleteInterface": "interface", "getInterface": "interface",
+    "listInterfaces": "interface", "testInterface": "interface",
+    # expression rule
+    "createExpressionRule": "expressionRule",
+    "updateExpressionRule": "expressionRule",
+    "deleteExpressionRule": "expressionRule",
+    "getExpressionRule": "expressionRule",
+    "listExpressionRules": "expressionRule",
+    "testRule": "expressionRule",
+    # process model
+    "createProcessModel": "processModel", "updateProcessModel": "processModel",
+    "deleteProcessModel": "processModel",
+    "createProcessModelNode": "processModel",
+    "updateProcessModelNode": "processModel",
+    "deleteProcessModelNode": "processModel",
+    "getProcessModel": "processModel", "listProcessModels": "processModel",
+    "getProcessModelNode": "processModel",
+    "listProcessModelNodes": "processModel",
+    # user filter -- its own floor row (§ 8.1), not the record type's
+    "addRecordTypeUserFilter": "userFilter",
+    "updateRecordTypeUserFilter": "userFilter",
+    "deleteRecordTypeUserFilter": "userFilter",
+    "listRecordTypeUserFilters": "userFilter",
+    # record type
+    "createRecordType": "recordType", "updateRecordType": "recordType",
+    "deleteRecordType": "recordType",
+    "addRecordTypeField": "recordType", "updateRecordTypeField": "recordType",
+    "deleteRecordTypeField": "recordType",
+    "addCustomRecordField": "recordType",
+    "updateCustomRecordField": "recordType",
+    "deleteCustomRecordField": "recordType",
+    "addRecordTypeRelationship": "recordType",
+    "updateRecordTypeRelationship": "recordType",
+    "deleteRecordTypeRelationship": "recordType",
+    "addRecordTypeAction": "recordType", "updateRecordTypeAction": "recordType",
+    "deleteRecordTypeAction": "recordType",
+    "addRecordTypeView": "recordType", "updateRecordTypeView": "recordType",
+    "deleteRecordTypeView": "recordType",
+    "reorderRecordTypeViews": "recordType",
+    "configureRecordEvents": "recordType",
+    "getRecordType": "recordType", "listRecordTypes": "recordType",
+    "getRecordTypeField": "recordType", "listRecordTypeFields": "recordType",
+    "listRecordTypeRelationships": "recordType",
+    "listRecordTypeActions": "recordType", "listRecordTypeViews": "recordType",
+    "getRecordEventsConfig": "recordType",
+    # authorization
+    "updateObjectSecurity": "security", "getObjectSecurity": "security",
+    # group
+    "createGroup": "group", "updateGroup": "group", "deleteGroup": "group",
+    "addGroupMembers": "group", "removeGroupMember": "group",
+    "getGroup": "group", "listGroups": "group", "listGroupMembers": "group",
+    # data
+    "insertRecordData": "recordData", "updateRecordData": "recordData",
+    "deleteRecordData": "recordData", "listRecordData": "recordData",
+    # site / application
+    "createSite": "site", "updateSite": "site", "deleteSite": "site",
+    "getSite": "site", "listSites": "site",
+    "createApplication": "application", "updateApplication": "application",
+    "deleteApplication": "application",
+    "addObjectsToApplication": "application",
+    "getApplication": "application", "listApplications": "application",
+    "listApplicationObjects": "application",
+    # third-party surface
+    "createWebApi": "webApi", "updateWebApi": "webApi",
+    "deleteWebApi": "webApi", "getWebApi": "webApi", "listWebApis": "webApi",
+    "createIntegration": "integration", "updateIntegration": "integration",
+    "deleteIntegration": "integration", "getIntegration": "integration",
+    "listIntegrations": "integration",
+    "createConnectedSystem": "connectedSystem",
+    "updateConnectedSystem": "connectedSystem",
+    "deleteConnectedSystem": "connectedSystem",
+    "getConnectedSystem": "connectedSystem",
+    "listConnectedSystems": "connectedSystem",
+    # inert types
+    "createConstant": "constant", "updateConstant": "constant",
+    "deleteConstant": "constant", "getConstant": "constant",
+    "listConstants": "constant",
+    "createFolder": "folder", "updateFolder": "folder",
+    "deleteFolder": "folder", "getFolder": "folder", "listFolders": "folder",
+    "listFolderContents": "folder", "listProcessModelFolders": "folder",
+    "uploadDocument": "document", "updateDocument": "document",
+    "replaceDocumentContent": "document", "deleteDocument": "document",
+    "getDocument": "document", "listDocuments": "document",
+    "getDocumentContent": "document", "getDocumentText": "document",
+    "createInterfaceTestCase": "testCase",
+    "createInterfaceTestCases": "testCase",
+    "updateInterfaceTestCase": "testCase",
+    "deleteInterfaceTestCase": "testCase",
+    "getInterfaceTestCase": "testCase", "listInterfaceTestCases": "testCase",
+    "createExpressionRuleTestCase": "testCase",
+    "createExpressionRuleTestCases": "testCase",
+    "updateExpressionRuleTestCase": "testCase",
+    "deleteExpressionRuleTestCase": "testCase",
+    "getExpressionRuleTestCase": "testCase",
+    "listExpressionRuleTestCases": "testCase",
+    "runAllInterfaceTestCases": "interface",
+    "runInterfaceTestCase": "interface",
+    "runAllExpressionRuleTestCases": "expressionRule",
+    "runExpressionRuleTestCase": "expressionRule",
+}
+
+# The verification corpus is DERIVED (§ 7.4), never hand-listed: a read
+# credits only where its object type has a classified write tool. That is
+# what keeps `getRoboticTask` and `getAiSkill` out without naming them, and
+# what makes the corpus grow by itself when a write tool is classified.
+_VERIFICATION_EXTRAS = frozenset((
+    "validateExpression", "validateDesignObject", "testInterface", "testRule",
+    "listRecordData",
+    # Cross-cutting: it reads the dependents of an object of ANY type, so no
+    # single type derives it, and the deletion floor cannot be paid without
+    # it (§ 8.1, last-but-one row).
+    "getObjectDependents",
+))
+_READ_PREFIXES = ("get", "list")
+_TESTCASE_RUN_RE = re.compile(r"^run(All)?\w*TestCases?$")
+# `testProcessModel` starts a real process: it is an irreversible write,
+# and § 7.4 says so in as many words.
+_NOT_VERIFICATION = frozenset(("testProcessModel",))
+
+
+def _verification_actions():
+    written = {t for a, t in _TYPE_BY_ACTION.items()
+               if _WRITE_VERBS_RE.match(a)}
+    derived = {a for a, t in _TYPE_BY_ACTION.items()
+               if t in written
+               and (a.startswith(_READ_PREFIXES) or _TESTCASE_RUN_RE.match(a))}
+    return frozenset((derived | _VERIFICATION_EXTRAS) - _NOT_VERIFICATION)
+
+
+VERIFICATION_ACTIONS = _verification_actions()
+
+# What each verification tool buys ON ITS OWN (§ 8.4). A pair of rows can
+# buy more -- a security diff, a data delta, a render inequality -- but
+# that is the floor's business (§ 8.1), not the row's.
+_GUARANTEE_BY_ACTION = {
+    "validateDesignObject": "green-signal-only",
+    # Syntax, and syntax only. Green on anything that parses.
+    "validateExpression": "green-signal-only",
+    # One render proves the screen evaluated; populated != empty is what
+    # buys `behavioural`, and that is asserted over the render pair.
+    "testInterface": "green-signal-only",
+    "getObjectSecurity": "authorization",
+}
+_STRUCTURE_READS = frozenset((
+    "listProcessModelNodes", "getProcessModelNode", "getSite",
+    "listApplicationObjects", "listGroupMembers", "listRecordTypeViews",
+    "listRecordTypeActions", "listRecordTypeRelationships",
+    "listRecordTypeFields", "listRecordTypeUserFilters", "listRecordData",
+    "getObjectDependents", "listFolderContents",
+))
+
+
+def _read_response_value(entry):
+    """The response of one batch entry. P5: the field is `tool_response`
+    and there is no separate `error` -- a failure arrives as text inside
+    it, so the classifier reads content, not a flag that does not exist."""
+    if "tool_response" in entry:
+        return entry.get("tool_response")
+    return entry.get("tool_result")
+
+
+_MAX_RESPONSE_CHARS = 4 * 1024 * 1024
+
+
+def _parse_response(value):
+    """(parsed_or_None, text). Parsing happens in the hook and stays there:
+    nothing from a response reaches anyone's context (§ 12.3)."""
+    if isinstance(value, (dict, list)):
+        return value, None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or len(text) > _MAX_RESPONSE_CHARS:
+            return None, text
+        try:
+            return json.loads(text), text
+        except ValueError:
+            return None, text
+    return None, None
+
+
+def classify_read_response(value):
+    """(result) for a verification read, against the P3 shapes.
+
+    A read is not a write: a successful list or get carries no `uuid`, so
+    the write classifier -- which reads its absence as `ambiguous` -- would
+    reject every clean read. What is shared is the failure vocabulary and
+    the rule that anything unrecognised is `ambiguous` and never counts.
+    """
+    parsed, text = _parse_response(value)
+    if isinstance(parsed, (dict, list)):
+        if isinstance(parsed, dict) and (parsed.get("is_error")
+                                         or parsed.get("error")):
+            return "failed"
+        return "ok"
+    if not text:
+        return "ambiguous"
+    if "<tool_use_error>" in text:
+        return "failed"
+    if text.startswith(("API error (HTTP", "Unexpected error:")):
+        return "failed"
+    if text.lower().startswith("error"):
+        return "failed"
+    if len(text) > _MAX_RESPONSE_CHARS:
+        # Too big to parse is not proof of anything, in either direction.
+        return "ambiguous"
+    return "ambiguous"
+
+
+def _test_case_tally(parsed):
+    """(run, passed) from a test-case replay, or (None, None) when the
+    shape is not recognised. Zero cases run is a real answer: a replay of
+    nothing cannot fail, which is exactly what a green signal is."""
+    if isinstance(parsed, dict):
+        for key in ("testCases", "results", "cases", "testResults"):
+            value = parsed.get(key)
+            if isinstance(value, list):
+                run = len(value)
+                passed = sum(1 for c in value if isinstance(c, dict)
+                             and (c.get("passed") is True
+                                  or _norm_ident(c.get("status") or c.get("result")
+                                                 or "") in ("passed", "pass", "success")))
+                return run, passed
+        if _is_count(parsed.get("passed")) and _is_count(parsed.get("failed")):
+            return parsed["passed"] + parsed["failed"], parsed["passed"]
+    if isinstance(parsed, list):
+        run = len(parsed)
+        passed = sum(1 for c in parsed if isinstance(c, dict)
+                     and (c.get("passed") is True
+                          or _norm_ident(c.get("status") or c.get("result")
+                                         or "") in ("passed", "pass", "success")))
+        return run, passed
+    return None, None
+
+
+def guarantee_class(action, result, parsed):
+    """What this row bought (§ 8.4). A function of the OBSERVED result, not
+    of what the call was for: a failed or unclassifiable response buys
+    `ambiguous` whatever tool produced it."""
+    if result != "ok":
+        return "ambiguous"
+    if _TESTCASE_RUN_RE.match(action):
+        run, passed = _test_case_tally(parsed)
+        if run and passed == run:
+            return "behavioural"
+        # Zero cases, an unrecognised shape, or a red case: no behaviour is
+        # proven, so this must not count as coverage on its own.
+        return "green-signal-only"
+    fixed = _GUARANTEE_BY_ACTION.get(action)
+    if fixed:
+        return fixed
+    if action in _STRUCTURE_READS:
+        return "structure"
+    return "persisted-not-behavioural"
+
+
+def _row_count(parsed):
+    if isinstance(parsed, list):
+        return len(parsed)
+    if isinstance(parsed, dict):
+        for key in ("rows", "data", "items", "records", "results"):
+            value = parsed.get(key)
+            if isinstance(value, list):
+                return len(value)
+        if _is_count(parsed.get("totalCount")):
+            return parsed["totalCount"]
+    return None
+
+
+_VOLATILE_RESPONSE_KEYS = frozenset(("_cId", "durationMs", "diagnostics",
+                                     "timestamp", "lastModified",
+                                     "lastModifiedTimestamp"))
+
+
+def _stable_digest(value, drop=()):
+    """A digest over a response with the volatile keys removed, so two
+    reads of an untouched object agree. Used to turn "compared against the
+    preflight" (§ 8.1 security, § 8.6 re-read) into an equality nobody has
+    to trust an agent about."""
+    def strip(node):
+        if isinstance(node, dict):
+            return {k: strip(v) for k, v in sorted(node.items())
+                    if k not in _VOLATILE_RESPONSE_KEYS and k not in drop}
+        if isinstance(node, list):
+            return [strip(v) for v in node]
+        return node
+    return hashlib.sha256(json.dumps(strip(value), sort_keys=True,
+                                     default=str).encode("utf-8")).hexdigest()
+
+
+def _expression_digest(expression, inputs):
+    return hashlib.sha256(json.dumps(
+        {"expression": expression, "inputs": inputs},
+        sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+# The five wirings of `change-review.md § Cross-Object Wiring`, read from
+# the responses the hook already sees. An agent-written bundle would be the
+# self-report § 7.5 just removed.
+_RULE_REF_RE = re.compile(r"rule!([A-Za-z0-9_]+)")
+
+
+def cross_references(action, parsed):
+    """Every reference this response declares, as {kind, from, target}."""
+    refs = []
+
+    def add(kind, source, target):
+        if isinstance(target, str) and target:
+            refs.append({"kind": kind, "from": source, "target": target})
+
+    def each(node, keys):
+        if isinstance(node, dict):
+            for key in keys:
+                if key in node:
+                    yield node
+                    break
+            for value in node.values():
+                for hit in each(value, keys):
+                    yield hit
+        elif isinstance(node, list):
+            for value in node:
+                for hit in each(value, keys):
+                    yield hit
+
+    if action in ("listRecordTypeActions", "getRecordType"):
+        for node in each(parsed, ("processModelUuid",)):
+            add("record-action", node.get("name") or node.get("uuid"),
+                node.get("processModelUuid"))
+    if action == "getProcessModel":
+        for node in each(parsed, ("startForm",)):
+            form = node.get("startForm")
+            if isinstance(form, dict):
+                add("start-form", node.get("name") or node.get("uuid"),
+                    form.get("interfaceUuid"))
+    if action in ("listRecordTypeViews", "getRecordType"):
+        for node in each(parsed, ("interfaceExpression",)):
+            expression = node.get("interfaceExpression")
+            if isinstance(expression, str):
+                for name in _RULE_REF_RE.findall(expression):
+                    add("summary-view", node.get("name") or node.get("uuid"),
+                        name)
+    if action == "getSite":
+        for node in each(parsed, ("targetUuid",)):
+            add("site-page", node.get("name") or node.get("urlStub"),
+                node.get("targetUuid"))
+    if action == "listRecordTypeRelationships":
+        for node in each(parsed, ("targetRecordTypeUuid",)):
+            add("relationship", node.get("name") or node.get("uuid"),
+                node.get("targetRecordTypeUuid"))
+    return refs
+
+
+# § 8.7 (b): the alternative instrument for a screen whose render fails is
+# running its test cases, and in this environment that path exists only over
+# REST -- the 500 is the servlet's. It arrives as a `Bash` call, so without
+# recognising it the acid case has NO behavioural alternative at all and
+# would close `closed-pending-human` on a class that was in fact measured.
+# The row is written under the same action name, so it credits identically.
+_REST_TESTCASE_RE = re.compile(
+    r"lcp-api/[^\s'\"]*/(interfaces|expression-rules)/"
+    r"([0-9a-zA-Z_.-]{3,})/test-cases/run")
+_REST_ACTION_BY_SURFACE = {"interfaces": "runAllInterfaceTestCases",
+                           "expression-rules": "runAllExpressionRuleTestCases"}
+
+
+def _rest_check(entry):
+    """(action, uuid) when this Bash call is the REST test-case replay."""
+    command = (entry.get("tool_input") or {}).get("command")
+    if not isinstance(command, str):
+        return None, None
+    match = _REST_TESTCASE_RE.search(command)
+    if not match:
+        return None, None
+    return _REST_ACTION_BY_SURFACE[match.group(1)], match.group(2)
+
+
+def _checks_ledger(config):
+    return os.path.join(_evidence_dir(config), CHECKS_LEDGER_NAME)
+
+
+def read_checks(config, instance_id=None):
+    rows = _read_jsonl(_checks_ledger(config))
+    if instance_id is None:
+        return rows
+    return [r for r in rows if r.get("instanceId") == instance_id]
+
+
+def _check_row(config, scope, entry, action):
+    value = _read_response_value(entry)
+    parsed, _ = _parse_response(value)
+    result = classify_read_response(value)
+    tool_input = entry.get("tool_input") or {}
+    candidates = _with_linked_names(config, scope.get("instanceId"),
+                                    _object_candidates(tool_input))
+    row = {
+        "timestamp": _now(),
+        "instanceId": scope.get("instanceId"),
+        "writeSeqAtCheck": _observed_write_seq(config,
+                                               scope.get("instanceId")),
+        "tool": entry.get("tool_name"),
+        "action": action,
+        "toolUseId": entry.get("tool_use_id"),
+        "object": candidates[0] if candidates else None,
+        "candidates": candidates,
+        "objectType": _TYPE_BY_ACTION.get(action),
+        "result": result,
+        "guaranteeClass": guarantee_class(action, result, parsed),
+        "expressionHash": None,
+    }
+    if result != "ok" or parsed is None:
+        return row
+    row["responseDigest"] = _stable_digest(parsed)
+    # The same digest minus the metadata whitelist: § 8.6 asks whether the
+    # rest of the object is unchanged, which is this equality.
+    row["nonMetadataDigest"] = _stable_digest(parsed,
+                                              drop=_METADATA_ONLY_FIELDS)
+    if isinstance(parsed, dict) and action in ("getInterface",
+                                               "getExpressionRule"):
+        row["expressionHash"] = _expression_digest(parsed.get("expression"),
+                                                   parsed.get("inputs"))
+    if _TESTCASE_RUN_RE.match(action):
+        run, passed = _test_case_tally(parsed)
+        row["casesRun"], row["casesPassed"] = run, passed
+    count = _row_count(parsed)
+    if count is not None:
+        row["rowCount"] = count
+    refs = cross_references(action, parsed)
+    if refs:
+        row["references"] = refs
+    if isinstance(parsed, dict) and parsed.get("facetType"):
+        row["facetType"] = parsed["facetType"]
+    if action == "testInterface":
+        # The tree is measured here and discarded: what the ledger keeps is
+        # the normalized hash, the value-node count and the diagnostics.
+        row["render"] = render_record(parsed)
+        row["inputsDigest"] = _stable_digest(tool_input.get("testInputs")
+                                             or tool_input.get("inputs") or {})
+    if action == "listProcessModelNodes":
+        nodes = parsed.get("nodes") if isinstance(parsed, dict) else parsed
+        if isinstance(nodes, list):
+            findings = process_graph_findings(nodes)
+            row["graph"] = {"nodes": len(nodes),
+                            "findings": [f["check"] for f in findings],
+                            "detail": [f["detail"] for f in findings][:5]}
+    return row
+
+
+# --- § 7.5 · the official skill's trail, written from what was seen ----
+
+_SKILL_TOOL = "Skill"
+
+
+def _skill_root(config):
+    path = _official_skill_path(config)
+    return os.path.dirname(path) if path else None
+
+
+def _under(root, path):
+    if not root or not isinstance(path, str) or not path:
+        return False
+    try:
+        root_real = os.path.normcase(os.path.realpath(root))
+        target = os.path.normcase(os.path.realpath(path))
+    except OSError:
+        return False
+    return target == root_real or target.startswith(root_real + os.sep)
+
+
+def _observe_skill_trail(config, scope, entries):
+    """§ 7.5: the record is written from the invocation of the skill and
+    the reads under its root. What the hook did not see is not written,
+    and a record without `observedBy` does not credit anything."""
+    task_id = scope.get("id")
+    if not task_id:
+        return
+    root = _skill_root(config)
+    invoked, loaded, tool_use_id = False, [], None
+    for entry in entries:
+        name = entry.get("tool_name")
+        tool_input = entry.get("tool_input") or {}
+        if name == _SKILL_TOOL:
+            skill = tool_input.get("skill") or tool_input.get("name")
+            response = str(_read_response_value(entry) or "")
+            if "<tool_use_error>" in response:
+                continue
+            if _norm_ident(skill or "") in ("appian", "appian-dev"):
+                invoked, tool_use_id = True, entry.get("tool_use_id")
+        elif name in ("Read", "Glob", "Grep"):
+            candidate = tool_input.get("file_path") or tool_input.get("path")
+            if _under(root, candidate):
+                rel = os.path.relpath(candidate, root)
+                if rel not in loaded:
+                    loaded.append(rel)
+    if not invoked and not loaded:
+        return
+
+    path = os.path.join(_evidence_dir(config), task_id, SKILL_RECORD_NAME)
+    record = {}
+    if os.path.isfile(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                existing = json.load(f)
+            if isinstance(existing, dict) and existing.get("observedBy"):
+                record = existing
+        except (ValueError, OSError):
+            record = {}
+    merged = list(record.get("referencesLoaded") or [])
+    for rel in loaded:
+        if rel not in merged:
+            merged.append(rel)
+    record.update({
+        "observedBy": "observe-reads",
+        "task": task_id,
+        "instanceId": scope.get("instanceId"),
+        "skill": record.get("skill") or ("appian" if invoked else None),
+        "skillInvoked": bool(record.get("skillInvoked") or invoked),
+        "toolUseId": record.get("toolUseId") or tool_use_id,
+        "docsMcp": config.get("docsMcpServer") or DEFAULT_DOCS_MCP,
+        "appianVersion": _installed_skill_version(config)
+                         or record.get("appianVersion"),
+        "referencesLoaded": merged,
+        "updated": _now(),
+    })
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        _write_json_atomic(path, record)
+    except OSError:
+        pass
+
+
+def observe_reads(payload, config):
+    """PostToolBatch: one `checks.jsonl` row per verification read of the
+    batch, plus the official skill's trail (§§ 7.4, 7.5).
+
+    It decides nothing and can stop nothing. `PostToolBatch` admits no
+    matcher (Phase 0, P5), so this fires on every batch of every session:
+    the first thing it does is leave, without touching disk, when there is
+    no signed scope or nothing in the batch it credits.
+    """
+    entries = payload.get("tool_calls")
+    if not isinstance(entries, list) or not entries:
+        return {}
+    active_task = config.get("activeTask") or {}
+    if _scope_policy(active_task) != "v07" or _scope_schema_errors(active_task):
+        return {}
+    projection = _load_projection(config)
+    if projection is None \
+            or projection.get("instanceId") != active_task.get("instanceId"):
+        return {}
+    scope = projection.get("scope") or {}
+    if scope.get("status") not in LIVE_STATUSES:
+        return {}
+
+    rows = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        action = _tool_action(entry.get("tool_name"), config)
+        if action in VERIFICATION_ACTIONS:
+            rows.append(_check_row(config, scope, entry, action))
+            continue
+        if entry.get("tool_name") == "Bash":
+            rest_action, uuid = _rest_check(entry)
+            if rest_action:
+                row = _check_row(config, scope,
+                                 dict(entry, tool_input={"uuid": uuid}),
+                                 rest_action)
+                row["channel"] = "rest"
+                rows.append(row)
+    for row in rows:
+        _append_jsonl(_checks_ledger(config), row)
+    _observe_skill_trail(config, scope, entries)
+    return {}
+
+
+# --- § 8 · the deterministic floor -------------------------------------
+#
+# Every leg here is a call already routed and already credited in
+# checks.jsonl. None of them buys an agent (§ 1.5). The floor's job is to
+# read the ledger and say which legs this scope did NOT pay -- and to say
+# it once: a leg satisfied at the last write cannot be demanded again.
+
+# What the residue classes are called, so the two things that used to share
+# `instrument-limit-known` keep their different names (§ 8.4).
+DEBT_EXTERNAL_EFFECT = "external-effect-not-exercised"
+DEBT_TYPE_HAS_NO_FLOOR = "type-has-no-floor"
+DEBT_MANUAL_STEP = "manual-step-not-tooled"
+DEBT_BRANCH_NOT_EXERCISABLE = "branch-not-exercisable-without-writing-data"
+
+# The types whose floor is persistence only AND that write data, call a
+# third party or change authorization: § 8.4's symmetric residue. Constant,
+# folder, document and test case are inert and carry none.
+_RESIDUE_TYPES = frozenset(("webApi", "integration", "connectedSystem"))
+
+_DELETE_RE = re.compile(r"^(delete|remove)")
+
+
+def _floor_object_key(candidates, allowed):
+    for candidate in candidates or []:
+        if candidate in allowed:
+            return candidate
+    return (candidates or [None])[0]
+
+
+def _written_objects(config, scope):
+    """{key: {type, lastSeq, behavioural, deleted, candidates}} for what
+    this instance actually wrote and confirmed."""
+    allowed = set(scope.get("allowedObjects") or [])
+    out = {}
+    for row in _read_jsonl(os.path.join(_evidence_dir(config),
+                                        "operations.jsonl")):
+        if row.get("instanceId") != scope.get("instanceId"):
+            continue
+        if row.get("result") != "ok" or not row.get("inScope"):
+            continue
+        action = _tool_action(row.get("tool"), config)
+        key = _floor_object_key(row.get("candidates") or [row.get("object")],
+                                allowed)
+        if not key:
+            continue
+        entry = out.setdefault(key, {"type": None, "lastSeq": 0,
+                                     "behavioural": False, "deleted": False,
+                                     "candidates": set(), "actions": set()})
+        entry["type"] = _TYPE_BY_ACTION.get(action, entry["type"])
+        entry["actions"].add(action)
+        entry["candidates"].update(row.get("candidates") or [])
+        if key:
+            entry["candidates"].add(key)
+        seq = row.get("writeSeq")
+        if isinstance(seq, int) and seq > entry["lastSeq"]:
+            entry["lastSeq"] = seq
+        # Fails to the expensive side: one behavioural write in the object's
+        # history makes the whole floor apply, not the proportional one.
+        if row.get("behavioural") is not False:
+            entry["behavioural"] = True
+        if _DELETE_RE.match(action):
+            entry["deleted"] = True
+        if action not in _TYPE_BY_ACTION:
+            entry["unclassified"] = action
+    return out
+
+
+def _rows_for(checks, entry, since):
+    """The credited rows for this object, taken at or after `since`.
+
+    This single predicate is what makes an old read unable to accredit a
+    new write: `writeSeqAtCheck` is stamped by the hook when the read is
+    observed, and nothing the agent writes can move it.
+    """
+    keys = entry["candidates"]
+    out = []
+    for row in checks:
+        if row.get("writeSeqAtCheck", -1) < since:
+            continue
+        if keys & set(row.get("candidates") or []):
+            out.append(row)
+    return out
+
+
+def _ok(rows, actions=None, guarantee=None):
+    out = [r for r in rows if r.get("result") == "ok"]
+    if actions:
+        out = [r for r in out if r.get("action") in actions]
+    if guarantee:
+        out = [r for r in out if r.get("guaranteeClass") == guarantee]
+    return out
+
+
+def _failed(rows, actions):
+    return [r for r in rows if r.get("action") in actions
+            and r.get("result") in ("failed", "ambiguous")]
+
+
+# A leg: (name, the guarantee classes it buys, the actions that are its
+# instrument, and the predicate). `classes` is what § 8.7 step 2 iterates
+# over -- the search for alternative evidence is per class, not per leg,
+# because one instrument rarely buys only one thing.
+class _Leg(object):
+    def __init__(self, name, actions, classes, predicate, remedy):
+        self.name = name
+        self.actions = frozenset(actions)
+        self.classes = tuple(classes)
+        self.predicate = predicate
+        self.remedy = remedy
+
+
+def _p_present(rows, leg, entry):
+    return bool(_ok(rows, leg.actions))
+
+
+def _p_testcases_green(rows, leg, entry):
+    return bool(_ok(rows, leg.actions, guarantee="behavioural"))
+
+
+def _p_graph_clean(rows, leg, entry):
+    graphs = [r.get("graph") for r in _ok(rows, leg.actions)
+              if isinstance(r.get("graph"), dict)]
+    return bool(graphs) and not graphs[-1].get("findings")
+
+
+def _p_data_present(rows, leg, entry):
+    return any(_is_count(r.get("rowCount")) and r["rowCount"] >= 1
+               for r in _ok(rows, leg.actions))
+
+
+def _p_delta(rows, leg, entry):
+    """Two credited reads whose digests differ: the delta IS the evidence."""
+    digests = [r.get("responseDigest") for r in _ok(rows, leg.actions)
+               if r.get("responseDigest")]
+    return len(set(digests)) >= 2
+
+
+def _p_absence(rows, leg, entry):
+    """A read-back that fails is what proves a deletion landed. The row
+    keeps `ambiguous` as its guarantee class -- honest about the tool -- and
+    the floor reads its `result`, which is the thing that means absence."""
+    return any(r.get("result") == "failed" and r.get("action") in leg.actions
+               for r in rows)
+
+
+def _p_userfilter(rows, leg, entry):
+    reads = _ok(rows, ("listRecordTypeUserFilters",))
+    if not reads:
+        return False
+    if any(_norm_ident(r.get("facetType") or "") == "expression" for r in reads):
+        return bool(_ok(rows, ("validateExpression",)))
+    return True
+
+
+def render_pair_state(rows):
+    """(satisfied, detail) for the render legs of § 8.5, from the ledger.
+
+    Guarantee 1 is asserted between two rows with the SAME inputs; the
+    inequality of guarantee 3 between the two with different ones. Both are
+    read off rows the hook stamped, so neither depends on an artefact the
+    agent wrote.
+    """
+    renders = [r for r in rows if r.get("action") == "testInterface"
+               and r.get("result") == "ok" and isinstance(r.get("render"), dict)]
+    if len(renders) < 2:
+        return False, ("only %d credited render(s): the floor of an interface is a "
+                       "populated render and an empty one (§ 8.1)" % len(renders))
+    for r in renders:
+        record = r["render"]
+        if record.get("error") or record.get("truncated") or record.get("timedOut"):
+            return False, ("a render came back with error/truncated/timedOut, and a "
+                           "truncated render accredits nothing (§ 8.5)")
+    by_inputs = {}
+    for r in renders:
+        by_inputs.setdefault(r.get("inputsDigest"), []).append(r["render"])
+    for digest, records in by_inputs.items():
+        hashes = {rec["normalizedHash"] for rec in records}
+        if len(hashes) > 1:
+            return False, ("two renders of the same state gave different normalized "
+                           "hashes: guarantee 1 of § 8.5 fails, so nothing built on "
+                           "it proves anything")
+    if len(by_inputs) < 2:
+        return False, ("both renders used the same inputs: the empty path has to be "
+                       "reached by the mechanism that screen has, and which one was "
+                       "used is what gets recorded (§ 8.1)")
+    counts = sorted(rec["valueNodes"] for recs in by_inputs.values()
+                    for rec in recs)
+    hashes = {rec["normalizedHash"] for recs in by_inputs.values() for rec in recs}
+    if counts[-1] <= counts[0]:
+        return False, ("no render carries strictly more value-bearing nodes than "
+                       "another: guarantee 3 of § 8.5 is what rules out an "
+                       "a!forEach that never iterated")
+    if len(hashes) < 2:
+        return False, "populated and empty normalize to the same hash (§ 8.5)"
+    if not all(rec.get("measured") for recs in by_inputs.values() for rec in recs):
+        return False, ("N2 judged no component in one of the renders: that is NOT "
+                       "MEASURED, not a clean screen")
+    return True, None
+
+
+def _p_render_pair(rows, leg, entry):
+    return render_pair_state(rows)[0]
+
+
+_VALIDATE = ("validateDesignObject",)
+_LEGS_BY_TYPE = {
+    "interface": [
+        _Leg("validate", _VALIDATE, (), _p_present,
+             "run validateDesignObject on it"),
+        _Leg("reread", ("getInterface",), ("structure",), _p_present,
+             "read it back with getInterface"),
+        _Leg("render-pair", ("testInterface",), ("behavioural", "accessibility"),
+             _p_render_pair,
+             "render it populated and empty, and let N2 judge both"),
+    ],
+    "expressionRule": [
+        _Leg("validate", _VALIDATE, (), _p_present,
+             "run validateDesignObject on it"),
+        _Leg("reread", ("getExpressionRule",), ("structure",), _p_present,
+             "read it back with getExpressionRule"),
+        _Leg("test-cases", ("runAllExpressionRuleTestCases",
+                            "runExpressionRuleTestCase"), ("behavioural",),
+             _p_testcases_green,
+             "run its test cases green; if it has none, create one inside this "
+             "scope and say so (`case-created-in-scope`)"),
+    ],
+    "processModel": [
+        _Leg("validate", _VALIDATE, (), _p_present,
+             "run validateDesignObject on it"),
+        _Leg("reread", ("getProcessModel",), ("structure",), _p_present,
+             "read it back with getProcessModel"),
+        _Leg("graph", ("listProcessModelNodes",), ("structure",), _p_graph_clean,
+             "list its nodes: reachability, dangling targets and orphans are "
+             "checked from that response (§ 8.3)"),
+    ],
+    "userFilter": [
+        _Leg("reread", ("listRecordTypeUserFilters",), ("structure",),
+             _p_userfilter,
+             "list the filters, and for an EXPRESSION facet validate its body"),
+    ],
+    "recordType": [
+        _Leg("validate", _VALIDATE, (), _p_present,
+             "run validateDesignObject on it"),
+        _Leg("reread", ("getRecordType", "listRecordTypeFields",
+                        "listRecordTypeRelationships", "listRecordTypeViews",
+                        "listRecordTypeActions"), ("structure",), _p_present,
+             "read the record type back"),
+        _Leg("synced", ("listRecordData",), ("structure",), _p_data_present,
+             "query one row: a field that cannot be queried is not synchronised"),
+    ],
+    "security": [
+        _Leg("security-diff", ("getObjectSecurity",), ("authorization",), _p_delta,
+             "enumerate the final authorization state and compare it against the "
+             "one read in the preflight -- the diff is the evidence, not the ok"),
+    ],
+    "group": [
+        _Leg("reread", ("getGroup", "listGroups"), ("structure",), _p_present,
+             "read the group back"),
+        _Leg("members", ("listGroupMembers",), ("structure",), _p_present,
+             "list its members after the write"),
+    ],
+    "recordData": [
+        _Leg("delta", ("listRecordData",), ("behavioural",), _p_delta,
+             "count before and after: the delta is the evidence"),
+    ],
+    "site": [
+        _Leg("reread", ("getSite",), ("structure",), _p_present,
+             "read the site back and enumerate its final content"),
+    ],
+    "application": [
+        _Leg("reread", ("getApplication", "listApplicationObjects"),
+             ("structure",), _p_present,
+             "enumerate the application's final content"),
+    ],
+    "webApi": [
+        _Leg("validate", _VALIDATE, (), _p_present, "run validateDesignObject"),
+        _Leg("reread", ("getWebApi",), ("structure",), _p_present,
+             "read it back"),
+    ],
+    "integration": [
+        _Leg("validate", _VALIDATE, (), _p_present, "run validateDesignObject"),
+        _Leg("reread", ("getIntegration",), ("structure",), _p_present,
+             "read it back"),
+    ],
+    "connectedSystem": [
+        _Leg("validate", _VALIDATE, (), _p_present, "run validateDesignObject"),
+        _Leg("reread", ("getConnectedSystem",), ("structure",), _p_present,
+             "read it back"),
+    ],
+    "constant": [_Leg("reread", ("getConstant", "listConstants"),
+                      ("structure",), _p_present, "read it back")],
+    "folder": [_Leg("reread", ("getFolder", "listFolders", "listFolderContents"),
+                    ("structure",), _p_present, "read it back")],
+    "document": [_Leg("reread", ("getDocument", "listDocuments"),
+                      ("structure",), _p_present, "read it back")],
+    "testCase": [_Leg("reread", ("getInterfaceTestCase", "listInterfaceTestCases",
+                                 "getExpressionRuleTestCase",
+                                 "listExpressionRuleTestCases"),
+                      ("structure",), _p_present, "read it back")],
+}
+
+# § 8.6: a write the hook classified `behavioural: false` -- description or
+# documentation and nothing else -- cannot break the render chain, so
+# checking in a way that cannot fail is waste by the definition of § 1.3.
+# The re-read is what accredits that ONLY the declared field changed, and
+# that is why it is the re-read and not the validation that carries it.
+_PROPORTIONAL_READS = ("getInterface", "getExpressionRule", "getRecordType",
+                       "getProcessModel", "getConstant", "getSite",
+                       "getWebApi", "getIntegration", "getConnectedSystem",
+                       "getGroup", "getFolder", "getDocument",
+                       "getApplication")
+
+
+def _proportional_legs():
+    return [
+        _Leg("validate", _VALIDATE, (), _p_present, "run validateDesignObject"),
+        _Leg("reread-non-metadata", _PROPORTIONAL_READS,
+             ("persisted-not-behavioural",), _p_present,
+             "read it back and compare the rest of the fields against the "
+             "preflight state: it is the re-read, not the validation, that "
+             "accredits that only the declared field changed"),
+    ]
+
+
+_DELETION_LEGS = [
+    _Leg("dependents", ("getObjectDependents",), ("structure",), _p_present,
+         "check its dependents before deleting"),
+    _Leg("absence", tuple(a for a in _TYPE_BY_ACTION if a.startswith("get")),
+         ("structure",), _p_absence,
+         "read it back after the delete: a read that fails to find it is what "
+         "proves the absence"),
+]
+
+
+def _alternative_for(rows, klass, entry):
+    """§ 8.7 step 2, per guarantee class, stopping at the first that
+    answers. Returns the row that covers it, or None."""
+    if klass == "behavioural":
+        # (b) another instrument that answers the same question: the test
+        # cases. (a) another surface of the same one: the REST channel,
+        # which is a row like any other.
+        covered = _ok(rows, ("runAllInterfaceTestCases", "runInterfaceTestCase",
+                             "runAllExpressionRuleTestCases",
+                             "runExpressionRuleTestCase"),
+                      guarantee="behavioural")
+        return covered[0] if covered else None
+    if klass == "structure":
+        covered = _ok(rows, guarantee="structure")
+        return covered[0] if covered else None
+    if klass == "authorization":
+        covered = _ok(rows, guarantee="authorization")
+        return covered[0] if covered else None
+    # accessibility: the alternative for a render is running the test
+    # cases, and that produces no tree. There is no second way to N2 a
+    # screen that will not render.
+    return None
+
+
+def _instrument_verdict(checks, entry, leg, rows, since):
+    """§ 8.7 steps 1 and 1-bis: is this a limit of the environment, or a
+    regression the write just introduced?"""
+    failures = _failed(rows, leg.actions)
+    if not failures:
+        return "missing", None
+    # 1 · not admissible when the SAME object measured cleanly at an
+    # earlier sequence: an instrument that measured and stopped measuring
+    # after a write of the agent's is a change of the object.
+    earlier = [r for r in checks
+               if r.get("action") in leg.actions
+               and r.get("result") == "ok"
+               and r.get("writeSeqAtCheck", -1) < since
+               and entry["candidates"] & set(r.get("candidates") or [])]
+    if earlier:
+        return "regression", ("%s measured this object cleanly at writeSeq %s and "
+                              "fails now: that is a change of the object, not a "
+                              "limit of the environment (§ 8.7 step 1)"
+                              % (sorted(leg.actions)[0],
+                                 earlier[-1].get("writeSeqAtCheck")))
+    # 1-bis · the same failure reproduced before the change, or on another
+    # object of the same family.
+    before = [r for r in checks
+              if r.get("action") in leg.actions
+              and r.get("result") in ("failed", "ambiguous")
+              and r.get("writeSeqAtCheck", -1) < since
+              and entry["candidates"] & set(r.get("candidates") or [])]
+    family = [r for r in checks
+              if r.get("action") in leg.actions
+              and r.get("result") in ("failed", "ambiguous")
+              and not (entry["candidates"] & set(r.get("candidates") or []))]
+    if before or family:
+        return "instrument-limit", None
+    return "undistinguished", (
+        "%s failed on this object and nothing tells a limit of the environment "
+        "from a regression this very write introduced: no clean earlier measure, "
+        "no reproduction of the same failure without the change, no same failure "
+        "on another object of the family (§ 8.7 step 1-bis)"
+        % sorted(leg.actions)[0])
+
+
+def _evaluate_legs(checks, entry, legs, rows, since, label):
+    """(missing, notMeasured, blocking) for one object's legs."""
+    missing, not_measured, blocking = [], [], []
+    for leg in legs:
+        if leg.predicate(rows, leg, entry):
+            continue
+        verdict, detail = _instrument_verdict(checks, entry, leg, rows, since)
+        if verdict == "regression":
+            blocking.append("%s · %s" % (label, detail))
+            continue
+        if verdict == "undistinguished":
+            not_measured.append({"object": label, "leg": leg.name,
+                                 "class": "instrument-undistinguished",
+                                 "detail": detail,
+                                 "owner": "the environment owner",
+                                 "condition": "reproduce the failure without the "
+                                              "change, or on another object of the "
+                                              "same family"})
+            continue
+        if verdict == "instrument-limit":
+            # § 8.7 step 2: the search is per guarantee class, because one
+            # instrument rarely buys only one.
+            for klass in leg.classes or ("structure",):
+                if _alternative_for(rows, klass, entry) is None:
+                    not_measured.append(
+                        {"object": label, "leg": leg.name, "class": klass,
+                         "detail": "%s could not measure it and no alternative "
+                                   "answers for the %s class (§ 8.7 step 2)"
+                                   % (sorted(leg.actions)[0], klass),
+                         "owner": "the environment owner",
+                         "condition": "measure the %s class by hand, or when the "
+                                      "instrument works again" % klass})
+            continue
+        detail = None
+        if leg.name == "render-pair":
+            detail = render_pair_state(rows)[1]
+        elif leg.name == "cross-reference":
+            broken = _wiring_broken(rows, leg, entry)
+            if broken:
+                detail = "these references resolve to nothing this scope read " \
+                         "back: %s" % "; ".join(broken)
+        missing.append("%s: %s%s" % (label, leg.remedy,
+                                     " (%s)" % detail if detail else ""))
+    return missing, not_measured, blocking
+
+
+# § 8.2 · the transversal row. The five wirings of `change-review.md §
+# Cross-Object Wiring` live on three surfaces, and this is which read
+# exposes each. A type not here carries no wiring, so demanding the row of
+# it would be ceremony -- the requirement is to LOOK where there is
+# something to see.
+_WIRING_READS_BY_TYPE = {
+    "recordType": ("listRecordTypeActions", "listRecordTypeViews",
+                   "listRecordTypeRelationships"),
+    "processModel": ("getProcessModel",),
+    "site": ("getSite",),
+    "application": ("listApplicationObjects", "getApplication"),
+}
+# Site and application carry it whatever else the scope touched: § 8.1 puts
+# the transversal row inside their own floor, because `updateSite`
+# regenerates every page UUID and enumerating a site's content does not
+# check that its targets resolve.
+_WIRING_ALWAYS = frozenset(("site", "application"))
+
+
+def _wiring_broken(rows, leg, entry):
+    broken = []
+    for row in _ok(rows, leg.actions):
+        for ref in row.get("references") or []:
+            if ref.get("target") not in entry.get("resolved", set()):
+                broken.append("%s -> %s (%s)" % (ref.get("from"),
+                                                 ref.get("target"),
+                                                 ref.get("kind")))
+    return broken
+
+
+def _p_wiring(rows, leg, entry):
+    """§ 8.2: the wiring was read, and everything it declares resolves.
+
+    The class of defect a per-type floor cannot see by construction: each
+    object passes its own row and the set is broken. Do not assume
+    cross-references are correct because individual object creation
+    succeeded.
+    """
+    return bool(_ok(rows, leg.actions)) and not _wiring_broken(rows, leg, entry)
+
+
+def _wiring_leg(obj_type):
+    actions = _WIRING_READS_BY_TYPE[obj_type]
+    return _Leg("cross-reference", actions, ("structure",), _p_wiring,
+                "read the wiring this object declares (%s) and check that every "
+                "target resolves: record actions to their process model, the start "
+                "form to its interface, summary views to their rule!, site pages to "
+                "their interface, and BOTH sides of every relationship (§ 8.2)"
+                % ", ".join(sorted(actions)))
+
+
+def floor_report(config, scope):
+    """What § 8 still demands of this scope, and how each gap must be closed.
+
+    Four outcomes, and they are different on purpose (§ 8.4, § 8.7):
+      missing    -> block: legs nobody paid, with the remedy per object
+      blocking   -> block: a regression the write introduced, not a limit
+      notMeasured-> closed-pending-human, and the kind does NOT change
+      debts      -> closed, with a residue that has an owner
+    """
+    report = {"missing": [], "blocking": [], "notMeasured": [], "debts": []}
+    objects = _written_objects(config, scope)
+    if not objects:
+        return report
+    checks = read_checks(config, scope.get("instanceId"))
+    resolved = set()
+    for row in checks:
+        if row.get("result") == "ok":
+            resolved.update(row.get("candidates") or [])
+            if row.get("object"):
+                resolved.add(row["object"])
+
+    for label, entry in sorted(objects.items()):
+        entry["resolved"] = resolved
+        rows = _rows_for(checks, entry, entry["lastSeq"])
+        obj_type = entry["type"]
+        if entry["deleted"]:
+            legs = _DELETION_LEGS
+        elif obj_type is None or obj_type not in _LEGS_BY_TYPE:
+            # § 8.1's default rule. Whoever wrote with a tool this table
+            # does not classify has nothing to fix, so the scope does not
+            # wait: it closes with the debt, and the defect is settled by
+            # widening the table.
+            report["debts"].append(
+                {"kind": DEBT_TYPE_HAS_NO_FLOOR, "object": label,
+                 "type": obj_type or entry.get("unclassified"),
+                 "owner": "the harness maintainer",
+                 "detail": "this type has no floor defined: that is a defect of the "
+                           "design, not of the scope (§ 8.1)"})
+            continue
+        elif not entry["behavioural"]:
+            legs = _proportional_legs()
+        else:
+            legs = list(_LEGS_BY_TYPE[obj_type])
+            # § 8.2: the transversal row fires where there IS wiring --
+            # always for a site or an application, and for the rest once
+            # the scope has touched a second object it could be wired to.
+            if obj_type in _WIRING_READS_BY_TYPE \
+                    and (obj_type in _WIRING_ALWAYS or len(objects) > 1):
+                legs.append(_wiring_leg(obj_type))
+
+        missing, not_measured, blocking = _evaluate_legs(
+            checks, entry, legs, rows, entry["lastSeq"], label)
+        report["missing"].extend(missing)
+        report["notMeasured"].extend(not_measured)
+        report["blocking"].extend(blocking)
+
+        if obj_type in _RESIDUE_TYPES and not missing and not blocking:
+            report["debts"].append(
+                {"kind": DEBT_EXTERNAL_EFFECT, "object": label, "type": obj_type,
+                 "owner": "the scope's owner",
+                 "detail": "its floor is persistence only and it reaches a system "
+                           "outside Appian; nothing invoked it (§ 8.4)",
+                 "closesWhen": "a real invocation in a controlled environment"})
+
+    return report
+
+
+# --- § 11 · retention and rotation, at the moment a scope goes terminal -
+
+# The fixed names of § 11.1. Anything else matching a render shape is an
+# intermediate: a real project reached 43 MB in 398 files, with five renders
+# of the same screen inside a single scope.
+KEPT_RENDERS = ("render-poblado.json", "render-vacio.json",
+                "n2-poblado.json", "n2-empty.json")
+RENDER_SIGNALS_NAME = "render-signals.json"
+_RENDER_FILE = re.compile(r"^(render|n2)[-_].*\.json$", re.I)
+# Above this a render is summarised by size rather than hashed: the Stop
+# hook has 20 s, and reading a 900 KB tree per intermediate file to save
+# disk would spend the budget the retention exists to protect.
+_MAX_RETAINED_HASH_BYTES = 8 * 1024 * 1024
+
+# Rotated per closed scope so re-reading them does not grow without a
+# ceiling (§ 11.3). Only these two: they grow with every call. The audit
+# trail stays where it is -- `gate-decisions.jsonl` is one row per decision,
+# `session-start` summarises the day's, and the perimeter nudge dedupes by
+# session rather than by instance, so moving it would repeat a prompt.
+ROTATED_LEDGERS = ("operations.jsonl", CHECKS_LEDGER_NAME)
+
+
+def _cited_by_a_verdict(scope_dir):
+    """Filenames named by any verdict on disk. A live verdict's evidence
+    outlives the retention: deleting what a verdict cites would leave the
+    verdict pointing at nothing."""
+    cited = set()
+    for name in sorted(os.listdir(scope_dir)):
+        if not name.startswith("practices-") or not name.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(scope_dir, name), encoding="utf-8") as f:
+                text = f.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for candidate in re.findall(r"[A-Za-z0-9_.-]+\.json", text):
+            cited.add(os.path.basename(candidate))
+    return cited
+
+
+def _retain_renders(config, scope):
+    """§ 11.1: keep the last render of each path plus anything a live
+    verdict cites; of the intermediates keep the normalized hash."""
+    scope_dir = os.path.join(_evidence_dir(config), scope.get("id") or "")
+    if not os.path.isdir(scope_dir):
+        return []
+    cited = _cited_by_a_verdict(scope_dir)
+    retired = []
+    for name in sorted(os.listdir(scope_dir)):
+        if not _RENDER_FILE.match(name) or name in KEPT_RENDERS \
+                or name in cited or name == RENDER_SIGNALS_NAME:
+            continue
+        path = os.path.join(scope_dir, name)
+        entry = {"file": name}
+        try:
+            size = os.path.getsize(path)
+            entry["bytes"] = size
+            if size <= _MAX_RETAINED_HASH_BYTES:
+                with open(path, encoding="utf-8") as f:
+                    entry["normalizedHash"] = normalized_hash(json.load(f))
+            else:
+                entry["normalizedHash"] = None
+                entry["note"] = "too large to hash inside the Stop hook's budget"
+            os.unlink(path)
+            retired.append(entry)
+        except (OSError, ValueError, UnicodeDecodeError):
+            continue
+    if not retired:
+        return []
+    signals_path = os.path.join(scope_dir, RENDER_SIGNALS_NAME)
+    signals = {}
+    if os.path.isfile(signals_path):
+        try:
+            with open(signals_path, encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                signals = loaded
+        except (OSError, ValueError, UnicodeDecodeError):
+            signals = {}
+    signals.setdefault("retired", []).extend(retired)
+    try:
+        _write_json_atomic(signals_path, signals)
+    except OSError:
+        pass
+    return retired
+
+
+def _rotate_ledgers(config, scope):
+    """§ 11.3: a closed instance's high-volume rows move under its own
+    directory. Every gate filters by `instanceId` and a terminal instance is
+    never gated again, so what moves is exactly what nothing will read."""
+    instance = scope.get("instanceId")
+    scope_dir = os.path.join(_evidence_dir(config), scope.get("id") or "")
+    moved = {}
+    for name in ROTATED_LEDGERS:
+        path = os.path.join(_evidence_dir(config), name)
+        if not os.path.isfile(path):
+            continue
+        rows = _read_jsonl(path)
+        mine = [r for r in rows if r.get("instanceId") == instance]
+        if not mine:
+            continue
+        rest = [r for r in rows if r.get("instanceId") != instance]
+        try:
+            os.makedirs(scope_dir, exist_ok=True)
+            with open(os.path.join(scope_dir, name), "a", encoding="utf-8") as f:
+                for row in mine:
+                    f.write(json.dumps(row) + "\n")
+            tmp = path + ".rotating"
+            with open(tmp, "w", encoding="utf-8") as f:
+                for row in rest:
+                    f.write(json.dumps(row) + "\n")
+            os.replace(tmp, path)
+        except OSError:
+            continue
+        moved[name] = len(mine)
+    return moved
+
+
+def close_out_evidence(config, scope):
+    """Retention and rotation together, run once when a scope goes
+    terminal. Without a ceiling the evidence grows for ever, and evidence
+    nobody can open is evidence nobody reads."""
+    retired = _retain_renders(config, scope)
+    moved = _rotate_ledgers(config, scope)
+    if retired or moved:
+        _append_jsonl(os.path.join(_evidence_dir(config), "gate-decisions.jsonl"),
+                      {"timestamp": _now(), "event": "evidence-closed-out",
+                       "instanceId": scope.get("instanceId"),
+                       "scopeId": scope.get("id"),
+                       "rendersRetired": len(retired), "rowsRotated": moved})
+    return retired, moved
+
+
 # --- The state machine (norm §§ 4.3-4.4) -------------------------------
 
 # What the hook remembers having written (§ 4.3): a full snapshot of the
@@ -2381,6 +3763,10 @@ def _sign_transition(config, scope, from_status, to_status, trigger):
                        {"instanceId": scope["instanceId"], "scope": signed,
                         "signedAt": _now()})
     _write_json_atomic(config["activeTaskFile"], signed)
+    if to_status in TERMINAL_STATUSES:
+        # § 11: the ceiling goes on at the one moment nothing will read
+        # this instance's rows again.
+        close_out_evidence(config, signed)
     return signed
 
 
@@ -3109,6 +4495,17 @@ def cmd_log_write():
     return 0
 
 
+def cmd_observe_reads():
+    payload, parse_err = _read_stdin_json()
+    config, active, err = _build_config(payload.get("cwd") or ".")
+    if not active or err or parse_err:
+        _emit({})
+        return 0
+    observe_reads(payload, config)
+    _emit({})
+    return 0
+
+
 def cmd_state_gate():
     payload, parse_err = _read_stdin_json()
     config, active, err = _build_config(payload.get("cwd") or ".")
@@ -3159,6 +4556,7 @@ COMMANDS = {
     "scope-gate": cmd_scope_gate,
     "closure-gate": cmd_closure_gate,
     "log-write": cmd_log_write,
+    "observe-reads": cmd_observe_reads,
     "state-gate": cmd_state_gate,
     "failure-notice": cmd_failure_notice,
 }

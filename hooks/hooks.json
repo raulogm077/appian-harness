@@ -1,5 +1,5 @@
 {
-  "description": "Requirements check, scope gate, closure gate, write log, state gate and failure notice for Appian work.",
+  "description": "Requirements check, scope gate, closure gate, write log, read observation, state gate and failure notice for Appian work.",
   "hooks": {
     "SessionStart": [
       {
@@ -41,6 +41,17 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.sh\" \"${CLAUDE_PLUGIN_ROOT}\" state-gate",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.sh\" \"${CLAUDE_PLUGIN_ROOT}\" observe-reads",
             "timeout": 15
           }
         ]

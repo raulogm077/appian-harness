@@ -150,7 +150,7 @@ Install, and stop there. `appian-best-practices`, `appian-specify` and
 `appian-plan` never read `.claude/appian-harness.json`, and the first of them
 applies whether you write through an MCP server or by hand in Appian Designer.
 So this path needs no project configuration, no `/appian-init` and no MCP
-server: you get the eleven domain references, the Definition of Done, a written
+server: you get the twelve domain references, the Definition of Done, a written
 specification and a task list ordered by dependency.
 
 With no configuration file present every hook returns allow and exits 0. That
@@ -232,19 +232,19 @@ there.
 | Path | What is there |
 |---|---|
 | `skills/` | Seven skills: five lifecycle phases, the run orchestrator, and the cross-cutting doctrine |
-| `skills/appian-best-practices/references/` | Eleven domain references, numbered `01`–`11`. Every verdict cites into these |
+| `skills/appian-best-practices/references/` | Twelve domain references, numbered `01`–`12`. Every verdict cites into these |
 | `agents/` | Three judging agents: `appian-practices-auditor`, `appian-reviewer`, `appian-verifier` |
-| `hooks/` | One `hooks.json` declaring six hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
-| `scripts/` | Twelve modules: `validate_verdict.py`, `lint_skills.py`, `lint_agents.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `parallel_safety.py`, `measure_evidence.py`, `check_readme_claims.py`, `check_manifest_agreement.py`, `check_package_integrity.py`, `check_evals.py`, and `exit_codes.py`, which holds the one constant six of them used to spell out separately |
+| `hooks/` | One `hooks.json` declaring seven hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
+| `scripts/` | Thirteen modules: `validate_verdict.py`, `lint_skills.py`, `lint_agents.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `sail_static_check.py`, `parallel_safety.py`, `measure_evidence.py`, `check_readme_claims.py`, `check_manifest_agreement.py`, `check_package_integrity.py`, `check_evals.py`, and `exit_codes.py`, which holds the one constant six of them used to spell out separately |
 | `commands/` | One command: `/appian-init`, which adopts the harness into a project |
 | `evals/` | Six eval cases in the layout `claude plugin eval` expects — three routing, three safety. **Never executed**: the runner is in early access. `evals/README.md` says so first, because a suite of unrun cases is preparation, not coverage |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
-| `SECURITY.md` | What this plugin executes on your machine, at which six hook entries, what it reads and writes — and where to report a vulnerability |
+| `SECURITY.md` | What this plugin executes on your machine, at which seven hook entries, what it reads and writes — and where to report a vulnerability |
 | `CONTRIBUTING.md` | The eight local checks, in the order CI runs them, and the release procedure that keeps the two manifests from drifting again |
 | `CHANGELOG.md` | What each release changed for a project that upgrades and edits nothing. Read it before upgrading: a gate that *stops* firing announces nothing, so that is the only place it is announced |
 | `.github/workflows/` | The checks, on Linux and Windows × Python 3.9 and 3.13 |
 
-The Python carries its own tests — 293 for `scripts/`, 394 for `hooks/`, standard
+The Python carries its own tests — 344 for `scripts/`, 487 for `hooks/`, standard
 library only:
 
 ```
@@ -289,7 +289,7 @@ the fast path is an opt-out you have to type, and CI never sets it.
 | `appian-run` | orchestration | Builds a plan's pending tasks end to end without a keystroke per task. Authorization is granted once per run and checked by the gate; eight closed conditions stop it. Invoked by name — granting a run is the user's act. |
 | `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. |
 
-`appian-best-practices` carries eleven domain references — data model and record
+`appian-best-practices` carries twelve domain references — data model and record
 types, SAIL interfaces, process models, expression rules, performance, security,
 integrations, ALM and testing, sites and navigation, quality gates, reliability
 and operations. The `SKILL.md` is the index: only the reference the change

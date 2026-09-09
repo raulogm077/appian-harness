@@ -198,6 +198,13 @@ case "$SUBCOMMAND" in
             printf '%s\n' "{\"systemMessage\":\"$NOTE This write was NOT recorded in operations.jsonl: the write log is incomplete.\"}"
         fi
         ;;
+    observe-reads)
+        # Observes and credits; it gates nothing, and PostToolBatch fires on
+        # every batch of the session. A systemMessage here would be noise on
+        # every turn, and the missing credit is not silent: the closure gate
+        # blocks on the floor legs that checks.jsonl never got.
+        printf '%s\n' '{}'
+        ;;
     state-gate)
         # Cannot tell whether the file was one the gates read, so it says so
         # and lets the write stand: this observes, it does not gate.

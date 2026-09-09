@@ -38,6 +38,15 @@ REQUIRED_AT_RUNTIME = {
         "imported at module level by hooks/harness_hooks.py, so losing it is not a "
         "degraded closure gate -- it is an ImportError before any subcommand runs, "
         "which takes down all six hooks at once and just as quietly",
+    "scripts/n2_interface_tree.py":
+        "imported at module level by hooks/harness_hooks.py: it defines the render "
+        "normalization the floor of norm section 8.5 is measured with, and its "
+        "absence is an ImportError that takes every hook down before any of them "
+        "runs",
+    "scripts/n3_process_layout.py":
+        "imported at module level by hooks/harness_hooks.py for the process-model "
+        "graph checks of norm section 8.3, with the same all-or-nothing failure "
+        "mode as the other two",
 }
 
 

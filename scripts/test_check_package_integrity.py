@@ -39,7 +39,12 @@ def scaffold(root, with_launcher=True, plugin_extra=None, hooks=MINIMAL_HOOKS,
         # neither is named by any manifest.
         os.makedirs(os.path.join(root, "scripts"))
         open(os.path.join(root, "hooks", "harness_hooks.py"), "w").close()
-        open(os.path.join(root, "scripts", "validate_verdict.py"), "w").close()
+        # Every module harness_hooks.py imports at module level: losing any
+        # one of them is an ImportError before a subcommand runs, not a
+        # degraded gate, so the boot chain is all of them or none.
+        for module in ("validate_verdict.py", "n2_interface_tree.py",
+                       "n3_process_layout.py"):
+            open(os.path.join(root, "scripts", module), "w").close()
     manifest = {"name": "p", "version": "1.0.0"}
     manifest.update(plugin_extra or {})
     with open(os.path.join(root, ".claude-plugin", "plugin.json"), "w",

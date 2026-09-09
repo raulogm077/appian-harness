@@ -93,10 +93,12 @@ which reads as evidence to a person and as an absence to the gate.
 | Path | Written by | Read by |
 |---|---|---|
 | `<evidenceDir>/<task>/practices-<phase>.json` | `appian-practices-auditor`, one per phase | Both gates. The scope gate reads `design`; the closure gate reads `implementation`, `review`, `qa` |
-| `<evidenceDir>/<task>/appian-skill-loaded.json` | `appian-build`, when it loads the official Appian skill for the task | The scope gate, before every write — see [Requirements](../README.md#requirements) |
+| `<evidenceDir>/<task>/appian-skill-loaded.json` | **`observe-reads`, from what it saw**: the invocation of the official Appian skill and the reads under its root. A copy without `observedBy` was written by hand and credits nothing | The scope gate, before every write — as a remedy to the model, no longer as a question to a person |
+| `<evidenceDir>/<task>/render-signals.json` | `n2_interface_tree.py --record`, and the retention at close, which leaves the normalized hash of every render it retired | a person, and the judge in the phase that has one. The trees themselves never travel |
 | `<evidenceDir>/<task>/dependents.json` | `appian-build`, before any delete or record-data overwrite | The destructive guard. "Checked, zero dependents" and "never checked" are different answers |
 | `<evidenceDir>/<task>/gates.md` | `appian-verify`, consolidating the per-gate report with both its verdicts | a person, or the review step. **No gate reads it** — it sits beside the verdicts so the task's evidence is one account rather than a directory to reassemble |
 | `<evidenceDir>/operations.jsonl` | the write log | a person, afterwards |
+| `<evidenceDir>/checks.jsonl` | `observe-reads`, one row per verification read of a batch: its `toolUseId`, its object, the sequence it was taken at, its result and the class of guarantee it bought | the closure gate, which reads it as the floor — a read taken before the write it would accredit does not count |
 | `<evidenceDir>/gate-decisions.jsonl` | the scope gate, every time it asks | a person, afterwards |
 | `<evidenceDir>/risk-downgrades.jsonl` | the closure gate, when a task closes on the `trivial` tier | a person, afterwards. Cheaper ceremony is allowed; choosing it is recorded |
 | `<evidenceDir>/deferred-debt.jsonl` | the closure gate when forced to approve unverified work (`BLOCKING`), and either gate when an accepted deferral opens it (`DEFERRED`) | a person, afterwards |
@@ -105,7 +107,7 @@ which reads as evidence to a person and as an absence to the gate.
 | `<evidenceDir>/manual-estimates.jsonl` | the hooks, anchoring `manualEstimateMinutes` write-once when `measure: true` | `measure_evidence.py`, as the manual metric's denominator |
 | `<evidenceDir>/sessions.jsonl` | the hooks, one row per session: its id and its transcript path | the suspended-scope expiry count (sessions, not clocks), and `measure_evidence.py` as the pointer to the transcript |
 
-The seven logs are append-only, and four of them are re-read before appending —
+All nine logs are append-only, and four of them are re-read before appending —
 the deferred-debt, risk-downgrade, task-closure and manual-estimate registers —
 so that one deferral, or one task closing on the cheap tier, does not become
 one line per attempt. The closure gate can fire repeatedly for the same task, and a register

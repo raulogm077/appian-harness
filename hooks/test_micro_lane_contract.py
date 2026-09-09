@@ -30,7 +30,8 @@ import json, os, re, sys, tempfile, unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
-from harness_hooks import closure_gate, log_write, scope_gate, state_gate
+from harness_hooks import (closure_gate, log_write, observe_reads,
+                           scope_gate, state_gate)
 from test_grant import GRANT
 from test_harness_hooks import cfg, make_plugin_root, write_skill_record
 from test_scope_schema import v2_scope
@@ -108,6 +109,22 @@ class TestAPresentationMicroNeedsNoVerdictAtAll(unittest.TestCase):
                        "tool_input": {"uuid": "_uuid-lista"},
                        "tool_response": json.dumps({"uuid": "_uuid-lista",
                                                     "versionId": 4})}, c)
+
+            # § 8.6: the write carried no expression, so `log-write`
+            # classified it non-behavioural and the floor is proportional --
+            # validate plus the re-read that accredits that only the
+            # declared field changed. Two legs, not the five an interface
+            # that touched its expression pays.
+            observe_reads({"tool_calls": [
+                {"tool_name": "mcp__appian-dev__validateDesignObject",
+                 "tool_use_id": "tu-val",
+                 "tool_input": {"uuid": "_uuid-lista"},
+                 "tool_response": {"valid": True}},
+                {"tool_name": "mcp__appian-dev__getInterface",
+                 "tool_use_id": "tu-get",
+                 "tool_input": {"uuid": "_uuid-lista"},
+                 "tool_response": {"name": "GDE_INT_Lista",
+                                   "description": "Tarifa"}}]}, c)
 
             scope = read_scope(c)
             scope["request"] = "close"
