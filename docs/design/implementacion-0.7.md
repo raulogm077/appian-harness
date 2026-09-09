@@ -659,7 +659,35 @@ skill es observable. **Ningún fallback de los declarados hizo falta** — ni el
    filtran por `instanceId` y una instancia terminal no se vuelve a gatear. `gate-decisions.jsonl`
    **no** se rota: es una fila por decisión, `session-start` resume las del día, y el aviso de
    perímetro deduplica por sesión y no por instancia — moverlo repetiría un prompt.
-10. **La detección de pasos manuales no es del hook, y se dice.** § 8.8 pieza 1 pone la
+10. **El diff es el único sitio donde una lectura anterior a la escritura no está caducada.**
+    `_rows_for` descarta toda fila con `writeSeqAtCheck < lastSeq`, que es correcto para el resto del
+    suelo. Pero § 8.1 dice, para seguridad, «comparado contra **el leído en el preflight**», y ese
+    leído está por definición antes. Se pasa aparte, como `preRows`. Sin esta separación las filas de
+    `security` y `recordData` eran **impagables por construcción** —dos lecturas posteriores del
+    mismo estado dan el mismo digest— y un alcance que tocara `updateObjectSecurity` o
+    `insertRecordData` no podía cerrar nunca. Una escritura idempotente es legal, así que un diff
+    vacío es una respuesta; lo que no lo es es una sola lectura. Un `insert` o un `delete` sí tiene
+    que mover el conteo; un `update` legítimamente no.
+11. **La indulgencia del estado vacío es asimétrica, y esa asimetría es la regla.** § 8.7 dice que un
+    render vacío limpio no es «no he podido medir» sino un estado vacío bien hecho. Se exige
+    `measured` al render **con más nodos con valor**; al otro le basta con traer un mensaje de vacío
+    (un nodo con `value` no vacío). Un `a!richTextDisplayField(value: "Sin candidatos")` no lleva
+    `saveInto`, ni `label`, ni clave `text`: N2 no le reconoce ninguna categoría, y exigirle
+    `measured` sería justo lo que la norma prohíbe — que cuanto mejor diseñes el vacío, más probable
+    la escalada.
+12. **Las respuestas se recorren enteras, no por el nivel superior.** `listRecordTypeUserFilters`
+    devuelve una **lista** de filtros: `facetType` y `sourceRef` viven dentro de cada entrada. Un
+    lector que solo mirase la raíz nunca vería un facet `EXPRESSION` y daría la pata por pagada **en
+    silencio**, que es el modo de fallo peor. Con eso queda implementada también la otra mitad de la
+    fila: para `LIST_OF_VALUES` y `DATE_RANGE` no hay expresión que validar, y lo que se comprueba es
+    que el `sourceRef` resuelve a un campo del record type.
+13. **`observedBy` es un campo, y un campo se puede teclear.** Lo que no se puede teclear es la
+    ausencia de un evento de herramienta: el hook escribe `appian-skill-loaded.json` con su propia
+    pluma y eso no deja fila, mientras que todo `Write`/`Edit` del agente contra el árbol de
+    evidencia lo registra `state-gate` en `evidence-writes.jsonl`. Una fila apuntando a **esa ruta**
+    es el discriminante, y es lo que impide que el fichero del que § 7.5 tomó posesión siga siendo
+    falsificable.
+14. **La detección de pasos manuales no es del hook, y se dice.** § 8.8 pieza 1 pone la
     planificación en `appian-plan` (Fase 4). El hook implementa la pieza 2: honra la declaración
     —una fila `manual-step-not-tooled` en `deferred-debt.jsonl`— y le exige la lectura que sí exista.
     Nada enruta por el hook, así que nada se puede observar; pretender lo contrario sería peor.
@@ -758,8 +786,16 @@ El «Hecha cuando» de § 16, releído literal:
 | La **tabla de cobertura por categoría está escrita** | **PASS** | Arriba, en esta sección, y emitida además en cada ejecución de `sail_static_check.py` |
 | …**incluidas las que quedan NOT MEASURED** | **PASS** | Cuatro categorías del checker SAIL con su motivo escrito: `null-safety`, `performance`, `accessibility`, `naming` |
 
-**Fase 3: DONE.** Suite completa ejecutada una sola vez sobre el código estable: **491 tests en
-`hooks/` y 344 en `scripts/`, 835 en total, todos en verde** (más 39 subtests), y
+**Revisión independiente, y lo que encontró.** Antes de declarar la fase se pidió una lectura
+adversarial del suelo. Encontró un defecto **bloqueante** que la suite en verde ocultaba: las filas
+de `security` y `recordData` eran impagables (interpretación 10), y su único test asertaba que
+faltaban —pasaba porque la pata **siempre** faltaba—. Encontró además dos filas que se comportaban
+distinto de como estaban escritas: el render vacío bien hecho (11) y el facet del user filter leído
+solo en la raíz (12). Los tres están corregidos con test positivo, que es lo que faltaba: una pata que
+solo se prueba fallando no está probada.
+
+**Fase 3: DONE.** Suite completa ejecutada una sola vez sobre el código estable: **501 tests en
+`hooks/` y 344 en `scripts/`, 845 en total, todos en verde** (más 39 subtests), y
 `check_readme_claims.py` en `OK`.
 
 **Fase 4 implementada por accidente: no.** No se ha tocado `agents/`, ni `scripts/validate_verdict.py`,
@@ -779,6 +815,8 @@ cambios de la norma.
 | El `certify` del caso ácido | Fase 4 | El propio DoD lo dice: declararlo aquí sería declarar la fase con una versión degradada del caso |
 | `risk-downgrades.jsonl`, que § 11.2 da por desaparecido | Fase 5 | Es limpieza de artefactos y documentación, no suelo |
 | Medida en vivo del coste de `observe-reads` en la cuota de reloj (§ 17.4) | Fase 6 | La puerta de desperdicio es de la fase de salida. Lo que sí se hizo aquí es la salida temprana sin tocar disco, que es lo que esa fila mide |
+| **Fila de record type: «≥ 1 fila con el campo o la relación tocados presentes en la proyección»** | Fase 4 | Implementado más flojo a propósito: se exige `listRecordData` con ≥ 1 fila, **sin** comprobar que el campo tocado esté en la proyección. Para eso hace falta el nombre del campo escrito, y `operations.jsonl` no guarda el `tool_input`; añadirlo es tocar `log-write`, que es núcleo de la Fase 2. Se declara aquí en vez de dejarlo como una fila que aparenta más de lo que mide |
+| **Seguridad a nivel de campo en la fila de user filter** | Fase 4 | § 8.1 pide además que el `sourceRef` **no sea un campo con seguridad de campo**, porque filtrar por uno protegido da error. La superficie de lectura no expone esa marca de forma que el hook pueda comprobarla; la existencia del `sourceRef` sí está implementada |
 
 ---
 

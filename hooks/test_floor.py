@@ -514,15 +514,58 @@ class TestTheDeletionFloor(FloorCase):
 
 class TestTheOtherTypeRows(FloorCase):
 
-    def test_security_needs_the_diff_not_the_ok(self):
+    def test_security_needs_the_preflight_and_the_final_state(self):
+        # § 8.1: "comparado contra el leído en el preflight. La evidencia es
+        # el diff, no el ok de la llamada."
         c = self.config()
         self.observe(c, [_e("getObjectSecurity", {"uuid": "_uuid-a"},
-                            {"roleMap": {"viewers": ["G1"]}}, "tu-pre")])
+                            {"name": "_uuid-a",
+                             "roleMap": {"viewers": ["G1"]}}, "tu-pre")])
         self.write(c, "updateObjectSecurity", "_uuid-a")
         self.observe(c, [_e("getObjectSecurity", {"uuid": "_uuid-a"},
-                            {"roleMap": {"viewers": ["G1"]}}, "tu-post")])
-        # Only one credited state after the write: no diff, no evidence.
+                            {"name": "_uuid-a",
+                             "roleMap": {"viewers": ["G1", "G2"]}}, "tu-post")])
+        self.assertEqual(self.report(c)["missing"], [])
+
+    def test_an_idempotent_security_write_still_closes(self):
+        # An empty diff is a real answer, and a legal one. What is not an
+        # answer is a single read.
+        c = self.config()
+        state = {"name": "_uuid-a", "roleMap": {"viewers": ["G1"]}}
+        self.observe(c, [_e("getObjectSecurity", {"uuid": "_uuid-a"},
+                            state, "tu-pre")])
+        self.write(c, "updateObjectSecurity", "_uuid-a")
+        self.observe(c, [_e("getObjectSecurity", {"uuid": "_uuid-a"},
+                            state, "tu-post")])
+        self.assertEqual(self.report(c)["missing"], [])
+
+    def test_the_final_state_alone_is_not_the_diff(self):
+        # One enumeration of the final state says nothing about what
+        # changed, which is the whole point of the row.
+        c = self.config()
+        self.write(c, "updateObjectSecurity", "_uuid-a")
+        self.observe(c, [_e("getObjectSecurity", {"uuid": "_uuid-a"},
+                            {"name": "_uuid-a",
+                             "roleMap": {"viewers": ["G1"]}}, "tu-post")])
         self.assertTrue(self.report(c)["missing"])
+
+    def test_an_insert_has_to_move_the_count(self):
+        c = self.config()
+        self.observe(c, [_e("listRecordData", {"uuid": "_uuid-a"},
+                            {"rows": [{"id": 1}]}, "tu-pre")])
+        self.write(c, "insertRecordData", "_uuid-a")
+        self.observe(c, [_e("listRecordData", {"uuid": "_uuid-a"},
+                            {"rows": [{"id": 1}, {"id": 2}]}, "tu-post")])
+        self.assertEqual(self.report(c)["missing"], [])
+
+    def test_an_insert_that_moved_nothing_does_not_close(self):
+        c = self.config()
+        self.observe(c, [_e("listRecordData", {"uuid": "_uuid-a"},
+                            {"rows": [{"id": 1}]}, "tu-pre")])
+        self.write(c, "insertRecordData", "_uuid-a")
+        self.observe(c, [_e("listRecordData", {"uuid": "_uuid-a"},
+                            {"rows": [{"id": 1}]}, "tu-post")])
+        self.assertIn("delta", " ".join(self.report(c)["missing"]))
 
     def test_a_record_type_must_be_queryable(self):
         c = self.config()
@@ -563,13 +606,35 @@ class TestTheOtherTypeRows(FloorCase):
         self.assertEqual(self.report(c)["missing"], [])
 
     def test_an_expression_user_filter_needs_its_body_validated(self):
+        # The response is a LIST of filters, which is the shape the real
+        # surface returns: a checker that only read the top level would
+        # find no facetType and pass this vacuously.
         c = self.config()
         self.write(c, "addRecordTypeUserFilter", "_uuid-a")
         self.observe(c, [_e("listRecordTypeUserFilters", {"uuid": "_uuid-a"},
-                            {"facetType": "EXPRESSION", "name": "_uuid-a"})])
+                            [{"name": "_uuid-a", "facetType": "EXPRESSION",
+                              "expression": "=true"}])])
         self.assertTrue(self.report(c)["missing"])
         self.observe(c, [_e("validateExpression", {"uuid": "_uuid-a"},
                             {"valid": True})])
+        self.assertEqual(self.report(c)["missing"], [])
+
+    def test_a_list_of_values_filter_needs_its_source_field_to_exist(self):
+        # LIST_OF_VALUES and DATE_RANGE have no expression to validate --
+        # the filter is `sourceRef` plus `options[]` -- so what is checked
+        # is that the sourceRef resolves to a field of the record type.
+        c = self.config()
+        self.write(c, "addRecordTypeUserFilter", "_uuid-a")
+        self.observe(c, [
+            _e("listRecordTypeUserFilters", {"uuid": "_uuid-a"},
+               [{"name": "_uuid-a", "facetType": "LIST_OF_VALUES",
+                 "sourceRef": "estado", "options": ["A", "B"]}]),
+            _e("listRecordTypeFields", {"uuid": "_uuid-a"},
+               [{"fieldName": "id"}, {"fieldName": "nombre"}])])
+        self.assertTrue(self.report(c)["missing"])
+        self.observe(c, [_e("listRecordTypeFields", {"uuid": "_uuid-a"},
+                            [{"fieldName": "id"}, {"fieldName": "estado"}],
+                            "tu-fields-2")])
         self.assertEqual(self.report(c)["missing"], [])
 
 
@@ -616,3 +681,82 @@ class TestTypesWithNoWriteTool(FloorCase):
         # covers them. The official source is out of date on that point.
         self.assertNotIn("connectedSystem", hh.MANUAL_TYPES)
         self.assertIn("connectedSystem", hh._LEGS_BY_TYPE)
+
+
+class TestAWellMadeEmptyStateIsNotPunished(FloorCase):
+    """§ 8.7's first acotación: a clean empty render is not "I could not
+    measure", it is a well-made empty state. Without this rule the floor
+    would punish good design -- the better the empty state, the likelier
+    the escalation."""
+
+    BARE_EMPTY = {"#t": "Form", "_cId": "e",
+                  "contents": [{"#t": "RichTextDisplayField",
+                                "value": "Sin candidatos"}]}
+
+    def test_an_empty_render_with_only_an_empty_message_still_credits(self):
+        # No saveInto, no label, no `text` key: N2 recognises no category
+        # in it at all. What it does carry is the message, which is exactly
+        # what the norm names as sufficient.
+        c = self.config()
+        self.write(c, "updateInterface", "_uuid-a")
+        batch = interface_floor_batch("_uuid-a")
+        batch[3]["tool_response"] = self.BARE_EMPTY
+        self.observe(c, batch)
+        self.assertEqual(self.report(c)["missing"], [])
+
+    def test_a_populated_render_nobody_could_judge_is_still_not_measured(self):
+        # The asymmetry is the point: the leniency is for the EMPTY half.
+        c = self.config()
+        self.write(c, "updateInterface", "_uuid-a")
+        batch = interface_floor_batch("_uuid-a")
+        batch[2]["tool_response"] = {"#t": "Form", "_cId": "p", "contents": [
+            {"#t": "Mystery", "data": [1, 2, 3]}, {"#t": "Mystery2",
+                                                   "data": [4]}]}
+        batch[3]["tool_response"] = self.BARE_EMPTY
+        self.assertIn("NOT", " ".join(self.report(c)["missing"]) + "NOT")
+        self.observe(c, batch)
+        self.assertIn("populated render", " ".join(self.report(c)["missing"]))
+
+
+class TestTheSkillTrailCannotBeForged(FloorCase):
+    """§ 7.5's whole rationale: the gate stopped reading a file the agent
+    writes. `observedBy` is a field, and a field can be typed -- what
+    cannot be typed is the absence of a tool event."""
+
+    def _record(self, config, **over):
+        path = os.path.join(self.evidence, "S-1", "appian-skill-loaded.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        record = {"observedBy": "observe-reads", "skillInvoked": True,
+                  "task": "S-1", "skill": "appian"}
+        record.update(over)
+        hh._write_json_atomic(path, record)
+        return path
+
+    def test_a_record_the_hook_wrote_credits(self):
+        c = self.config()
+        self._record(c)
+        self.assertIsNone(hh.skill_trail_note(c, "S-1"))
+
+    def test_a_record_the_agent_wrote_does_not_credit_even_with_the_field(self):
+        c = self.config()
+        path = self._record(c)
+        # `state-gate` logs every Write/Edit aimed at the evidence tree;
+        # the hook's own pen leaves no such row. That row is the tell.
+        hh._append_jsonl(os.path.join(self.evidence, "evidence-writes.jsonl"),
+                         {"timestamp": hh._now(), "task": "S-1",
+                          "tool": "Write", "target": "evidence",
+                          "path": path, "result": "ok"})
+        note = hh.skill_trail_note(c, "S-1")
+        self.assertIsNotNone(note)
+        self.assertIn("not written by the hook", note)
+
+    def test_a_write_to_another_evidence_file_is_not_the_tell(self):
+        c = self.config()
+        self._record(c)
+        hh._append_jsonl(os.path.join(self.evidence, "evidence-writes.jsonl"),
+                         {"timestamp": hh._now(), "task": "S-1",
+                          "tool": "Write", "target": "evidence",
+                          "path": os.path.join(self.evidence, "S-1",
+                                               "dependents.json"),
+                          "result": "ok"})
+        self.assertIsNone(hh.skill_trail_note(c, "S-1"))
