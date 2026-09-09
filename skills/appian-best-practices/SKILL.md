@@ -42,6 +42,19 @@ genuinely parallel, independent work (e.g. several static validators over the sa
 unrelated modules). If you delegate write work, the subagent needs its own instructions: it does not
 inherit what you have loaded.
 
+**And when you do delegate, delegate in parallel and never wait in a loop.** Independent judgements go out
+in one message, not one after another: sequential waiting was measured at 51-61% of the clock — 21 waits of
+five to eleven minutes each — and it wrecks the prompt cache besides, since the average wait outlasts its
+TTL. **Nothing here polls a file.** Dispatch, then act on what comes back; an agent that started and never
+answered is a limit of the instrument with one bounded retry, not a verdict.
+
+**Not every FAIL blocks the same way.** Platform correctness and security block a close outright, and so do
+the three that are never graded down. Functional behavior, interfaces and operations block once and then
+become recorded debt. Performance and maintainability are contextual judgements — *measure before
+optimizing* — and never block: they are recorded with an owner. The table is in
+`references/10-quality-gates.md`, and the point of it is that a matter of style must not be able to consume
+a remediation cycle.
+
 ## Routing by Domain
 
 Paths relative to this skill. **Open only what the change touches**; do not load the whole set.

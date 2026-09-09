@@ -134,6 +134,47 @@ written:
 A plan that lists tasks without this order can look complete and still not be
 buildable in the sequence it's written.
 
+## The types no tool can write, planned anyway
+
+Several Appian object types are configured in Designer and pass through **no MCP
+tool at all**: no hook sees them, so nothing plans them, nothing verifies them
+and nothing records them. That is worse than a blocked write — it is invisible
+work, and a developer following this harness's own doctrine produces it: the
+doctrine recommends **Decision objects** in four separate places.
+
+In 0.7 these are the types: **Decision objects · AI Skills · Portals · Data
+Stores · Record Views and Record Actions** (the last two only in whatever the
+MCP does not cover). **Connected Systems are not on this list** — the Dev MCP
+does have `createConnectedSystem`, and the floor covers it. The official source
+is out of date on that point, and saying so is exactly what the doctrine asks
+for when doctrine and official documentation disagree.
+
+**Plan them at their real position in the dependency order, and mark them
+manual.** The rule is not this harness's to invent: `change-planning.md`,
+§ *How to Handle Manual Steps* in the official Appian skill, already says to
+*"include them in the plan at the correct position in the dependency order"*.
+Read it there — this section points at it and does not restate its mechanics.
+
+What the harness adds is the accounting. A manual step gets a task like any
+other, with:
+
+- **`manual: true`**, so nothing downstream mistakes silence for success;
+- **an owner** — a person, because no agent can do it;
+- **the reads that will exist afterwards**, which is all the floor can ask of
+  a type nothing routed through.
+
+At close, the floor records the residue **`manual-step-not-tooled`** with that
+owner, and the scope closes **clean**. Nothing failed: the guarantee for that
+type is simply smaller than its effect, and a declared ceiling is the currency
+this design already uses. What is not acceptable is the alternative — a
+`certify` that certifies whichever subset happened to have a tool.
+
+**Do not plan around a manual type to avoid the paperwork.** Choosing a giant
+`a!match` over a Decision object because the Decision object cannot be
+scripted is the plan bending to the harness instead of to the problem, and the
+doctrine puts complex business logic in a Decision object for reasons that do
+not change because tooling is missing.
+
 ## Two artifacts, not one: plan and state
 
 A plan is written once and approved: the tasks, their dependencies, and their
@@ -246,12 +287,14 @@ recognise is treated as `standard`.
 
 A sixth field, also optional: **`requiresHumanConfirmation: true`**. It is not a
 risk tier and does not change what the closure gate requires. It says one thing:
-an unattended run stops here and hands the task to a person before building it.
-`appian-run` reads it as one of its stop conditions.
+an unattended run stops here and hands the task to a person before building
+it. A project that drives runs from `activeRunFile` reads it as a stop
+condition.
 
 `risk: high` and this are different questions, and conflating them is the easy
-mistake. High risk buys a fourth, adversarial opinion — and then the run
-continues, because the extra scrutiny is the answer. This buys no scrutiny at
+mistake. High risk buys the judge's third invocation — `risk`, which asks how the thing
+fails rather than whether it meets its contract — and then the run continues,
+because the extra scrutiny is the answer. This buys no scrutiny at
 all; it says the *decision* is not the builder's to make. A task can be trivial
 and still need it: renaming something a client sees is cosmetic by every
 technical measure and still not a call to make at 2am inside a twenty-task run.

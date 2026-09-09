@@ -159,16 +159,21 @@ Named here so the absence is deliberate rather than forgotten:
   in front of the grant.
 - **`practices-implementation.json`, `practices-qa.json`, `practices-review.json` — not in this
   rulebook at all.** Those three belong to the 0.6 closure gate. A v2 scope closes on its state
-  machine; the closure gate never opens them. Do not dispatch `appian-verify` or `appian-review`
-  for a micro.
-- **No subagent of any kind** is required to close a micro. Anything you dispatch is your own
-  discretion, spends the scope's budget, and closes nothing.
+  machine; the closure gate never opens them.
+- **No judge at all, on the reviewer-less lane.** A write classified `behavioural: false` — only
+  `description` or `documentation` — or a type with no expression of its own (constant, folder,
+  document, test case) pays the deterministic floor and closes. Zero judges there is the correct
+  answer, not an omission.
 
-What the norm does still put on this lane, and what has not arrived yet: a `micro` that touches an
-expression is the **con revisor** lane and owes **one** `certify` (§ 5.4), and the deterministic
-floor of § 8 — renders, N2 — is its close. Neither is wired in this release: `certify` arrives with
-the judge, the floor by sequences with Phase 3. Until they do, the gate asks for what the table
-above says and a close signed on that basis is honest, not complete.
+**What this lane does owe when the change can alter what is shown or who sees it**: exactly **one**
+`certify` over the object, dispatched by `appian-review`. In 0.7 that includes every micro touching
+an expression — changing a label *is* touching the expression — because the literal scanner that
+would tell presentation from behaviour arrives in 0.8. It fails to the expensive side on purpose,
+and what keeps it proportionate is that the certify is small: one object's matrix, three to five
+cells of judgement, not the fifty-three of a task.
+
+Anything beyond that one certify is your own discretion, spends the scope's budget, and closes
+nothing.
 
 ## When the lane is the wrong lane
 

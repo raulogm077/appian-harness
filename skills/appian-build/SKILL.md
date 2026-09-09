@@ -58,10 +58,10 @@ Authorization is now **per run rather than per invocation**, and it is checked
 rather than assumed:
 
 - **Invoked by name with a task id** — the user is asking for this task. Build it.
-- **Inside an authorized run** — `appian-run` recorded who granted it, which
-  tasks it covers and its budget, at `activeRunFile`. The scope gate refuses a
-  write from a task outside that list, or once the budget is spent, so removing
-  the frontmatter flag did not turn into "write whenever it likes."
+- **Inside an authorized run** — a project that configures `activeRunFile`
+  records who granted the run, which tasks it covers and its budget there. The
+  scope gate refuses a write from a task outside that list, or once the budget
+  is spent. The key is opt-in and inert when absent.
 - **Neither** — if the project configured `activeRunFile` and there is no run,
   every write asks. Stop and say so instead of approving past the prompt.
 
@@ -112,27 +112,33 @@ granting a run is for.
     made *with*; a design audited without it was audited against the wrong
     thing.
 
-    Then record the load at `<evidenceDir>/<task-id>/appian-skill-loaded.json`,
-    because the gate reads a file and cannot read your context:
+    **Load it to the depth this scope needs, and no further.** Its own
+    loading strategy asks for seven universal files — about 198 KB, near
+    50.000 tokens — for any Appian work at all. Paying that for a `micro`
+    over one constant is ceremony; never paying it leaves the guarantee
+    hollow. So:
 
-    ```json
-    {
-      "task": "<the task id>",
-      "skill": "appian",
-      "source": "github.com/appian/dev-mcp-skills",
-      "appianVersion": "<the version the skill's own Configuration declares>",
-      "docsMcp": "<the documentation MCP server this session has>"
-    }
-    ```
+    | Size | What you open |
+    |---|---|
+    | `micro` | Its `SKILL.md`, plus **the domain reference for the object you are touching**. And `confirmation-patterns.md`, always, on any deletion |
+    | `task` | Its `SKILL.md`, plus the full universal block, plus the domain — **once per scope**, not once per object |
 
-    All four fields are checked. `appianVersion` is the load-bearing one:
-    it is the only field you cannot fill in without having opened the
-    skill, and where the project sets `officialAppianSkillPath`, the gate
-    compares it against the installed file rather than taking your word.
-    `docsMcp` is there because the official skill depends on the
-    documentation MCP for its function-availability checks — without it
-    those return empty, and **empty reads as "the function does not
-    exist."** If this session has no documentation MCP, stop and say so;
+    Depth is bought once and reused. Re-opening a reference you already read
+    in this scope buys nothing and is charged twice.
+
+    **Do not write a load record.** The hook writes
+    `<evidenceDir>/<task-id>/appian-skill-loaded.json` from what it observed
+    — the skill invocation and the reads under the skill's root — and its
+    `referencesLoaded[]` is the list of files you actually opened. That is
+    the point: the old record was three fields any agent could type without
+    opening a thing, and it caused 97 of 116 measured `ask`s buying a
+    guarantee that a JSON had three keys. What the hook could not observe is
+    marked as declared, never as verified.
+
+    One consequence worth knowing: the official skill's
+    function-availability checks depend on the documentation MCP, and
+    without it they return empty — and **empty reads as "the function does
+    not exist."** If this session has no documentation MCP, stop and say so;
     do not write on an unverified function.
 
 3c. **Audit the design — still before any write, when this scope owes one.**
@@ -161,8 +167,8 @@ granting a run is for.
 6. Record what was created or changed, with real identifiers.
 7. **STOP.** Do not continue to the next task, and leave the active task file
    in place — the task is still in flight until it is verified and reviewed.
-   Hand control back to whoever started this: `appian-run` if a run is active,
-   the user otherwise. **Stopping is a handoff, not a close**, and the unit
+   Hand control back to whoever started this. **Stopping is a handoff, not a
+   close**, and the unit
    this skill produces is one task ending in a stop — never one phase, and
    never two tasks. That does not change inside a run: a run means fewer
    keystrokes between tasks, not bigger tasks.
@@ -215,10 +221,9 @@ willing to run it.
 Asked before the first write, its findings change a decision. Asked after, the
 same findings are a review of something already paid for.
 
-Nothing else produces that verdict. `appian-verify` dispatches
-`phase=implementation` and `phase=qa` and scopes `design` out on purpose;
-`appian-review` owns `phase=review`. If this skill does not dispatch the design
-audit, no one does, and the gate's design check has nothing to read.
+Nothing else produces that verdict. `appian-review` owns `certify` and `risk`,
+and it runs after the writing is done. If this skill does not dispatch the
+design audit, no one does, and the gate's design check has nothing to read.
 
 "Comes back PASS" is two conditions rather than one, because that is what the
 gate checks. The verdict has to be structurally valid — every entry in its
@@ -434,13 +439,12 @@ What still never matches is an entry that *describes* an object instead of
 identifying it: the comparison is between strings, not meanings.
 
 **When step 7 stops, leave that file exactly where it is.** This skill stopping
-does not mean the task is finished — it stops *so that* verification and review
-can run, and the closure gate approves any stop with no task in flight, so
-deleting the file here silently switches that gate off for the entire nominal
-flow. The task stays in flight across `appian-verify` and `appian-review`, and
-**`appian-review` deletes it when the task actually closes.** That skill is the
-last phase before close and the only one positioned to know the task is over;
-see *The active task file is cleared at close, by this skill* there.
+does not mean the task is finished — it stops *so that* the review can run,
+and the closure gate approves any stop with no task in flight, so deleting the
+file here silently switches that gate off for the entire nominal flow. The
+scope stays in flight across `appian-review`, which asks for the close by
+writing `request: "close"`; **the hook signs the terminal state**, and the
+scope file keeps carrying it.
 
 A stale active task is still worse than no active task — the next write gets
 measured against the previous task's contract, and is allowed or questioned on
@@ -478,14 +482,14 @@ expected — announcing a harder gate than the real one buys work no gate will
 read, which is the failure this section exists to prevent.
 
 **A 0.6 scope** (no `schemaVersion`) is asked for three verdicts —
-`practices-implementation`, `practices-review` and `practices-qa`. None of them
-exist yet when this skill finishes, because none of them can: they are produced
-by `appian-verify` and `appian-review`, which run after this. So the ordinary,
-correct outcome of a clean build there is a blocked stop naming those three.
-That block is not a failure and nothing has broken. It is the handoff, stated
-by the harness rather than left to memory: the task is genuinely unverified at
-that moment, and the gate is saying which phase runs next. Read the reason it
-prints, hand the task to `appian-verify`, and let review close it.
+`practices-implementation`, `practices-review` and `practices-qa`. The
+validator still accepts those phases, and deliberately so: drop them and the
+verdicts of a scope opened under the old rules go from insufficient to
+invalid, and that scope cannot close by any route. What no longer exists is a
+skill that produces them, because 0.7 has one judge and three phases of its
+own. **So do not open a 0.6 scope to build in.** One already in flight closes
+under the rules it opened with — close it or abandon it, and open the next one
+as v2.
 
 **A v2 scope** is asked for none of the three — the v2 closure gate never opens
 them, in either kind. It runs the state machine instead: a stop with writes
@@ -672,22 +676,21 @@ first unverified result. If you cannot determine the state, stop and ask.
   scope: the directory says one thing and the log says another, which is worse
   than either alone.
 - *"The gate blocked my stop, so something is broken."* Nothing is broken. The
-  block is the handoff: the task is built and not yet verified, which is exactly
-  what it says. In a 0.6 scope the way past it is `appian-verify` and then
-  `appian-review`; in a v2 scope it is `"request": "close"` and another stop.
-  Neither is a change to the active task file beyond that one line.
+  block is the handoff: the scope is built and not yet certified, which is
+  exactly what it says. The way past it is `"request": "close"` and another
+  stop — one line in the scope file, and nothing else.
 - *"The v2 gate doesn't ask for the three verdicts, but running them anyway is
   the careful thing to do."* It is not careful, it is unmeasured: nothing opens
   `practices-implementation`, `practices-qa` or `practices-review` in that
   rulebook, so the verdicts close nothing and the budget they spend was the
-  scope's. If the change deserves judgement, the lane that buys it is `certify`
-  (§ 5.4), not the three 0.6 phases.
+  scope's. If the change deserves judgement, the lane that buys it is
+  `certify`, and `appian-review` is what dispatches it.
 - *"I'm done, so I'll tidy up the active task file on my way out."* Deleting it
   here is not tidying, it is disabling the closure gate for this task — with no
   task in flight the gate approves without checking anything, and in a 0.6 scope
-  the three post-write verdicts stop being required by anything at all. In 0.6
-  the file is cleared at close by `appian-review`; in v2 it stays, carrying
-  `status: closed`. Either way, closing is not this skill's moment.
+  the three post-write verdicts stop being required by anything at all. In v2
+  the file stays, carrying `status: closed` signed by the hook. Either way,
+  closing is not this skill's moment.
 
 ## Red Flags
 
