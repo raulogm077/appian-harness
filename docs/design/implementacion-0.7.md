@@ -803,7 +803,7 @@ ni ninguna de las cinco skills salvo para **añadir** `references/12-render-sign
 `appian-best-practices` y su fila en el mapa, que es la unidad 9 de esta fase. El juez, la matriz, las
 clases de puerta y el bucle de remediación siguen sin escribirse.
 
-**Design freeze reabierto: no.** Ninguna de las cinco causas de § 21 se dio. Las diez
+**Design freeze reabierto: no.** Ninguna de las cinco causas de § 21 se dio. Las catorce
 interpretaciones de arriba son decisiones de codificación dentro de lo que la norma deja escrito, no
 cambios de la norma.
 
