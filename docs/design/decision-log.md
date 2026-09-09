@@ -966,3 +966,53 @@ la norma sí nombra.
 **Lo que sigue sin estar cableado, dicho sin adornos:** el `certify` del carril con revisor (§ 5.4)
 llega con el juez en Fase 4 y el suelo determinista de § 8 en Fase 3. El carril lo dice en una línea
 en vez de sustituirlo por la cola de 0.6.
+
+---
+
+## D-40 · Las dos mitades del suelo que la Fase 3 mandó a la Fase 4 salen a 0.8
+
+**Fecha:** 9-sep-2026 · **Motivada por:** el cierre de la Fase 4, al reconciliar lo que la Fase 3
+había dejado con destino «Fase 4».
+
+**Qué se decide.** Dos mitades de fila de § 8.1 —«≥ 1 fila con el campo o la relación tocados
+presentes en la proyección» (record type) y «el `sourceRef` no es un campo con seguridad de campo»
+(user filter)— **no son trabajo de la Fase 4** y salen de 0.7. Se anotan en § 18.1.
+
+**Qué sustituye.** La tabla de trabajo aplazado de la Fase 3, que les puso destino «Fase 4».
+
+**Por qué.** § 16 Fase 4 entrega **juez, matriz y skills**: sus ocho filas son el agente, la matriz,
+las clases de puerta, el tope de re-emisiones, el bucle de remediación, las cinco skills, la
+profundidad de referencia y `appian-plan`. **Ninguna toca el suelo.** El suelo por tipo de § 8.1 es
+literalmente una fila de la **Fase 3**. Que la Fase 3 escribiera «Fase 4» no las asignó ahí: nombró
+la única fase que entonces quedaba abierta.
+
+Y las dos razones que dio siguen siendo ciertas, verificadas contra el código antes de decidir:
+
+- **Record type.** `_log_write_v07` escribe `object`, `candidates`, `uuids`, `behavioural`,
+  `expressionHash` y `result` — nunca el `tool_input`. Y `_target_candidates` resuelve
+  `addRecordTypeField` por `("uuid", "name")`, que nombra el **record type**, no el campo. Existe una
+  vía que no toca la Fase 2 —el delta de estructura leída antes y después— pero cubre el **alta** y
+  no el **update**, y dejar la fila cubriendo la mitad es exactamente *una fila que aparenta más de
+  lo que mide*, el defecto que la revisión independiente de la Fase 3 ya encontró en esta misma
+  tabla. Se prefiere una fila honesta y floja a una que miente a medias.
+- **User filter.** La marca de seguridad de campo **no está en la superficie de lectura**. No hay
+  cantidad de código que la compre; entra cuando el MCP la exponga.
+
+**Qué se rechazó.** (a) Implementarlas en la rama de la Fase 4: sería hacer trabajo de la Fase 3
+dentro de otra fase, y en el caso del record type dejaría media fila. (b) Mandarlas a la Fase 5
+—onboarding, documentación y manifiestos— o a la Fase 6, que **ejecuta** la puerta de salida y no
+implementa suelo. (c) Dejarlas diciendo «Fase 4» al cerrar la Fase 4, que es deuda sin dueño.
+
+**Qué parte del freeze se reabre: ninguna.** § 8.1 no cambia **ni una línea**: sigue describiendo el
+suelo completo, y lo que se anota es que 0.7 compra dos mitades menos y por qué. § 21 deja abierto
+exactamente ese canal —*«se anota en § 18 para la release siguiente; no reabre esta»*—, y aunque
+había causa para reabrir (la 1 para el record type, la 3 para el user filter), **ninguna decisión de
+0.7 cambia**, así que reabrir no compraría nada.
+
+**Consecuencia que queda a la vista, y no se tapa.** Las dos filas siguen comprando menos de lo que
+§ 8.1 describe, y en 0.7 eso vive **solo en el registro de implementación**, no en un residuo que el
+cierre emita. Declararlo en runtime sería tocar el suelo, que es lo que esta decisión concluye que no
+toca la Fase 4.
+
+**Dónde vive.** § 18.1 de la norma, y la tabla de trabajo aplazado de la Fase 4 en
+`implementacion-0.7.md`.

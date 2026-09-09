@@ -1972,6 +1972,8 @@ Se conservan los de routing, con `routing-verify-not-review` → `routing-certif
 | **Caducidad por fila de la matriz** | El veredicto ya es una matriz objeto×puerta y `log-write` ya registra el objeto de cada escritura, así que no exige mecanismo nuevo. Se aplaza porque el lote de remediación ya acota el coste a un re-certify por ciclo (§ 7.6) |
 | **La mitad instaladora de `/appian-init`** | Clonar `appian/dev-mcp-skills` fijando commit, instalar el toolkit y guiar `claude mcp add` sin inventar credenciales |
 | **La regla anti-salami**, si la magnitud de § 17.4 dice que hace falta | Se diseña con el dato delante, no antes |
+| **La mitad fuerte de la fila de record type** (§ 8.1): que la `listRecordData` devuelva ≥ 1 fila **con el campo o la relación tocados presentes en la proyección** | Exige saber **qué subparte** se escribió, y `operations.jsonl` guarda el objeto, no el `tool_input`. Registrarlo es ampliar `log-write`, que es el único contador de `writeSeq` y la pieza más delicada del diseño. El delta de estructura antes/después cubriría un **alta** y no un **update**, y media fila que aparenta entera es el defecto que la revisión de la Fase 3 ya cazó una vez. En 0.7 la fila compra `listRecordData` con ≥ 1 fila, y eso es lo que dice comprar |
+| **La mitad de seguridad de campo de la fila de user filter** (§ 8.1): que el `sourceRef` **no sea un campo con seguridad de campo** | No es cuestión de esfuerzo: **la superficie de lectura no expone la marca**, sondeado en la Fase 3. La existencia del `sourceRef` sí se comprueba. Entra cuando el MCP la exponga, y hasta entonces ninguna cantidad de código la compra |
 
 ### 18.2 En 1.0
 
