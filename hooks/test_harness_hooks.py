@@ -737,9 +737,13 @@ class TestSessionStartChecksTheThreeRequirements(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             ctx = session_start({}, self._cfg(t))["additionalContext"]
             for phase in ("appian-specify", "appian-plan", "appian-build",
-                          "appian-verify", "appian-review"):
+                          "appian-review"):
                 self.assertIn(phase, ctx)
             self.assertIn("appian-best-practices", ctx)
+            # The two that 0.7 retired must not be advertised to a session
+            # that would then go looking for them.
+            for gone in ("appian-verify", "appian-run"):
+                self.assertNotIn(gone, ctx)
 
     def test_a_missing_design_mcp_is_named(self):
         with tempfile.TemporaryDirectory() as t:

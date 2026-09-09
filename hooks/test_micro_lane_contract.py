@@ -4,8 +4,9 @@ Measured on P2-PASADA-4 (a label change on one interface): of the twenty-three
 minutes between opening the scope and signing the close, one minute was the
 work. Twelve and a half went to an `appian-practices-auditor` running
 `phase=design` in front of the grant, and the tail after the read-back went to
-an `appian-verify` dispatch. The closure gate asked for neither. Both were paid
-because `appian-build` described a harder gate than the one that exists.
+a verification dispatch of the phase set 0.7 has since retired. The closure
+gate asked for neither. Both were paid because `appian-build` described a
+harder gate than the one that exists.
 
 So there are two halves here, and they have to be tested together or the pair
 drifts apart again:
@@ -181,7 +182,7 @@ class TestTheBuildSkillAnnouncesOnlyTheGatesThatExist(unittest.TestCase):
     def test_the_micro_lane_dispatches_nobody(self):
         with open(MICRO_LANE, encoding="utf-8") as f:
             lane = f.read()
-        for agent in ("appian-practices-auditor", "appian-verify", "appian-review"):
+        for agent in ("appian-practices-auditor", "appian-review"):
             for block in blocks(lane):
                 if agent not in block:
                     continue

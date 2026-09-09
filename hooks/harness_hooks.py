@@ -1396,8 +1396,8 @@ def session_start(payload, config):
             "before the first write of this session, confirm the design MCP really "
             "responds with `validateExpression(\"1 + 1\")` -- listing tools proves "
             "nothing, it never reaches Appian. Then follow the phases: "
-            "appian-specify -> appian-plan -> appian-build -> appian-verify -> "
-            "appian-review, consulting `appian-best-practices` for the domains each "
+            "appian-specify -> appian-plan -> appian-build -> appian-review, "
+            "consulting `appian-best-practices` for the domains each "
             "change touches, and loading the official Appian skill before every build."
             + perimeter)}
     return {"additionalContext": (
@@ -1848,11 +1848,13 @@ def closure_gate(payload, config):
                                  debt_path))}
 
     return {"decision": "block",
-            "reason": "task %r is still in flight, so this stop is a handoff, not a close. "
-                      "Not yet produced or not yet passing: %s. Next step: run appian-verify "
-                      "for this task -- it produces practices-implementation and practices-qa "
-                      "-- and then appian-review, which produces practices-review and clears "
-                      "the active task file once the task closes. Detail: %s" %
+            "reason": "task %r opened under the 0.6 rules and closes under them, so this "
+                      "stop is a handoff, not a close. Not yet produced or not yet passing: "
+                      "%s. Those three phases are still ACCEPTED and no skill produces them "
+                      "any more -- 0.7 has one judge and three phases of its own. If the "
+                      "verdicts exist, fix what they say; if they never will, stop again and "
+                      "the scope closes with the omission recorded as debt. Either way, open "
+                      "the next scope as v2. Detail: %s" %
                       (task_id,
                        ", ".join("practices-%s" % p for p in missing_phases),
                        " | ".join(missing_details))}

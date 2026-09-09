@@ -3,9 +3,9 @@
 A checker that cannot fail is a checker nobody should trust, so these
 mostly build small broken trees and confirm it says so.
 """
-import os, sys, tempfile, unittest
+import os, re, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from check_readme_claims import check, _as_int, _markdown_files
+from check_readme_claims import NUMBER, check, _as_int, _markdown_files
 
 REAL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -516,6 +516,24 @@ class TestEveryRelativeLinkResolves(TreeFixture, unittest.TestCase):
         self.assertTrue([f for f in found if f.startswith("skills/")], found)
         self.assertTrue([f for f in found if f.startswith("evals/")], found)
         self.assertFalse([f for f in found if f.startswith(".")], found)
+
+class TheAgentCountSurvivesThereBeingOne(unittest.TestCase):
+    """0.7 leaves exactly one judge, and "One judging agents" is not English.
+    A pattern that only matched the plural would force the prose to be
+    ungrammatical or leave the count held by nothing at all."""
+
+    def test_the_singular_is_accepted(self):
+        self.assertIsNotNone(
+            re.search(NUMBER + r" judging agents?", "One judging agent."))
+
+    def test_the_plural_still_is(self):
+        self.assertIsNotNone(
+            re.search(NUMBER + r" judging agents?", "Three judging agents."))
+
+    def test_bare_agents_is_still_not_a_count(self):
+        # The looser pattern would reach prose about how agents are used.
+        self.assertIsNone(
+            re.search(NUMBER + r" judging agents?", "Two agents ran."))
 
 
 if __name__ == "__main__":

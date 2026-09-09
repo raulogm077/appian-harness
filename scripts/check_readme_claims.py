@@ -323,10 +323,13 @@ def check(root=".", count_tests=True):
     claim(NUMBER + r" domain references", len(references), "domain reference count")
 
     # "judging agents", never "agents" on its own: a looser pattern reaches
-    # prose about how the agents are used and calls it a wrong count.
+    # prose about how the agents are used and calls it a wrong count. The
+    # optional plural is not decoration -- since 0.7 there is exactly one
+    # judge, and a pattern that only matched "agents" would force the prose
+    # to be ungrammatical or leave the count unheld.
     agents = sorted(os.path.basename(path)[:-len(".md")]
                     for path in glob.glob(os.path.join(root, "agents", "*.md")))
-    claim(NUMBER + r" judging agents", len(agents), "agent count")
+    claim(NUMBER + r" judging agents?", len(agents), "agent count")
 
     cases = _eval_cases(root)
     claim(NUMBER + r" eval cases", len(cases), "eval case count")
