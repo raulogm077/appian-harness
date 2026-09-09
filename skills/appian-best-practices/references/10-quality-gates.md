@@ -80,6 +80,64 @@ list, is rejected.
 > Adding a deferrable criterion means editing the constant — editing only this
 > document changes nothing except this document.
 
+## What a NOT MEASURED means when a person still has to look
+
+Two lists, and they do not mix, because they end in different places.
+
+**Pending judgement** — the instrument did not measure and there is no alternative route, or the
+judgement is one only a person can give. These are **verdict entries**: the auditor writes them, and
+the scope closes **pending a human**. Each needs an owner and a closing condition.
+
+- `visual-judgement-on-rendered-screen` — a rendered screen someone has to look at. Not valid in
+  `design`: design precedes every write, so there is no screen yet.
+- `instrument-limit-known` — the instrument the floor asks for failed, it is **not** a regression of
+  this change, and no alternative evidence exists.
+
+**Guarantee-class residue** — the floor for that type buys less than its effect deserves, and
+**nothing failed**. These are **not verdict entries**: the hook and the floor write them to
+`deferred-debt.jsonl`, and the scope closes **clean**.
+
+- `branch-not-exercisable-without-writing-data` · `type-has-no-floor` · `manual-step-not-tooled` ·
+  `external-effect-not-exercised`
+
+A verdict that invokes one of the second list as a deferral is **rejected**, and the remedy is named:
+it is a residue, not a `NOT MEASURED`. Treating a declared ceiling as a failed gate would send every
+integration, every manual type and every expressionless user filter to "pending a human" — blinding
+the one signal that says whether the fast lane exists at all.
+
+> Same rule as the list above: the originals are `PENDING_JUDGEMENT_IDS` and `GUARANTEE_RESIDUE_IDS`
+> in `scripts/validate_verdict.py`, and a test fails if these bullets ever disagree with them.
+
+## The seven gates do not block alike
+
+A FAIL on **maintainability** — "this logic belongs in an expression rule" — used to block a close
+exactly as hard as an invalid reference. That turns a matter of style into recorded debt, and the
+only way out was to spend three remediation cycles arguing with a reviewer. Three classes, with
+different effects:
+
+| Gate | Class | Effect of a FAIL |
+|---|---|---|
+| 1. Platform correctness | CARDINAL | **Blocks the close.** No exception and no cycles |
+| 3. Security | CARDINAL | **Blocks the close.** No exception and no cycles |
+| 2. Functional behavior | RECOMMENDED | **Blocks once.** On the second Stop the scope closes with the finding recorded as debt |
+| 4. SAIL interfaces | RECOMMENDED | **Blocks once**, then closes with debt |
+| 7. Operations and deployment | RECOMMENDED | **Blocks once**, then closes with debt |
+| 5. Performance | CONTEXTUAL | **Does not block.** Recorded with its owner, and it shows up at the next session start |
+| 6. Maintainability | CONTEXTUAL | **Does not block.** Recorded with its owner |
+
+The three that are **never graded down** — an invalid reference, an authorization gap, a
+non-idempotent write — are CARDINAL wherever they are found, including inside a CONTEXTUAL gate.
+
+The reason is in the doctrine itself: maintainability and performance are **contextual** judgements
+— *measure before optimizing*, *a reasonable local convention overrides the generic preference of
+these docs* — and the point is to favour good Appian development, not to build ceremony around every
+recommendation. With this, the remediation loop can no longer be spent on the two gates that least
+deserve it.
+
+**Class and nature are independent axes.** Gate 1 is CARDINAL and its cell is *imported* — the floor
+answers it, not the auditor. There is no tension: the class decides what happens to a FAIL, the
+nature decides who determines it.
+
 ---
 
 ## 1. Platform correctness

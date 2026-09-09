@@ -328,9 +328,10 @@ class TestACitationCannotLeaveReferences(unittest.TestCase):
     heading it chose."""
 
     def _verdict(self, ref):
+        # `design` is a v07 phase, so its findings carry ids (§ 9.4).
         return {"task": "T", "phase": "design", "verdict": "PASS",
                 "referencesApplied": [ref],
-                "findings": [{"criterion": "c", "verdict": "PASS",
+                "findings": [{"id": "f-1", "criterion": "c", "verdict": "PASS",
                               "evidence": "e", "reference": ref}]}
 
     def _check(self, root, ref):
