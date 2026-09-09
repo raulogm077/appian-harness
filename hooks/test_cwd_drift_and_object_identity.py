@@ -210,6 +210,18 @@ def appian_reads_credited(root, cwd, target=UUID_A):
                root)
 
 
+def appian_certified(root, target=UUID_A):
+    """The judge's half: a `task` buys one certify, and the close reads it.
+
+    Written straight to disk because that is what a subagent does -- the
+    judge holds no MCP and reaches the harness through its verdict file, not
+    through a hook.
+    """
+    from test_certify import write_certify
+    return write_certify({"evidenceDir": os.path.join(root, "evidence")},
+                         read_scope(root), objects=[target])
+
+
 def stop(root, cwd):
     return run("closure-gate", {"cwd": cwd, "stop_hook_active": False}, root)
 
@@ -252,6 +264,7 @@ class TestTheProjectRootSurvivesADriftedCwd(unittest.TestCase):
                              decision.get("permissionDecisionReason"))
             appian_write_landed(root, here)
             appian_reads_credited(root, here)
+            appian_certified(root)
 
             # 4. The Edit that asks to close: signed into `closing`.
             current = read_scope(root)
