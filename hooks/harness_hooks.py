@@ -1222,10 +1222,22 @@ def skill_trail_note(config, task_id):
                 record = loaded
         except (ValueError, OSError):
             record = None
+    # `observedBy` is a field, and a field can be typed. What cannot be
+    # typed is the absence of a tool event: the hook writes this file with
+    # its own pen, which leaves no row, while every `Write`/`Edit` the
+    # agent aims at the evidence tree is logged by `state-gate`. So a
+    # logged write to THIS path is the discriminator, and it is the one
+    # thing that keeps the file the hook took over from being forgeable.
+    forged = any(row.get("path") and os.path.normcase(
+                     os.path.abspath(os.path.join(config.get("projectRoot") or ".",
+                                                  row["path"])))
+                 == os.path.normcase(os.path.abspath(path))
+                 for row in _read_jsonl(os.path.join(_evidence_dir(config),
+                                                     "evidence-writes.jsonl")))
     if record is not None and record.get("observedBy") == "observe-reads" \
-            and record.get("skillInvoked"):
+            and record.get("skillInvoked") and not forged:
         return None
-    hand_written = record is not None and not record.get("observedBy")
+    hand_written = forged or (record is not None and not record.get("observedBy"))
     return ("appian-harness: no observed load of the official Appian skill (%s) for "
             "this scope%s. Load it before writing: the tool schemas carry no naming "
             "conventions, no both-sides-of-a-relationship rule, no creation order and "
@@ -2771,6 +2783,22 @@ def _rest_check(entry):
     return _REST_ACTION_BY_SURFACE[match.group(1)], match.group(2)
 
 
+def _walk_dicts(node):
+    """Every dict inside a response. The MCP surface returns a bare list
+    for some reads and an object wrapping one for others, so a checker that
+    only looked at the top level would find the field on one shape and miss
+    it on the other -- silently, which is the failure mode."""
+    if isinstance(node, dict):
+        yield node
+        for value in node.values():
+            for found in _walk_dicts(value):
+                yield found
+    elif isinstance(node, list):
+        for value in node:
+            for found in _walk_dicts(value):
+                yield found
+
+
 def _checks_ledger(config):
     return os.path.join(_evidence_dir(config), CHECKS_LEDGER_NAME)
 
@@ -2824,8 +2852,27 @@ def _check_row(config, scope, entry, action):
     refs = cross_references(action, parsed)
     if refs:
         row["references"] = refs
-    if isinstance(parsed, dict) and parsed.get("facetType"):
-        row["facetType"] = parsed["facetType"]
+    # A response's own `name` is an identifier of the object it describes,
+    # and the only one a `rule!` reference can be matched against: without
+    # it every summary view would read as a broken cross-reference.
+    if isinstance(parsed, dict) and isinstance(parsed.get("name"), str) \
+            and parsed["name"] and parsed["name"] not in row["candidates"]:
+        row["candidates"].append(parsed["name"])
+    facets, refs, fields = [], [], []
+    for node in _walk_dicts(parsed):
+        for key, bucket in (("facetType", facets), ("sourceRef", refs)):
+            value = node.get(key)
+            if isinstance(value, str) and value and value not in bucket:
+                bucket.append(value)
+        name = node.get("fieldName") or node.get("name")
+        if isinstance(name, str) and name and name not in fields:
+            fields.append(name)
+    if facets:
+        row["facetTypes"] = facets
+    if refs:
+        row["sourceRefs"] = refs
+    if fields and action in ("listRecordTypeFields", "getRecordType"):
+        row["fieldNames"] = fields
     if action == "testInterface":
         # The tree is measured here and discarded: what the ledger keeps is
         # the normalized hash, the value-node count and the diagnostics.
@@ -3101,10 +3148,32 @@ def _p_data_present(rows, leg, entry):
 
 
 def _p_delta(rows, leg, entry):
-    """Two credited reads whose digests differ: the delta IS the evidence."""
-    digests = [r.get("responseDigest") for r in _ok(rows, leg.actions)
-               if r.get("responseDigest")]
-    return len(set(digests)) >= 2
+    """The preflight read and the post-write read, and the difference
+    between them (§ 8.1: "comparado contra el leído en el preflight. La
+    evidencia es el diff, no el ok de la llamada").
+
+    The preflight read is BEFORE the write by definition, so `_rows_for`
+    excludes it -- correctly, because a stale read must not accredit a new
+    write. It is handed in separately as `preRows`: this leg is the one
+    place where a read taken earlier is not stale but load-bearing.
+
+    An idempotent write is legal, so an empty diff is a real answer. What
+    is not an answer is a single read: one enumeration of the final state
+    says nothing about what changed.
+    """
+    after = _ok(rows, leg.actions)
+    before = _ok(entry.get("preRows") or [], leg.actions)
+    if not after or not before:
+        return False
+    if leg.name != "delta":
+        return True
+    # A data write that claims to have inserted or deleted rows has to move
+    # the count; an update legitimately leaves it alone.
+    if entry["actions"] & {"insertRecordData", "deleteRecordData"}:
+        counts = [r.get("rowCount") for r in before + after
+                  if _is_count(r.get("rowCount"))]
+        return len(set(counts)) >= 2
+    return True
 
 
 def _p_absence(rows, leg, entry):
@@ -3116,11 +3185,31 @@ def _p_absence(rows, leg, entry):
 
 
 def _p_userfilter(rows, leg, entry):
+    """§ 8.1's user-filter row, which branches on `facetType`.
+
+    EXPRESSION has a body to validate. LIST_OF_VALUES and DATE_RANGE have
+    none -- the filter is `sourceRef` plus `options[]` -- so what is checked
+    is that the `sourceRef` resolves to a field of the record type.
+    """
     reads = _ok(rows, ("listRecordTypeUserFilters",))
     if not reads:
         return False
-    if any(_norm_ident(r.get("facetType") or "") == "expression" for r in reads):
+    facets = set()
+    refs = set()
+    for row in reads:
+        for facet in row.get("facetTypes") or []:
+            facets.add(_norm_ident(facet))
+        for ref in row.get("sourceRefs") or []:
+            refs.add(ref)
+    if "expression" in facets:
         return bool(_ok(rows, ("validateExpression",)))
+    if refs:
+        fields = set()
+        for row in _ok(rows, ("listRecordTypeFields", "getRecordType")):
+            fields.update(row.get("fieldNames") or [])
+        if not fields:
+            return False
+        return refs <= fields
     return True
 
 
@@ -3164,9 +3253,22 @@ def render_pair_state(rows):
                        "a!forEach that never iterated")
     if len(hashes) < 2:
         return False, "populated and empty normalize to the same hash (§ 8.5)"
-    if not all(rec.get("measured") for recs in by_inputs.values() for rec in recs):
-        return False, ("N2 judged no component in one of the renders: that is NOT "
+    records = [rec for recs in by_inputs.values() for rec in recs]
+    richest = max(records, key=lambda rec: rec["valueNodes"])
+    if not richest.get("measured"):
+        return False, ("N2 judged no component in the populated render: that is NOT "
                        "MEASURED, not a clean screen")
+    for rec in records:
+        # § 8.7's first acotación: a clean empty render is not "I could not
+        # measure", it is a well-made empty state. It is legitimate for it
+        # to carry no recognised signature PROVIDED the populated half did
+        # measure and it carries an empty message or a non-empty text node.
+        # Without this the floor would punish good design -- the better the
+        # empty state, the likelier the escalation.
+        if rec is not richest and not rec.get("measured") \
+                and rec["valueNodes"] < 1:
+            return False, ("the empty render carries neither a recognised component "
+                           "nor an empty-state message: nothing was measured in it")
     return True, None
 
 
@@ -3540,6 +3642,12 @@ def floor_report(config, scope):
     for label, entry in sorted(objects.items()):
         entry["resolved"] = resolved
         rows = _rows_for(checks, entry, entry["lastSeq"])
+        # The preflight side, kept apart on purpose: for every leg but the
+        # diff, a read taken before the write is stale. For the diff it is
+        # half the evidence (§ 8.1).
+        entry["preRows"] = [r for r in checks
+                            if r.get("writeSeqAtCheck", -1) < entry["lastSeq"]
+                            and entry["candidates"] & set(r.get("candidates") or [])]
         obj_type = entry["type"]
         if obj_type == "manual":
             legs = _MANUAL_LEGS
