@@ -575,3 +575,44 @@ class TestTheOtherTypeRows(FloorCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTypesWithNoWriteTool(FloorCase):
+    """§ 8.8: they are configured in Designer, pass through no MCP, and so
+    no hook sees them. That is worse than a block -- it is invisible -- and
+    the row turns the invisibility into declared debt."""
+
+    def declare(self, config, obj="GDE_DEC_Tarifa"):
+        hh._append_jsonl(hh._debt_register(config),
+                         {"timestamp": hh._now(), "task": "S-1",
+                          "instanceId": "inst-1", "kind": hh.DEBT_MANUAL_STEP,
+                          "object": obj, "type": "decision",
+                          "owner": "Raúl", "detail": "Decision object, "
+                          "configured in Designer"})
+
+    def test_a_declared_manual_step_owes_the_read_that_does_exist(self):
+        c = self.config()
+        self.declare(c)
+        self.assertIn("read whatever surface DOES expose it",
+                      " ".join(self.report(c)["missing"]))
+
+    def test_the_read_that_does_exist_settles_it(self):
+        c = self.config()
+        self.declare(c)
+        self.observe(c, [_e("listApplicationObjects", {"uuid": "GDE_DEC_Tarifa"},
+                            {"objects": [{"name": "GDE_DEC_Tarifa"}]})])
+        self.assertEqual(self.report(c)["missing"], [])
+
+    def test_it_does_not_have_to_share_the_scope_with_a_write(self):
+        # Nothing routed through the hook for this object, so a floor that
+        # only looked at operations.jsonl would never see it at all.
+        c = self.config()
+        self.declare(c)
+        self.assertEqual(hh._written_objects(c, c["activeTask"]), {})
+        self.assertTrue(self.report(c)["missing"])
+
+    def test_connected_systems_are_not_treated_as_manual(self):
+        # The Dev MCP does have createConnectedSystem, so § 8.1's own row
+        # covers them. The official source is out of date on that point.
+        self.assertNotIn("connectedSystem", hh.MANUAL_TYPES)
+        self.assertIn("connectedSystem", hh._LEGS_BY_TYPE)

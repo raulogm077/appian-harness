@@ -3466,6 +3466,48 @@ def _wiring_leg(obj_type):
                 % ", ".join(sorted(actions)))
 
 
+# § 8.8 · the types the official graph marks `(manual)`: they are configured
+# in Designer, pass through no MCP, and therefore NO HOOK SEES THEM. That is
+# worse than a block -- it is invisible -- so the floor gives them a row and
+# turns the invisibility into declared debt, which is the currency this
+# design already uses.
+#
+# Connected systems are deliberately NOT here: the Dev MCP does have
+# `createConnectedSystem`, so § 8.1's own row covers them. The official
+# source is out of date on that point, and saying so is what the doctrine
+# says to do when doctrine and official documentation disagree.
+MANUAL_TYPES = ("decision", "aiSkill", "portal", "dataStore", "recordView",
+                "recordAction")
+_MANUAL_LEGS = [
+    _Leg("declared-read", ("listApplicationObjects", "getApplication",
+                           "getRecordType", "listRecordTypeViews",
+                           "listRecordTypeActions"),
+         ("structure",), _p_present,
+         "read whatever surface DOES expose it -- getRecordType for views and "
+         "actions, listApplicationObjects for the rest: existence declared is "
+         "the only guarantee a type with no write tool can buy (§ 8.8)"),
+]
+
+
+def _manual_steps(config, scope):
+    """{object: debt row} for the manual steps this scope declared.
+
+    Detection is not the hook's: nothing routes through it, so nothing can
+    be observed. What the hook does is honour the declaration -- § 8.8
+    piece 1 puts the planning in `appian-plan` -- and hold it to the row:
+    the read that does exist, plus a residue with an owner.
+    """
+    declared = {}
+    for row in _read_jsonl(_debt_register(config)):
+        if row.get("kind") != DEBT_MANUAL_STEP:
+            continue
+        if row.get("instanceId") not in (None, scope.get("instanceId")):
+            continue
+        if row.get("object"):
+            declared[row["object"]] = row
+    return declared
+
+
 def floor_report(config, scope):
     """What § 8 still demands of this scope, and how each gap must be closed.
 
@@ -3477,6 +3519,14 @@ def floor_report(config, scope):
     """
     report = {"missing": [], "blocking": [], "notMeasured": [], "debts": []}
     objects = _written_objects(config, scope)
+    manual = _manual_steps(config, scope)
+    for label, row in sorted(manual.items()):
+        # A step nothing routed through: it gets the row of § 8.8 and its
+        # residue, whether or not anything else in this scope was written.
+        objects.setdefault(label, {"type": "manual", "lastSeq": 0,
+                                   "behavioural": True, "deleted": False,
+                                   "candidates": {label}, "actions": set(),
+                                   "owner": row.get("owner")})
     if not objects:
         return report
     checks = read_checks(config, scope.get("instanceId"))
@@ -3491,7 +3541,9 @@ def floor_report(config, scope):
         entry["resolved"] = resolved
         rows = _rows_for(checks, entry, entry["lastSeq"])
         obj_type = entry["type"]
-        if entry["deleted"]:
+        if obj_type == "manual":
+            legs = _MANUAL_LEGS
+        elif entry["deleted"]:
             legs = _DELETION_LEGS
         elif obj_type is None or obj_type not in _LEGS_BY_TYPE:
             # § 8.1's default rule. Whoever wrote with a tool this table

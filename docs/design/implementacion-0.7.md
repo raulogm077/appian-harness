@@ -592,6 +592,196 @@ seguirá apuntando a un fichero que no está.
 
 ---
 
+## Fase 3 · Suelo y evidencia
+
+**Fecha:** 2026-09-09 · **Rama:** `phase-3-floor-and-evidence` · **Base:** `9e04d37`
+
+Depende de la Fase 2 (`writeSeq` y clasificación conductual) y de la sonda P5 de `PostToolBatch`,
+que salió **en verde**: el evento dispara, con lotes de una y de varias llamadas, y la carga de la
+skill es observable. **Ningún fallback de los declarados hizo falta** — ni el peaje por
+`PostToolUse` ni la degradación del gate de skill a aviso.
+
+### Las once unidades, en orden de dependencia
+
+| # | Unidad | Dónde |
+|---|---|---|
+| 1 | `observe-reads` sobre `PostToolBatch` → `checks.jsonl`, con `toolUseId`, `writeSeqAtCheck` y `guaranteeClass` por fila | `hooks/harness_hooks.py`, `hooks/hooks.json`, `hooks/run_hook.sh` |
+| 2 | El registro de la skill oficial **lo escribe el hook** desde lo observado; deja de ser causa de `ask` | `hooks/harness_hooks.py` |
+| 3 | El suelo por tipo de § 8.1, la regla de defecto y la fila de tipos sin herramienta (§ 8.8) | `hooks/harness_hooks.py` |
+| 4 | La fila transversal de referencias cruzadas (§ 8.2), extraída de las respuestas observadas | `hooks/harness_hooks.py` |
+| 5 | Comprobaciones de grafo de process model en N3 (§ 8.3) | `scripts/n3_process_layout.py` |
+| 6 | Suelo proporcionado para escrituras no conductuales (§ 8.6) | `hooks/harness_hooks.py` |
+| 7 | Normalización del render, dos garantías y el corolario (§ 8.5) | `scripts/n2_interface_tree.py` |
+| 8 | Reescritura de N2 por firma de propiedades, con `--record` | `scripts/n2_interface_tree.py` |
+| 9 | Señales derivadas **por referencia** a `change-review.md` | `skills/appian-best-practices/references/12-render-signals.md` |
+| 10 | Comprobador estático de SAIL sobre fuentes oficiales, con su tabla de cobertura | `scripts/sail_static_check.py` (nuevo) |
+| 11 | Retención de evidencia y rotación de registros (§ 11) | `hooks/harness_hooks.py` |
+
+### Interpretaciones fijadas al codificar (ninguna reabre el freeze)
+
+1. **El corpus de verificación se deriva, no se lista.** `_TYPE_BY_ACTION` clasifica el corpus por
+   tipo de objeto una sola vez, y `VERIFICATION_ACTIONS` sale de ahí: una lectura acredita solo si su
+   tipo tiene herramienta de escritura clasificada. Eso deja fuera `getRoboticTask`, `getAiSkill` y
+   `getAgent` **sin nombrarlos**, y hace que el corpus crezca solo cuando se clasifica una escritura
+   nueva. `getObjectDependents` se añade a los extras declarados porque su tipo es *cualquiera* —
+   ningún tipo lo deriva, y sin él el suelo de borrado sería impagable.
+2. **`guaranteeClass` es función del resultado observado, no de la intención.** `failed` o
+   `ambiguous` ⇒ `ambiguous`, sea cual sea la herramienta.
+3. **Un `run*TestCases*` con cero casos ejecutados compra `green-signal-only`.** Su efecto es
+   exactamente el de una señal universalmente verde: no puede fallar. Un caso en rojo, igual — la
+   norma exige «caso ejecutado **en verde**». La fila guarda `casesRun`/`casesPassed`.
+4. **`testInterface` en solitario compra `green-signal-only`.** Un render prueba que la pantalla
+   evaluó; lo que compra `behavioural` es el **par** poblado ≠ vacío, y eso se asierta sobre dos
+   filas, no sobre una. Igual `validateExpression`, que es sintaxis. `listRecordData` en solitario
+   es `structure`; el **delta** entre dos filas es lo que compra `behavioural` en una escritura de
+   datos.
+5. **Los renders se miden dentro del hook y no viajan.** `observe-reads` normaliza y cuenta el árbol
+   que ya tiene en la mano y guarda ~500 B en la fila (`render`). El árbol no entra en el contexto de
+   nadie, y las dos garantías de § 8.5 se comprueban sobre filas que **selló el hook**, no sobre un
+   artefacto que escribió el constructor. Los ficheros de § 11.1 siguen existiendo para el juez de la
+   Fase 4.
+6. **La ausencia tras un borrado se lee por `result`, no por clase de garantía.** Una relectura que
+   falla es lo que prueba que el objeto se fue (Fase 0 lo midió: `getConstant` → `HTTP 403 Constant
+   not found`). Esa fila conserva `guaranteeClass: ambiguous`, que es honesto respecto de la
+   herramienta; el suelo lee su `result`. No se añade una clase al enum cerrado de § 8.4.
+7. **El canal REST se reconoce como «otra superficie» (§ 8.7 a).** § 17.2 nombra la ejecución de
+   casos por REST como la evidencia alternativa del caso ácido, pero el corpus de § 7.4 es solo MCP y
+   esa llamada llega como un `Bash`. `observe-reads` reconoce el patrón
+   `lcp-api/…/{interfaces|expression-rules}/<uuid>/test-cases/run` y escribe la fila bajo el mismo
+   nombre de acción, con `channel: "rest"`. **Sin esto el caso ácido no tendría ninguna alternativa
+   conductual** y cerraría `closed-pending-human` sobre una clase que sí se midió.
+8. **La fila transversal se activa donde hay cableado, no por contar objetos.** Site y aplicación la
+   pagan siempre (§ 8.1 la mete en su propia fila); record type y process model, en cuanto el alcance
+   toca un segundo objeto. Un tipo que no puede declarar referencias no la paga: exigírsela sería
+   ceremonia, y un suelo impagable es peor que ninguno.
+9. **Se rotan dos registros, no seis.** `operations.jsonl` y `checks.jsonl` crecen con cada llamada y
+   se mueven bajo `<evidenceDir>/<scopeId>/` al firmarse el estado terminal; todos los lectores
+   filtran por `instanceId` y una instancia terminal no se vuelve a gatear. `gate-decisions.jsonl`
+   **no** se rota: es una fila por decisión, `session-start` resume las del día, y el aviso de
+   perímetro deduplica por sesión y no por instancia — moverlo repetiría un prompt.
+10. **La detección de pasos manuales no es del hook, y se dice.** § 8.8 pieza 1 pone la
+    planificación en `appian-plan` (Fase 4). El hook implementa la pieza 2: honra la declaración
+    —una fila `manual-step-not-tooled` en `deferred-debt.jsonl`— y le exige la lectura que sí exista.
+    Nada enruta por el hook, así que nada se puede observar; pretender lo contrario sería peor.
+
+### Consecuencias absorbidas fuera de `hooks/`
+
+- **Los ciclos end-to-end de la Fase 2 ahora pagan el suelo.** `test_v07_end_to_end.py`,
+  `test_micro_lane_contract.py` y `test_cwd_drift_and_object_identity.py` escribían y cerraban sin
+  leer nada. Eso ya no cierra, que es justo lo que compra la fase: se les añadió la pata de
+  `observe-reads`. No es deriva de alcance; es el contrato nuevo aplicado a los ciclos que existían.
+- **`test_matcher_parity.py` cubre los dos corpus** y asierta la asimetría: `scope-gate` y
+  `log-write` comparten el de escritura, el de `observe-reads` es disjunto, y `testProcessModel`
+  está en el primero y no en el segundo.
+- **`check_package_integrity.py`** declara `n2_interface_tree.py` y `n3_process_layout.py` como
+  dependencias de arranque: `harness_hooks.py` las importa a nivel de módulo, así que perderlas es
+  un `ImportError` que tumba los siete hooks antes de que corra ninguno.
+- **Documentación realineada en la misma release** (regla permanente): `README.md` (siete hooks,
+  trece módulos, doce referencias, conteos de test), `docs/configuration.md` (`checks.jsonl` y
+  `render-signals.json` en la tabla de evidencia; quién escribe ahora `appian-skill-loaded.json`) y
+  `SECURITY.md` (la entrada `PostToolBatch`, y la advertencia de que dispara en **todos** los lotes).
+  De paso, en la tabla que ya estaba editando: `log-evidence-write` → `state-gate`, que se renombró
+  en la Fase 2 y ahí seguía con el nombre viejo.
+
+### Tabla de cobertura por categoría
+
+**Comprobador estático de SAIL** (`scripts/sail_static_check.py`). Las reglas se **leen de la skill
+oficial en tiempo de ejecución** —`references/function-reference.md`, `references/component-reference.md`,
+`registry/components-registry.json`— y no se copian aquí: cambian en cada release y una copia deriva
+en silencio. Sin la skill instalada, todas las categorías de regla quedan NOT MEASURED.
+
+| Categoría | Estado | Por qué |
+|---|---|---|
+| `banned-function` | **MEASURED** | Lista negativa explícita de la fuente oficial («Functions That DO NOT Exist») |
+| `discouraged-function` | **MEASURED** | «Functions That Exist But Should NOT Be Used». La lista vecina «Use with Caution» **no** se aplica: es consejo dependiente del contexto (`now()`, `loggedInUser()`), y aplicarla sería dar la voz de alarma en falso |
+| `banned-component` | **MEASURED** | «Components That DO NOT Exist» |
+| `literal-uuid` | **MEASURED** | El patrón *es* la regla; no necesita fuente |
+| `unknown-symbol` | **MEASURED**, y reportado como *no verificado*, nunca como inexistente | El registro es exhaustivo para componentes, la referencia de funciones no lo es para funciones: decir «no existe» sería afirmar más de lo que la fuente sostiene |
+| `null-safety` | **NOT MEASURED** | Necesita los valores que la regla recibe de verdad; una lectura estática no puede decidir si un null llega a esta rama |
+| `performance` | **NOT MEASURED** | Necesita el plan de consulta y el volumen de datos, y ninguno está en el fuente |
+| `accessibility` | **NOT MEASURED** *aquí* | Necesita el árbol **evaluado**, donde labels y contraste están resueltos: eso es N2, no este comprobador |
+| `naming` | **NOT MEASURED** | Las convenciones son del proyecto, no de la fuente oficial; inventarlas aquí sería que el comprobador se fabricase sus propias reglas |
+
+**N2 sobre el árbol evaluado** (`scripts/n2_interface_tree.py`), reescrito por **firma de
+propiedades**: lo que un nodo *lleva* decide qué comprobación le aplica, no su `#t`. Un árbol donde
+no aparece ninguna categoría se reporta NOT MEASURED, nunca OK.
+
+| Categoría | Se detecta por | Comprueba |
+|---|---|---|
+| `input` | `saveInto` + `value`/`values` | label o `accessibilityText` presente |
+| `grid` | `columns`/`columnConfigs`/`rowHeader`/`emptyGridMessage`/`gridSelection`/`rows` | label, `rowHeader`, y `emptyGridMessage` en el camino vacío |
+| `action` | `confirm*`, o `saveInto` sin valor, o el tipo dice botón/enlace | confirmación en controles destructivos, y que la lleve un botón |
+| `text` | `text` de tipo texto sin `saveInto` | que no se filtre un valor técnico al usuario |
+| `coloured` | `color` + `backgroundColor` | contraste ≥ 4,5:1 (WCAG AA) |
+
+**Clases de garantía observadas** (`guaranteeClass`, § 8.4): `behavioural`, `structure`,
+`authorization`, `persisted-not-behavioural`, `green-signal-only`, `ambiguous`. El enum queda
+cerrado; la Fase 3 no lo amplía.
+
+### Caso ácido (§ 17.2)
+
+Reproducido desde formas grabadas —el 500 de serialización con sus palabras reales, el payload de
+`PostToolBatch` de P5— en `hooks/test_acid_case.py`. **Un `micro`, un objeto, una intención**, sobre
+la peor interfaz: publicada en site, servida solo por REST, con gráficos, arrastrando el 500 de
+`testInterface`.
+
+| Propiedad exigida | Resultado | Evidencia |
+|---|---|---|
+| Cierra **como `micro`**, sin escalar | **PASS** | `test_it_closes_without_escalating_and_without_repeating_a_check`: `kind == "micro"` en el fichero y en la proyección firmada |
+| Estar publicado en site no escala por sí solo | **PASS** | `test_being_published_in_a_site_does_not_escalate_the_size` — se asierta la **ausencia** de palanca: `task_min_kind` da `micro`, y `site` no aparece en las acciones que exigen `design` |
+| Un fallo conocido de `testInterface`/N2 no escala | **PASS** | `test_the_known_render_failure_does_not_escalate_the_size` |
+| Fallo del instrumento ≠ regresión del objeto | **PASS** | `test_a_screen_that_rendered_before_the_write_is_a_regression` (bloquea) frente a `test_an_unexplained_failure_does_not_pass_as_an_environment_limit` (no bloquea, pero tampoco pasa) |
+| **Sin repetir ninguna comprobación** | **PASS** | `test_no_check_is_issued_twice`: ninguna terna (objeto, acción, inputs) se repite y todos los `toolUseId` son distintos · `test_a_second_close_demands_nothing_new` |
+| El suelo se **satisface** | **PASS**, con residuo declarado | `missing` y `blocking` vacíos; cierra `closed-pending-human` con `accessibility` en `NOT_MEASURED / REQUIRES_HUMAN`, con dueño y condición, en `deferred-debt.jsonl` |
+
+**Cómo cierra, y por qué eso *es* satisfacer el suelo.** `testInterface` da el 500 → la fila queda
+`failed` y corrobora el fallo (§ 8.7 paso 1) → se distingue de una regresión por el mismo fallo en
+otro objeto de la familia (paso 1-bis, tercera vía) → la búsqueda de alternativa corre **por clase**:
+`behavioural` la cubre la ejecución de casos por REST; `accessibility` **no tiene alternativa** —
+ejecutar casos no produce árbol— y queda `NOT_MEASURED / REQUIRES_HUMAN`. Con una clase sin cubrir el
+alcance cierra `closed-pending-human` (§ 8.7 paso 4), **y el tamaño no cambia**. No se ha fabricado un
+PASS de accesibilidad, y el DoD no exige `closed`: exige que el suelo se satisfaga sin escalar y sin
+repetir.
+
+**El cierre completo *con revisor* sigue siendo de la Fase 4**, como dice el propio DoD: el `certify`
+lo emite el juez único, que la Fase 4 entrega.
+
+### DoD de Fase 3
+
+El «Hecha cuando» de § 16, releído literal:
+
+| Condición del DoD | Veredicto | Evidencia |
+|---|---|---|
+| El caso ácido **satisface su suelo** | **PASS** | `hooks/test_acid_case.py`, 12 tests; `floor_report` devuelve `missing: []` y `blocking: []` |
+| …**sin escalar de tamaño** | **PASS** | `kind == "micro"` tras el cierre, en el fichero y en la proyección; y § 8.7 no tiene ninguna rama que toque `kind` |
+| …**y sin repetir ninguna comprobación** | **PASS** | `test_no_check_is_issued_twice` · `TestNoCheckIsDemandedTwice` (dos evaluaciones seguidas del mismo suelo no piden nada nuevo; solo una escritura posterior lo reabre) |
+| La **tabla de cobertura por categoría está escrita** | **PASS** | Arriba, en esta sección, y emitida además en cada ejecución de `sail_static_check.py` |
+| …**incluidas las que quedan NOT MEASURED** | **PASS** | Cuatro categorías del checker SAIL con su motivo escrito: `null-safety`, `performance`, `accessibility`, `naming` |
+
+**Fase 3: DONE.** Suite completa ejecutada una sola vez sobre el código estable: **491 tests en
+`hooks/` y 344 en `scripts/`, 835 en total, todos en verde** (más 39 subtests), y
+`check_readme_claims.py` en `OK`.
+
+**Fase 4 implementada por accidente: no.** No se ha tocado `agents/`, ni `scripts/validate_verdict.py`,
+ni ninguna de las cinco skills salvo para **añadir** `references/12-render-signals.md` a
+`appian-best-practices` y su fila en el mapa, que es la unidad 9 de esta fase. El juez, la matriz, las
+clases de puerta y el bucle de remediación siguen sin escribirse.
+
+**Design freeze reabierto: no.** Ninguna de las cinco causas de § 21 se dio. Las diez
+interpretaciones de arriba son decisiones de codificación dentro de lo que la norma deja escrito, no
+cambios de la norma.
+
+### Trabajo aplazado, con su motivo
+
+| Aplazado | A dónde | Por qué |
+|---|---|---|
+| **Detección** de pasos manuales (§ 8.8 pieza 1) | Fase 4 | La norma la pone en `appian-plan`, que es de la Fase 4. La pieza 2 —la fila del suelo y su residuo— sí está |
+| El `certify` del caso ácido | Fase 4 | El propio DoD lo dice: declararlo aquí sería declarar la fase con una versión degradada del caso |
+| `risk-downgrades.jsonl`, que § 11.2 da por desaparecido | Fase 5 | Es limpieza de artefactos y documentación, no suelo |
+| Medida en vivo del coste de `observe-reads` en la cuota de reloj (§ 17.4) | Fase 6 | La puerta de desperdicio es de la fase de salida. Lo que sí se hizo aquí es la salida temprana sin tocar disco, que es lo que esa fila mide |
+
+---
+
 ## Estado de fases
 
 | Fase | Estado |
@@ -599,7 +789,7 @@ seguirá apuntando a un fichero que no está.
 | **0 · Sondas** | **DONE** (2026-09-01, DoD abajo) |
 | **1 · Coste y consistencia** | **DONE** (2026-09-02, DoD en su sección) |
 | **2 · Núcleo** | **DONE — DoD 3/3 PASS** (código 2026-09-02; correcciones de revisión el 2026-09-03, reconciliadas el 2026-09-03; pasada atendida en las tres formas el 2026-09-08, 0 `ask` falsos) |
-| 3 · Suelo y evidencia | pendiente |
+| **3 · Suelo y evidencia** | **DONE — DoD 5/5 PASS** (2026-09-09, DoD en su sección; caso ácido reproducido desde formas grabadas) |
 | 4 · Juez, matriz y skills | pendiente |
 | 5 · Onboarding y documentación | pendiente |
 | 6 · Puerta de salida | pendiente |
