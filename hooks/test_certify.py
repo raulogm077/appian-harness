@@ -14,7 +14,7 @@ from validate_verdict import GATES, NATURE_BY_GATE, NATURE_IMPORTED, \
     NATURE_JUDGED_ON_EVIDENCE
 from harness_hooks import (certify_is_owed, certify_report, closure_gate,
                            latest_verdict, log_write, observe_reads,
-                           scope_gate, state_gate)
+                           risk_errors, scope_gate, state_gate)
 from test_floor import interface_floor_batch
 from test_grant import GRANT, signed_cfg
 from test_state_gate import read_scope, write_scope
@@ -73,30 +73,45 @@ def fail_cell(gate, **over):
     return cell
 
 
-def write_certify(config, scope, objects=None, version=None, **over):
-    """A certify verdict for this scope, citing rows the hook really saw."""
-    rows = credited_rows(config, scope.get("instanceId"))
-    tool_use_id = rows[0]["toolUseId"] if rows else "tu-none"
-    objects = objects or list(scope.get("allowedObjects") or ["obj"])[:1]
+def write_verdict(config, scope, phase, version=1, copy=True, **over):
+    """One verdict on disk, the way § 11.1 says they land: the version the
+    gate reads, plus the unsuffixed copy for readers that expect it.
+
+    `version=None` writes ONLY the copy -- the shape a judge that overwrote
+    a fixed name would leave, which the gate must refuse.
+    """
     v = {
         "task": scope["id"],
         "instanceId": scope.get("instanceId"),
-        "phase": "certify",
+        "phase": phase,
         "verdict": "PASS",
         "coversThroughWriteSeq": 99,
-        "objects": objects,
-        "matrix": certify_cells(objects, tool_use_id),
         "referencesApplied": [REF],
         "findings": [],
     }
     v.update(over)
     d = os.path.join(config["evidenceDir"], scope["id"])
     os.makedirs(d, exist_ok=True)
-    name = ("practices-certify.%03d.json" % version) if version \
-        else "practices-certify.json"
-    with open(os.path.join(d, name), "w", encoding="utf-8") as f:
-        json.dump(v, f)
-    return os.path.join(d, name)
+    names = []
+    if version is not None:
+        names.append("practices-%s.%03d.json" % (phase, version))
+    if copy or version is None:
+        names.append("practices-%s.json" % phase)
+    for name in names:
+        with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+            json.dump(v, f)
+    return os.path.join(d, names[0])
+
+
+def write_certify(config, scope, objects=None, version=1, copy=True, **over):
+    """A certify verdict for this scope, citing rows the hook really saw."""
+    rows = credited_rows(config, scope.get("instanceId"))
+    tool_use_id = rows[0]["toolUseId"] if rows else "tu-none"
+    objects = objects or list(scope.get("allowedObjects") or ["obj"])[:1]
+    over.setdefault("objects", objects)
+    over.setdefault("matrix", certify_cells(objects, tool_use_id))
+    return write_verdict(config, scope, "certify", version=version, copy=copy,
+                         **over)
 
 
 class Cycle:
@@ -254,14 +269,31 @@ class TestTheGateReadsTheHighestVersion(unittest.TestCase):
             self.assertTrue(latest_verdict(c, scope["id"], "certify")
                             .endswith("practices-certify.002.json"))
 
-    def test_the_unsuffixed_copy_is_read_when_there_is_no_version(self):
+    def test_the_copy_alone_certifies_nothing(self):
+        # § 9.4: with a fixed name the second emission overwrites the first,
+        # so by the third there is nothing on disk to compare against and
+        # the cap silently stops existing. The gate refuses to close on a
+        # verdict that left it no corpus.
+        with tempfile.TemporaryDirectory() as root:
+            cycle = Cycle()
+            c = cycle.build(root)
+            write_certify(c, read_scope(c), objects=["_uuid-lista"],
+                          version=None)
+            out = cycle.stop(cycle.ask_to_close(c))
+            self.assertEqual(out["decision"], "block")
+            self.assertIn("unsuffixed copy", out["reason"])
+
+    def test_the_copy_still_ships_beside_the_version(self):
+        # Not forbidden -- § 11.1 keeps it for readers that expect it.
         with tempfile.TemporaryDirectory() as root:
             cycle = Cycle()
             c = cycle.build(root)
             scope = read_scope(c)
             write_certify(c, scope, objects=["_uuid-lista"])
+            scope_dir = os.path.join(c["evidenceDir"], scope["id"])
+            self.assertIn("practices-certify.json", os.listdir(scope_dir))
             self.assertTrue(latest_verdict(c, scope["id"], "certify")
-                            .endswith("practices-certify.json"))
+                            .endswith("practices-certify.001.json"))
 
     def test_a_stale_copy_cannot_certify_what_the_judge_moved_on_from(self):
         with tempfile.TemporaryDirectory() as root:
@@ -594,6 +626,93 @@ class TestATaskEmitsItsVerdictsWithoutBeingAskedTwice(unittest.TestCase):
                     matrix=certify_cells(["_uuid-lista"], row))
             out = cycle.stop(cycle.ask_to_close(c))
             self.assertEqual(out["decision"], "approve", out)
+
+class TestAHighRiskScopeBuysTheThirdInvocation(unittest.TestCase):
+    """§ 5.8 row C: two judges, three when the damage class is high. Without
+    this the third invocation existed in the agent and in the prose and in
+    no branch of the code -- which is the dead branch P6 forbids."""
+
+    def _high(self, root):
+        # `risk` is never declared here: § 5.3 makes it a damage class the
+        # hook OBSERVES and stamps into the file and the projection
+        # together. So the fixture earns it -- an updateObjectSecurity is
+        # high by observation -- rather than writing the label.
+        cycle = Cycle()
+        c = signed_cfg(root, kind="task", intent=None)
+        c = self._security_read(c, ["G1"], "tu-pre")
+        cycle.write(c, "mcp__appian-dev__updateInterface", "tu-w1",
+                    uuid="_uuid-lista", expression="a!textField()")
+        cycle.write(c, "mcp__appian-dev__updateObjectSecurity", "tu-w2",
+                    uuid="_uuid-lista", role="viewer")
+        c = cycle.verify(c)
+        # § 8.1: the security row is paid by the diff, not by the ok.
+        c = self._security_read(c, ["G1", "G2"], "tu-post")
+        self.assertEqual(read_scope(c)["risk"], "high",
+                         "the hook did not observe the damage class")
+        write_certify(c, read_scope(c), objects=["_uuid-lista"])
+        return cycle, c
+
+    def _security_read(self, c, viewers, tool_use_id):
+        c = dict(c, activeTask=read_scope(c))
+        observe_reads({"tool_calls": [
+            {"tool_name": "mcp__appian-dev__getObjectSecurity",
+             "tool_use_id": tool_use_id,
+             "tool_input": {"uuid": "_uuid-lista"},
+             "tool_response": json.dumps({"name": "_uuid-lista",
+                                          "roleMap": {"viewers": viewers}})}]}, c)
+        return dict(c, activeTask=read_scope(c))
+
+    def test_a_standard_scope_owes_no_risk_verdict(self):
+        with tempfile.TemporaryDirectory() as root:
+            cycle = Cycle()
+            c = cycle.build(root)
+            write_certify(c, read_scope(c), objects=["_uuid-lista"])
+            self.assertEqual(risk_errors(c, read_scope(c)), [])
+            self.assertEqual(cycle.stop(cycle.ask_to_close(c))["decision"],
+                             "approve")
+
+    def test_a_high_risk_scope_cannot_close_without_it(self):
+        with tempfile.TemporaryDirectory() as root:
+            cycle, c = self._high(root)
+            out = cycle.stop(cycle.ask_to_close(c))
+            self.assertEqual(out["decision"], "block")
+            self.assertIn("how does it fail", out["reason"])
+
+    def test_and_closes_with_it(self):
+        with tempfile.TemporaryDirectory() as root:
+            cycle, c = self._high(root)
+            write_verdict(c, read_scope(c), "risk")
+            out = cycle.stop(cycle.ask_to_close(c))
+            self.assertEqual(out["decision"], "approve", out)
+            self.assertEqual(read_scope(c)["status"], "closed")
+
+    def test_a_failing_risk_verdict_blocks(self):
+        with tempfile.TemporaryDirectory() as root:
+            cycle, c = self._high(root)
+            write_verdict(c, read_scope(c), "risk", verdict="FAIL",
+                          findings=[{"id": "r-1",
+                                     "criterion": "a retry duplicates the write",
+                                     "verdict": "FAIL", "evidence": "e"}])
+            out = cycle.stop(cycle.ask_to_close(c))
+            self.assertEqual(out["decision"], "block")
+            self.assertIn("a retry duplicates the write", out["reason"])
+
+    def test_the_risk_verdict_owes_no_matrix(self):
+        # It asks how the thing fails, not whether it meets its contract.
+        with tempfile.TemporaryDirectory() as root:
+            cycle, c = self._high(root)
+            path = write_verdict(c, read_scope(c), "risk")
+            with open(path, encoding="utf-8") as f:
+                self.assertNotIn("matrix", json.load(f))
+            self.assertEqual(risk_errors(c, read_scope(c)), [])
+
+    def test_the_copy_alone_does_not_answer_for_risk_either(self):
+        with tempfile.TemporaryDirectory() as root:
+            cycle, c = self._high(root)
+            write_verdict(c, read_scope(c), "risk", version=None)
+            out = cycle.stop(cycle.ask_to_close(c))
+            self.assertEqual(out["decision"], "block")
+            self.assertIn("unsuffixed copy", out["reason"])
 
 
 if __name__ == "__main__":
