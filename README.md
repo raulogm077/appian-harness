@@ -231,9 +231,9 @@ there.
 
 | Path | What is there |
 |---|---|
-| `skills/` | Seven skills: five lifecycle phases, the run orchestrator, and the cross-cutting doctrine |
+| `skills/` | Five skills: four lifecycle phases and the cross-cutting doctrine they all cite |
 | `skills/appian-best-practices/references/` | Twelve domain references, numbered `01`–`12`. Every verdict cites into these |
-| `agents/` | Three judging agents: `appian-practices-auditor`, `appian-reviewer`, `appian-verifier` |
+| `agents/` | One judging agent: `appian-practices-auditor`, invoked three times with a fresh context each — `design`, `certify`, `risk` |
 | `hooks/` | One `hooks.json` declaring seven hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
 | `scripts/` | Thirteen modules: `validate_verdict.py`, `lint_skills.py`, `lint_agents.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `sail_static_check.py`, `parallel_safety.py`, `measure_evidence.py`, `check_readme_claims.py`, `check_manifest_agreement.py`, `check_package_integrity.py`, `check_evals.py`, and `exit_codes.py`, which holds the one constant six of them used to spell out separately |
 | `commands/` | One command: `/appian-init`, which adopts the harness into a project |
@@ -244,7 +244,7 @@ there.
 | `CHANGELOG.md` | What each release changed for a project that upgrades and edits nothing. Read it before upgrading: a gate that *stops* firing announces nothing, so that is the only place it is announced |
 | `.github/workflows/` | The checks, on Linux and Windows × Python 3.9 and 3.13 |
 
-The Python carries its own tests — 344 for `scripts/`, 501 for `hooks/`, standard
+The Python carries its own tests — 410 for `scripts/`, 531 for `hooks/`, standard
 library only:
 
 ```
