@@ -337,6 +337,53 @@ class TestTheSkillTrailIsWrittenByTheHook(unittest.TestCase):
                           record["referencesLoaded"])
             self.assertIsNone(hh.skill_trail_note(config, "S-1"))
 
+    def test_the_depth_bought_is_recorded_next_to_what_was_opened(self):
+        # § 12.2: the depth is graduated by size, and § 7.5 says the record
+        # carries which one was bought. Recorded, not enforced -- the hook
+        # can say what was opened, not what the object needed.
+        with tempfile.TemporaryDirectory() as root:
+            skill_root = self._with_skill(root)
+            config = _config(root)
+            config["officialAppianSkillPath"] = skill_root
+            hh.observe_reads(_batch(
+                _entry("Skill", {"skill": "appian"}, "Launching skill: appian",
+                       tool_use_id="tu-skill")), config)
+            with open(os.path.join(config["evidenceDir"], "S-1",
+                                   "appian-skill-loaded.json"),
+                      encoding="utf-8") as f:
+                record = json.load(f)
+            self.assertIn(record["depth"], ("micro", "task"))
+            self.assertEqual(record["depth"], config["activeTask"]["kind"])
+
+    def test_what_the_hook_did_not_see_is_declared_and_never_verified(self):
+        # A record an agent wrote for itself does not get promoted: its
+        # claims move to `referencesDeclared`, and `referencesLoaded` keeps
+        # only what the hook actually watched being opened.
+        with tempfile.TemporaryDirectory() as root:
+            skill_root = self._with_skill(root)
+            config = _config(root)
+            config["officialAppianSkillPath"] = skill_root
+            scope_dir = os.path.join(config["evidenceDir"], "S-1")
+            os.makedirs(scope_dir, exist_ok=True)
+            with open(os.path.join(scope_dir, "appian-skill-loaded.json"), "w",
+                      encoding="utf-8") as f:
+                json.dump({"task": "S-1", "skill": "appian",
+                           "referencesLoaded": ["references/i-said-so.md"]}, f)
+            hh.observe_reads(_batch(
+                _entry("Skill", {"skill": "appian"}, "Launching skill: appian",
+                       tool_use_id="tu-skill"),
+                _entry("Read", {"file_path": os.path.join(skill_root,
+                                                          "references",
+                                                          "interfaces.md")},
+                       "ref", tool_use_id="tu-read")), config)
+            with open(os.path.join(scope_dir, "appian-skill-loaded.json"),
+                      encoding="utf-8") as f:
+                record = json.load(f)
+            self.assertEqual(record["referencesLoaded"],
+                             [os.path.join("references", "interfaces.md")])
+            self.assertEqual(record["referencesDeclared"],
+                             ["references/i-said-so.md"])
+
     def test_a_failed_skill_invocation_is_not_a_load(self):
         with tempfile.TemporaryDirectory() as root:
             skill_root = self._with_skill(root)

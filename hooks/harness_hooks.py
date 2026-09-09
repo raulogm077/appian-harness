@@ -2990,19 +2990,29 @@ def _observe_skill_trail(config, scope, entries):
         return
 
     path = os.path.join(_evidence_dir(config), task_id, SKILL_RECORD_NAME)
-    record = {}
+    record, declared = {}, []
     if os.path.isfile(path):
         try:
             with open(path, encoding="utf-8") as f:
                 existing = json.load(f)
-            if isinstance(existing, dict) and existing.get("observedBy"):
-                record = existing
+            if isinstance(existing, dict):
+                if existing.get("observedBy"):
+                    record = existing
+                else:
+                    # A record an agent wrote itself (0.6, or a migration).
+                    # § 7.5: what the hook did not observe is kept as
+                    # DECLARED, never promoted into the observed list.
+                    declared = [r for r in (existing.get("referencesLoaded") or [])
+                                if isinstance(r, str)]
         except (ValueError, OSError):
             record = {}
     merged = list(record.get("referencesLoaded") or [])
     for rel in loaded:
         if rel not in merged:
             merged.append(rel)
+    for rel in record.get("referencesDeclared") or []:
+        if rel not in declared:
+            declared.append(rel)
     record.update({
         "observedBy": "observe-reads",
         "task": task_id,
@@ -3013,7 +3023,13 @@ def _observe_skill_trail(config, scope, entries):
         "docsMcp": config.get("docsMcpServer") or DEFAULT_DOCS_MCP,
         "appianVersion": _installed_skill_version(config)
                          or record.get("appianVersion"),
+        # The depth § 12.2 graduates by size. Recorded rather than enforced:
+        # the hook can say what was opened, not what the object needed.
+        "depth": "task" if scope.get("kind") == "task" else "micro",
         "referencesLoaded": merged,
+        # Only what the hook saw is in `referencesLoaded`. Anything else a
+        # record claimed stays here, unverified and named as such.
+        "referencesDeclared": [r for r in declared if r not in merged],
         "updated": _now(),
     })
     try:
