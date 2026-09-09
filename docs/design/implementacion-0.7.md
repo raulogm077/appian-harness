@@ -916,8 +916,16 @@ El «Hecha cuando» de § 16 Fase 4, releído literal:
 `.claude-plugin/`, ni `CHANGELOG.md`, ni `evals/`. De `README.md` y `docs/` solo se han corregido
 **conteos y una receta ejecutable** —lo que el CI sujeta hoy—, no la narrativa.
 
-**Design freeze reabierto: no.** Ninguna de las cinco causas de § 21 se dio. Las diecisiete
-interpretaciones de arriba son decisiones de codificación dentro de lo que la norma deja escrito.
+**Design freeze reabierto: no.** Las diecisiete interpretaciones de arriba son decisiones de
+codificación dentro de lo que la norma deja escrito.
+
+Al cerrar la fase **sí se escribieron dos filas nuevas en § 18.1** de la norma —las dos mitades de
+suelo que la Fase 3 había mandado aquí, que salen a 0.8 (D-40)—, y eso **no es una reapertura**:
+§ 21 deja ese canal abierto con esas palabras (*«se anota en § 18 para la release siguiente; no
+reabre esta»*), y **§ 8.1 no cambia ni una línea**. Había causa para reabrir si hubiera hecho falta
+—la 1 para el record type, evidencia obtenida durante la implementación; la 3 para el user filter,
+un MCP que no expone lo que se asumía—, pero ninguna decisión de 0.7 cambia, así que reabrir no
+compraría nada.
 
 ### Trabajo aplazado por la Fase 4, con su motivo
 
@@ -926,7 +934,8 @@ interpretaciones de arriba son decisiones de codificación dentro de lo que la n
 | Realineación narrativa de `README.md` y `docs/` al vocabulario de un solo juez y cinco skills | Fase 5 | § 16 la pone ahí literalmente («Documentación de usuario realineada en la misma release»). Lo que era **gate** —los conteos, y la receta de `troubleshooting.md` que un test ejecuta— sí está hecho |
 | El eval `routing-verify-not-review`, que rutea a una skill retirada | Fase 5 | § 16 pone los evals en la Fase 5. `check_evals.py` sigue en verde: valida forma, no destino |
 | `activeRunFile` fuera del hook (§ 15) | Fase 5 | Interpretación 12: es limpieza de artefactos, opt-in e inerte, y la tabla de la Fase 4 no nombra `harness_hooks.py` para ello |
-| Fila de record type «≥ 1 fila con el campo tocado en la proyección», y seguridad a nivel de campo en la fila de user filter | **sigue aplazado** | Los dejó la Fase 3 apuntando a la Fase 4, pero ninguno de los dos es trabajo de juez, matriz o skills: son **filas del suelo** (§ 8.1), y ampliarlas exige guardar el `tool_input` en `operations.jsonl` —núcleo de la Fase 2— o una marca que la superficie de lectura no expone. Se declaran aquí otra vez en vez de implementarlos a medias |
+| **Fila de record type: «≥ 1 fila con el campo o la relación tocados presentes en la proyección»** (§ 8.1) | **FUERA DE 0.7 → 0.8** (§ 18.1; D-40) | Reconciliado al cerrar la fase. **§ 16 Fase 4 no lo exige**: sus ocho filas son juez, matriz, clases de puerta, tope de re-emisiones, remediación, skills, profundidad de referencia y `appian-plan`; el suelo de § 8.1 es fila de la **Fase 3**. Y el motivo del aplazamiento se verificó contra el código: `_log_write_v07` no guarda el `tool_input`, y `_target_candidates` resuelve `addRecordTypeField` por `("uuid", "name")`, que nombra el record type y no el campo. La vía del delta de estructura —que no toca la Fase 2— cubriría un **alta** y no un **update**: media fila que aparenta entera, que es el defecto que la revisión independiente de la Fase 3 ya cazó en esta misma tabla |
+| **Seguridad a nivel de campo en la fila de user filter** (§ 8.1) | **FUERA DE 0.7 → 0.8** (§ 18.1; D-40) | Igual de reconciliado, y por una razón distinta: no es esfuerzo, es **instrumento**. La marca no está en la superficie de lectura, sondeado en la Fase 3, y ninguna cantidad de código la compra. La existencia del `sourceRef` sí está implementada y comprobada |
 
 ---
 
@@ -938,8 +947,8 @@ interpretaciones de arriba son decisiones de codificación dentro de lo que la n
 | El `certify` del caso ácido | Fase 4 | El propio DoD lo dice: declararlo aquí sería declarar la fase con una versión degradada del caso |
 | `risk-downgrades.jsonl`, que § 11.2 da por desaparecido | Fase 5 | Es limpieza de artefactos y documentación, no suelo |
 | Medida en vivo del coste de `observe-reads` en la cuota de reloj (§ 17.4) | Fase 6 | La puerta de desperdicio es de la fase de salida. Lo que sí se hizo aquí es la salida temprana sin tocar disco, que es lo que esa fila mide |
-| **Fila de record type: «≥ 1 fila con el campo o la relación tocados presentes en la proyección»** | Fase 4 | Implementado más flojo a propósito: se exige `listRecordData` con ≥ 1 fila, **sin** comprobar que el campo tocado esté en la proyección. Para eso hace falta el nombre del campo escrito, y `operations.jsonl` no guarda el `tool_input`; añadirlo es tocar `log-write`, que es núcleo de la Fase 2. Se declara aquí en vez de dejarlo como una fila que aparenta más de lo que mide |
-| **Seguridad a nivel de campo en la fila de user filter** | Fase 4 | § 8.1 pide además que el `sourceRef` **no sea un campo con seguridad de campo**, porque filtrar por uno protegido da error. La superficie de lectura no expone esa marca de forma que el hook pueda comprobarla; la existencia del `sourceRef` sí está implementada |
+| **Fila de record type: «≥ 1 fila con el campo o la relación tocados presentes en la proyección»** | ~~Fase 4~~ → **0.8** (corregido el 9-sep al cerrar la Fase 4: § 16 Fase 4 no entrega suelo. Ver D-40 y § 18.1) | Implementado más flojo a propósito: se exige `listRecordData` con ≥ 1 fila, **sin** comprobar que el campo tocado esté en la proyección. Para eso hace falta el nombre del campo escrito, y `operations.jsonl` no guarda el `tool_input`; añadirlo es tocar `log-write`, que es núcleo de la Fase 2. Se declara aquí en vez de dejarlo como una fila que aparenta más de lo que mide |
+| **Seguridad a nivel de campo en la fila de user filter** | ~~Fase 4~~ → **0.8** (corregido el 9-sep; ver D-40 y § 18.1) | § 8.1 pide además que el `sourceRef` **no sea un campo con seguridad de campo**, porque filtrar por uno protegido da error. La superficie de lectura no expone esa marca de forma que el hook pueda comprobarla; la existencia del `sourceRef` sí está implementada |
 
 ---
 
