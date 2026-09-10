@@ -2,15 +2,13 @@
 
 > Part of the [appian-harness](../README.md) documentation.
 
-This document is the longest of the three ways in — the whole cycle, for a whole
-application. The other two are shorter on purpose and are described where
-somebody first looks, in [Which path is
+This document follows one piece of work all the way through. The shorter ways in
+are described where somebody first looks, in [Which path is
 yours](../README.md#which-path-is-yours): advice with nothing adopted, which
-needs no configuration and no MCP server, and one small change, which skips
-SPECIFY and PLAN and may resolve REVIEW as exempt. They are not lesser versions
-of what follows; they are the right answer to a smaller question, and reaching
-for this page when one of them fits is how a harness earns a reputation for
-getting in the way.
+needs no configuration and no MCP server, and one small change, which is most of
+what anyone does. They are not lesser versions of what follows; they are the
+right answer to a smaller question, and reaching for this page when one of them
+fits is how a harness earns a reputation for getting in the way.
 
 ## How it is used, end to end
 
@@ -18,175 +16,195 @@ getting in the way.
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/task-lifecycle-dark.svg">
     <img src="assets/task-lifecycle-light.svg" width="880"
-         alt="The six phases of one task: specify and plan once, then build, verify and review inside a per-task loop, closed by the Stop hook. A bar alongside shows the active task file existing from the moment build takes the task until review deletes the file.">
+         alt="One scope end to end: the size is decided and announced, permission is asked once, the work is built, a reviewer certifies it when the lane bought one, and the Stop hook writes the outcome. Three ways out are shown: close, abandon with a reason, and desist.">
   </picture>
-  <figcaption>One task, end to end. <code>tasks/current.json</code> is created by
-  <code>appian-build</code> and deleted by <code>appian-review</code>; the window
-  in between is the closure gate's whole reach, and the builder's own blocked
-  stop is the handoff into verification, not a failure.</figcaption>
+  <figcaption>One scope, end to end. The size is announced before anything
+  opens; permission is asked once; and the outcome is written by the hook, which
+  is the only thing that can write it.</figcaption>
 </figure>
 
-One small task, all the way through. Say the request is *"users need to see the
-requests that are still open"*, and the plan has already turned that into
-`TASK-3: list open requests`. Paths below use the defaults; which of them are
-configurable, and how, is [What the plugin asks of your
-project](configuration.md).
+**Everything starts at `appian-build`.** It is the only entry point, and the
+first thing it does is decide what this is and say so.
 
-**1. `appian-specify`** — asks one question at a time and writes a
-specification: actors, entities and relationships, states and transitions, an
-authorization matrix, expected volume, and an explicit *out of scope*. Nothing
-automated checks this and nothing should; it is read by a person, and no Appian
-object exists yet for a gate to have an opinion about.
+### 1. It routes, in one line you can contradict
 
-**2. `appian-plan`** — reads that specification and writes **two** files: the
-plan, and the operational state. Two rather than one because a plan is approved
-and then stable while state changes every task, and a file that is both is
-trusted as neither. It cuts the work into vertical slices — record type → query
-rule → interface → test case — ordered by the dependencies Appian actually
-imposes, and gives each task four named parts: `allowedObjects`,
-`acceptanceCriteria`, `requiredGates`, `evidenceFile`. Two more are optional and
-both are decided here rather than at build time, by someone who is not about to
-be inconvenienced by them: `risk`, which sets how many verdicts close the task,
-and `requiresHumanConfirmation`, which stops an unattended run and hands the
-task to a person. Still nothing automated, but this is where the later prompts
-are decided: `TASK-3` listing seven objects is a task that will stop at every
+Three rules, and they are all you have to understand to use it:
+
+1. The sentence names a **business entity that does not exist yet** as a record
+   type → the specification phase runs first.
+2. It names one and **it already exists** → this is a `task`.
+3. It only touches **existing objects that qualify as small** → this is a
+   `micro`.
+
+The classification is announced **before the scope opens**, in one line naming
+the size, the objects and whether this lane buys a reviewer. That line is the
+cheapest place in the whole cycle to disagree with the harness, and it is put in
+front of you on purpose.
+
+### 2. Two sizes, and no third
+
+| | What it is | What it carries |
+|---|---|---|
+| **`micro`** | One object, one intention | One sentence saying what the intention is. No task list — a scope that partitions is a `task` |
+| **`task`** | Everything else | Optionally a partition: which objects belong to which subtask |
+
+**There is no magnitude threshold.** Redesigning a whole 1,700-line interface is
+one object and one intention, so it is a `micro`. What graduates the ceremony is
+*what* changes and *how many objects*, never how much text was replaced — the
+write tool replaces all of it every time, so a line count measures the
+instrument rather than the work.
+
+**Some things are never `micro`.** A record type is not, whatever its apparent
+size. Nor is anything the harness reads as touching security, data, or something
+irreversible: that raises the risk, and raised risk forces a `task` and adds an
+adversarial pass asking *how does this fail* rather than *does this meet the
+contract*. You do not declare that — **the hook observes it** from what the
+scope actually touches, which is the point: a level you declare is a level you
+can understate.
+
+### 3. Permission, once
+
+**One prompt per scope**, carrying the full list and what is going to happen to
+each thing — created, updated, deleted. Not one per object, and not one per
 write.
 
-**3. `appian-build TASK-3`** — invoked by name, or reached by `appian-run`
-inside an authorized run. It is the one skill with irreversible side effects,
-and what guards that is no longer a frontmatter flag but the run authorization
-the scope gate checks. In order, it:
+The grant is anchored to the opening it was given for. Editing the scope
+afterwards invalidates it entirely rather than quietly widening it, and the only
+thing that can extend it is the hook — at most once, and only for a remediation
+cycle. If you find yourself spending that extension often, the defect is in the
+preflight, not in the threshold.
 
-- writes the active task file, `tasks/current.json`, as
-  `{"id": "TASK-3", "allowedObjects": ["APP_openRequests", "..."]}` — spelled
-  with those two keys, because the hooks look for those names and nothing near
-  them;
-- **preflights**: reads the real environment and classifies every object in
-  scope as ABSENT, PRESENT AND CONFORMING, PRESENT BUT INCOMPLETE, or
-  CONFLICTING. The remote state wins over any local document. All reads, so no
-  gate fires;
-- dispatches `appian-practices-auditor` with `phase=design` — *before the first
-  write, while changing the answer is still free* — which writes
-  `evidence/TASK-3/practices-design.json`;
-- **then writes.** This is where the **scope gate** fires, on `PreToolUse`: is
-  there an active task, is this object in its `allowedObjects`, is the task
-  within the atomicity budget, and is that design verdict present, structurally
-  valid and passing? It accumulates every failure rather than reporting the
-  first, and the strongest thing it says is *ask*;
-- every write is appended to `evidence/operations.jsonl` by the **write log** on
-  `PostToolUse`, and a write that errors triggers the **failure notice**: do not
-  retry blind, read back whether it persisted;
-- records the identifiers the environment actually returned into the task's
-  `evidenceFile`;
-- **stops, and leaves the active task file exactly where it is.** One task, one
-  stop — but stopping is a handoff into verification, not the end of the task,
-  so the task stays in flight and `appian-review` clears the file at close. The
-  ordinary consequence is that this stop is *blocked* by the closure gate,
-  naming the three verdicts that do not exist yet. That is the harness stating
-  the handoff rather than leaving it to memory.
+**Anything irreversible asks anyway.** A deletion, a process start: no grant
+covers those, because a grant is permission for a plan and those are the steps a
+plan cannot take back.
 
-**4. `appian-verify`** — a fresh invocation, because the builder is the worst
-judge of its own work. It dispatches the auditor with `phase=implementation`
-(→ `evidence/TASK-3/practices-implementation.json`), renders the screen
-**twice** — once against a populated dataset, once against the identifier the
-project guarantees does not exist — and only then dispatches `phase=qa`
-(→ `practices-qa.json`). Both renders are required and neither substitutes for
-the other: a loop over an empty list never evaluates its body, so a broken
-screen passes every test case it has until a row exists (field experience).
-Then `appian-verifier` emits a result for every gate in `requiredGates`, naming
-the evidence behind each `PASS`, and the whole thing is consolidated into
-`evidence/TASK-3/gates.md` so the next reader opens one account instead of
-reassembling three.
+### 4. It builds
 
-**5. `appian-review`** — graduated by risk, so it does not run in full on
-everything. What enters review gets two agents, both with `phase=review`:
-`appian-reviewer` against the task contract, `appian-practices-auditor` against
-domain doctrine. Neither reads the other's output before forming its own, and
-neither is handed anything the builder wrote about why the change should pass.
-The auditor's verdict goes to `evidence/TASK-3/practices-review.json`; the
-findings go to `evidenceFile`. A review recorded only in `evidenceFile` closes
-nothing, because that is not the file the gate opens. Then — **last, after the
-verdict exists** — it deletes the active task file. That deletion is the
-recorded act of closing the task, which is why it belongs to the phase that
-runs last and not to the builder that stopped first.
+Before the first write it **preflights** against the real environment, reading
+every object in scope and classifying it — absent, present and conforming,
+present but incomplete, conflicting. The remote state wins over any local
+document, always: this artifact lives on a server you do not own alone.
 
-**6. CLOSE** — no skill; the **closure gate** on `Stop`. While the active task
-file names a task in flight, a stop cannot pass without valid, passing
-`practices-implementation`, `practices-review` and `practices-qa`. It names
-exactly which are missing, invalid or failing. On a repeated stop it approves
-instead of deadlocking, and writes the omission to
-`evidence/deferred-debt.jsonl` as `NOT_MEASURED` / `BLOCKING` — recorded, not
-waived.
+Then it writes, and the hooks do four things around each write:
 
-The sequencing is what makes that gate reach anything, so it is worth stating
-outright: **a task is in flight from the moment `appian-build` takes it until
-`appian-review` deletes the file, and the closure gate approves any stop with
-nothing in flight.** Every stop in between — the builder's own, and any stop
-during verification or review — meets the three-verdict check. Until
-2026-08-09 `appian-build` deleted that file when it stopped, which left nothing
-in flight and made this gate approve, unchecked, in exactly the flow everyone
-uses; the check only ever bit on a session that happened to stop with a task
-still open.
+- the **scope gate** fires before it, and the strongest thing it ever says is
+  *ask* — never *deny*;
+- the **write log** records what was written, to which object, and whether the
+  environment reported it as done, failed, or something the harness cannot
+  classify. That third answer is not a pass: it forces a re-read;
+- a write that errors triggers a **failure notice**: do not retry blind, read
+  back whether it persisted;
+- the **read observer** credits the verification reads it sees, tying each to
+  the write it came after. A check taken *before* the write it would vouch for
+  does not count.
 
-The visible cost of the fix is that a clean build now ends in a blocked stop.
-That block is correct — the task really is unverified at that moment — and its
-wording names the next phase rather than only what is missing. The wrong way
-past it is deleting the active task file, which does not satisfy the gate but
-retires it.
+### 5. The floor, which is not a phase you invoke
 
-## Running a plan without a keystroke per task
+There is no verify step to remember. What a change has to clear is decided by
+**what kind of object was touched**, and the closure gate enforces it from what
+the hooks observed — not from what anyone reports.
 
-`appian-build` builds one task and stops — that has not changed, and it is the
-unit a reviewer can reject on its own. What changed is that **starting** each one
-no longer needs a person. It used to carry `disable-model-invocation: true`, so
-a twenty-task plan cost twenty interventions that decided nothing, while the
-decisions actually worth attention were spread thin among them.
+An interface has to be re-read and rendered, populated and empty. An expression
+rule has to run its test cases. A process model has its node graph checked. A
+record type has to return rows. A deletion is certified by the object being
+**absent afterwards**. Most other types buy a re-read and nothing more, and
+saying so is more honest than implying otherwise. The whole table, and what each
+row is worth, is in **[the gates](gates.md)**.
 
-`/appian-run` grants a run instead: **once, bounded, and written where the gate
-reads it.** It sequences build → verify → review per task, retries a FAIL up to
-a fix budget, and stops on eight closed conditions — the first of which is
-anything irreversible, which **no authorization ever covers.**
+Two properties of the floor are worth knowing before you meet them:
 
-**Be clear about what removing that flag widens.** The model can now start a
-build on its own. Four things still stand between it and a write — an active
-task file, the object in `allowedObjects`, the official-skill load record, and
-a passing `design` verdict — and it has to produce all four, which is not
-something that happens by accident. But if you want the narrower guarantee back,
-configure `activeRunFile`: with it set, a write outside an authorized run asks,
-and "nobody granted this" becomes a thing the gate can say rather than a thing
-you hope. Left unset, no write-time behaviour changes at all — but the
-invocation guarantee does not come back on its own, which is the trade this
-section is about.
+- **A check nothing could have invalidated is not repeated.** A write to an
+  object outside this scope does not expire this scope's checks, and neither
+  does a change that could not alter behaviour — a description, for instance —
+  even on an object published in a site.
+- **A failing instrument never changes the size of the scope.** If a test render
+  answers with a 500, the harness first checks that the failure is not a
+  regression of the change itself, then looks for evidence by another route. If
+  there is none, the scope finishes **waiting on a person** — while still being
+  a `micro`. What it does not do is become bigger because a tool broke.
 
-```json
-{ "activeRunFile": "tasks/run.json" }
-```
+### 6. Certifying, when the lane bought a reviewer
 
-The run file has to name a budget — `maxTasks` and `tasksCompleted`, both whole
-numbers — and the gate refuses a grant without one. That is not bookkeeping:
-`maxTasks` is the difference between *the user authorized this run* and *the
-user authorized everything from here on*, and a file missing it, or spelling it
-`"5"`, used to read as the wider of the two while looking like the narrower.
-Delete the file when the run ends; an authorization that outlives its plan
-authorizes the next one.
+A reviewer is bought by **what** changes, not by how much:
 
-## Building several tasks at once
+| Change | Reviewer? |
+|---|---|
+| A label, a format, a piece of text | No |
+| A filter, a `showWhen` — anything altering what data is shown or who sees it | Yes |
+| Anything on a screen reachable from a published site | Yes — and the work does not get bigger for it |
 
-More than one builder can work at a time. Doing it safely needs **two separate
-isolations**, and the one people reach for covers the wrong half:
+`appian-review` dispatches the judge with **the artifact and the contract, never
+the builder's conclusion**, and never with a dump: a verdict cell that imports a
+check names the row it came from, not the row's contents.
+
+If findings come back, the remediation loop is **one batch and one
+re-certification** — not a verdict per fix. It is capped at three, and a third
+verdict bringing no new finding is rejected by the validator rather than accepted
+as diligence.
+
+**Not every finding blocks.** Gates are cardinal, recommended or contextual, and
+only cardinal ones stop a close. Maintainability and performance are worth
+knowing and are not worth a loop nobody finishes.
+
+### 7. The hook closes it
+
+`appian-review` writes a **request** to close. It does not close anything.
+
+That distinction is the whole of how 0.7 keeps its outcomes honest: **the hook
+is the only writer of the outcome, it signs what it writes, and any state that
+turns up unsigned is reverted.** Editing the file by hand to say the work is
+finished, or suspended, approves nothing.
+
+There are seven outcomes and three of them are ways out you choose:
+
+| | What it means |
+|---|---|
+| **Close** | Everything the floor asked for is there. Finished |
+| **Finish waiting on a person** | Something only a person can settle — a screen reader, a real login per role — with a **named owner** and the condition that clears it |
+| **Finish with debt** | The remediation cycles ran out. Recorded, owned, and announced at the start of the next session |
+| **Abandon** | You are stopping, and you say why |
+| **Desist** | Leave it as it stands |
+| **Suspend / resume** | Park this to do something else. The grant does not live forever: come back too late and it is declared dead rather than silently honoured |
+
+**Debt is never a shrug.** It carries an owner and the condition that closes it,
+and the next session opens by telling you about it.
+
+## Coming from 0.6
+
+Work that was already open when you upgraded **closes under the rules it was
+opened with** — the hooks keep the old rulebook for exactly that. You cannot open
+new work while it is there, so finish or abandon it first.
+
+**`/appian-init --adopt` is the one migration step that is not optional.** A
+project that never re-runs it does not acquire the declared perimeter, falls back
+to matching MCP servers by name, and lands in the failure mode 0.7 exists to
+close. Until it is run, session start says so and the first write of each session
+asks.
+
+`activeRunFile` and `leaseFile` belong to that old rulebook. On anything opened
+today they have no effect at all, and `/appian-init` no longer writes them.
+`leaseFile` returns in a later release, with the parallelism recipe that would
+give it something to do.
+
+## Building several things at once
+
+More than one builder can work at a time, and the isolation people reach for
+covers the wrong half:
 
 > **A git worktree isolates files. It does not isolate Appian.** Two builders in
 > two worktrees calling `createRecordType` write to the same environment.
 
-| Isolation | Protects | Mechanism |
-|---|---|---|
-| **Local** | Source files, the active task file, the evidence tree | One git worktree per builder |
-| **Remote** | The Appian objects, where a collision is not a merge conflict but a change that silently loses | `leaseFile`, checked by the scope gate |
+In 0.7 parallelism is **doctrine, not machinery**: judges are dispatched at the
+same time rather than one after another, and nobody sits in a loop waiting on a
+file. The lease register that would make concurrent *writers* safe is deliberately
+not part of this release — it has no consumer until the full recipe exists, and
+shipping half of it would look like coordination.
 
-Turning it on is two decisions. First, prove the tasks are independent —
-`scripts/parallel_safety.py` reads the plan's `allowedObjects` and `dependsOn`
-and refuses on shared objects, on dependencies **including transitive ones**,
-on anything destructive, and on objects everything quietly depends on:
+What you can do today is prove that a plan's tasks are genuinely independent
+before you split them up. `scripts/parallel_safety.py` reads the plan's
+`allowedObjects` and `dependsOn` and refuses on shared objects, on dependencies
+**including transitive ones**, on anything destructive, and on objects everything
+quietly depends on:
 
 ```
 # partition the whole plan
@@ -196,17 +214,20 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/parallel_safety.py" PLAN_JSON
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/parallel_safety.py" PLAN_JSON --group T-3,T-5
 ```
 
-Exit `0` clean, `1` findings, `2` usage, `3` NOT MEASURED — and 3 is not a
-pass. The transitive case is the one worth knowing: T-1 ← T-2 ← T-3 has no
-direct edge between T-1 and T-3, and they are still not independent.
-
-Second, point `leaseFile` at a register **shared by every worktree**. Each
-builder claims its `allowedObjects` before its first write and releases them at
-close. The gate's rule is one-sided on purpose: **a lease held by another task
-blocks; no lease at all does not** — requiring one would break every
-single-builder project, which is the default.
+Exit `0` clean, `1` findings, `2` usage, `3` NOT MEASURED — and 3 is not a pass.
+The transitive case is the one worth knowing: T-1 ← T-2 ← T-3 has no direct edge
+between T-1 and T-3, and they are still not independent.
 
 Reviewers and researchers stay read-only regardless. Concurrency here is for
-multiplying perspectives and independent slices, never for multiplying writers
-on one object.
+multiplying perspectives and independent slices, never for multiplying writers on
+one object.
 
+## What the closure gate does not reach
+
+Its reach is exactly the window in which a scope is open. A stop with nothing
+open approves without opening a verdict, by design.
+
+What 0.7 changed is that leaving that window early is no longer something the
+agent can do by deleting a file. The hook is the only writer of the outcome, it
+signs what it writes, and unsigned state is reverted — so a scope that vanished
+without finishing is a scope that reverts, not one that quietly counted as done.
