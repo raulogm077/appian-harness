@@ -419,7 +419,7 @@ harness:
   Same limit, same reason, as the plugin's own doctrine.
 
 - **It cannot make forgery impossible.** Every input the gates read — the
-  evidence tree, the harness config, the active task file — is a plain file in
+  evidence tree, the harness config, the scope file — is a plain file in
   your project, and the agent the gates constrain can write all of them with
   `Write` or `Edit`. The hooks close the cheap routes: a missing verdict, a
   citation that does not resolve, one audit filed under another task's or
