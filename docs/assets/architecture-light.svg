@@ -1,131 +1,153 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="940" height="756" viewBox="0 0 940 756" role="img" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">
-<title>appian-harness architecture: skills and agents write plain files; six hooks read them at Claude Code events</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="812" viewBox="0 0 940 812" role="img" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">
+<title>appian-harness architecture: five skills and one judging agent write plain files; seven hooks read them at Claude Code events and gate every Appian tool call</title>
 <defs><marker id="ar-blue" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#2a78d6"/></marker></defs>
 <defs><marker id="ar-orange" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#eb6834"/></marker></defs>
 <defs><marker id="ar-ink" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#52514e"/></marker></defs>
-<rect x="0.5" y="0.5" width="939" height="755" rx="10" fill="#fcfcfb" stroke="#e1e0d9"/>
+<rect x="0.5" y="0.5" width="939" height="811" rx="10" fill="#fcfcfb" stroke="#e1e0d9"/>
 <text x="28" y="36" font-size="15" fill="#0b0b0b" font-weight="600">appian-harness — the moving parts</text>
-<text x="28" y="54" font-size="12" fill="#52514e">Skills and agents write plain files; six hooks read them at Claude Code events.</text>
+<text x="28" y="54" font-size="12" fill="#52514e">Five skills and one judging agent write plain files; seven hooks read them at Claude Code events.</text>
 <polyline points="800,30 826,30" fill="none" stroke="#52514e" stroke-width="1.4" marker-end="url(#ar-ink)"/>
 <text x="836" y="34" font-size="11" fill="#52514e">writes</text>
 <polyline points="800,48 826,48" fill="none" stroke="#52514e" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-ink)"/>
 <text x="836" y="52" font-size="11" fill="#52514e">reads</text>
 <rect x="24" y="69" width="10" height="10" rx="2" fill="#2a78d6" stroke="none" stroke-width="0"/>
-<text x="40" y="78" font-size="12" fill="#52514e" font-weight="600">SKILLS AND AGENTS</text>
+<text x="40" y="78" font-size="12" fill="#52514e" font-weight="600">SKILLS, JUDGE AND COMMAND</text>
 <text x="40" y="92" font-size="11" fill="#898781">whoever builds does not certify</text>
 <rect x="334" y="69" width="10" height="10" rx="2" fill="#1baf7a" stroke="none" stroke-width="0"/>
 <text x="350" y="78" font-size="12" fill="#52514e" font-weight="600">PLAIN FILES IN YOUR PROJECT</text>
 <text x="350" y="92" font-size="11" fill="#898781">every input the gates read is one</text>
 <rect x="664" y="69" width="10" height="10" rx="2" fill="#eb6834" stroke="none" stroke-width="0"/>
-<text x="680" y="78" font-size="12" fill="#52514e" font-weight="600">SIX HOOKS</text>
-<rect x="24" y="100" width="240" height="64" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
+<text x="680" y="78" font-size="12" fill="#52514e" font-weight="600">SEVEN HOOKS — THE PERIMETER</text>
+<text x="680" y="92" font-size="11" fill="#898781">they gate every Appian tool call</text>
+<rect x="24" y="100" width="240" height="76" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
 <text x="36" y="120" font-size="12.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-build</text>
-<text x="36" y="137" font-size="11" fill="#52514e">implements exactly one approved task,</text>
-<text x="36" y="152" font-size="11" fill="#52514e">then stops — the stop is the handoff</text>
-<rect x="24" y="176" width="240" height="64" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
-<text x="36" y="196" font-size="12.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-verify</text>
-<text x="36" y="213" font-size="11" fill="#52514e">dispatches the audits, renders twice,</text>
-<text x="36" y="228" font-size="11" fill="#52514e">consolidates evidence into gates.md</text>
-<rect x="24" y="252" width="240" height="64" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
-<text x="36" y="272" font-size="12.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-review</text>
-<text x="36" y="289" font-size="11" fill="#52514e">certifies from a clean context, then</text>
-<text x="36" y="304" font-size="11" fill="#52514e">deletes the active task file — close</text>
-<rect x="24" y="328" width="240" height="136" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
-<text x="36" y="348" font-size="12.5" fill="#0b0b0b" font-weight="600">Three judging agents</text>
-<text x="36" y="370" font-size="12" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-practices-auditor</text>
-<text x="36" y="389" font-size="12" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-verifier</text>
-<text x="36" y="408" font-size="12" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-reviewer</text>
-<text x="36" y="431" font-size="11" fill="#52514e">own context each; every verdict cites</text>
-<text x="36" y="446" font-size="11" fill="#52514e">appian-best-practices references/ 01–11</text>
-<text x="24" y="488" font-size="10.5" fill="#898781">the other skills: appian-specify and</text>
-<text x="24" y="502" font-size="10.5" fill="#898781">appian-plan run upstream of every gate;</text>
-<text x="24" y="516" font-size="10.5" fill="#898781">appian-run grants the bounded run the</text>
-<text x="24" y="530" font-size="10.5" fill="#898781">scope gate checks; appian-best-practices</text>
-<text x="24" y="544" font-size="10.5" fill="#898781">is the doctrine the verdicts cite.</text>
-<rect x="334" y="100" width="260" height="513" rx="6" fill="rgba(27,175,122,0.06)" stroke="#1baf7a" stroke-width="1.25"/>
-<rect x="346" y="112" width="236" height="46" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
+<text x="36" y="138" font-size="11" fill="#52514e">the only entry point. It routes, opens</text>
+<text x="36" y="153" font-size="11" fill="#52514e">the scope and builds — announcing the</text>
+<text x="36" y="168" font-size="11" fill="#52514e">size before it opens anything</text>
+<rect x="24" y="186" width="240" height="58" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
+<text x="36" y="205" font-size="12.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-specify</text>
+<text x="36" y="223" font-size="11" fill="#52514e">closes absent requirements by interview,</text>
+<text x="36" y="237" font-size="11" fill="#52514e">for an entity that does not exist yet</text>
+<rect x="24" y="254" width="240" height="58" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
+<text x="36" y="273" font-size="12.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-plan</text>
+<text x="36" y="291" font-size="11" fill="#52514e">tasks with a cap, acceptance criteria</text>
+<text x="36" y="305" font-size="11" fill="#52514e">each, and parallelisable waves</text>
+<rect x="24" y="322" width="240" height="72" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
+<text x="36" y="341" font-size="12.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-review</text>
+<text x="36" y="359" font-size="11" fill="#52514e">certifies and asks for the close: the</text>
+<text x="36" y="373" font-size="11" fill="#52514e">judge gets artifact and contract, never</text>
+<text x="36" y="387" font-size="11" fill="#52514e">the builder's conclusion</text>
+<rect x="24" y="404" width="240" height="58" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
+<text x="36" y="423" font-size="12.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-best-practices</text>
+<text x="36" y="441" font-size="11" fill="#52514e">the criterion: Definition of Done, the</text>
+<text x="36" y="455" font-size="11" fill="#52514e">outcomes, the gate classes, the rules</text>
+<rect x="24" y="472" width="240" height="72" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
+<text x="36" y="491" font-size="12.5" fill="#0b0b0b" font-weight="600">One judging agent</text>
+<text x="36" y="510" font-size="12" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">appian-practices-auditor</text>
+<text x="36" y="526" font-size="11" fill="#52514e">three independent invocations — design,</text>
+<text x="36" y="540" font-size="11" fill="#52514e">certify, risk — fresh context each</text>
+<rect x="24" y="554" width="240" height="58" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
+<text x="36" y="573" font-size="12.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">/appian-init</text>
+<text x="36" y="591" font-size="11" fill="#52514e">adopts a project: names the perimeter,</text>
+<text x="36" y="605" font-size="11" fill="#52514e">probes the hooks, reports their answer</text>
+<rect x="334" y="100" width="260" height="512" rx="6" fill="rgba(27,175,122,0.06)" stroke="#1baf7a" stroke-width="1.25"/>
+<rect x="346" y="112" width="236" height="60" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
 <text x="356" y="129" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">.claude/appian-harness.json</text>
 <text x="356" y="143" font-size="10.5" fill="#52514e">the config — its presence is the switch</text>
-<rect x="346" y="188" width="236" height="46" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
-<text x="356" y="205" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">tasks/current.json</text>
-<text x="356" y="219" font-size="10.5" fill="#52514e">the active task: id + allowedObjects</text>
-<rect x="346" y="267" width="236" height="46" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
-<text x="356" y="284" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/operations.jsonl</text>
-<text x="356" y="298" font-size="10.5" fill="#52514e">every Appian write, appended</text>
-<rect x="346" y="335" width="236" height="46" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
-<text x="356" y="352" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/evidence-writes.jsonl</text>
-<text x="356" y="366" font-size="10.5" fill="#52514e">edits aimed at gate inputs — logged only</text>
-<rect x="346" y="393" width="236" height="76" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
-<text x="356" y="410" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">…/&lt;task&gt;/appian-skill-loaded.json</text>
-<text x="356" y="425" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">…/&lt;task&gt;/dependents.json</text>
-<text x="356" y="439" font-size="10.5" fill="#52514e">the write gate wants the first; the</text>
-<text x="356" y="453" font-size="10.5" fill="#52514e">destructive guard wants the second</text>
-<rect x="346" y="481" width="236" height="62" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
-<text x="356" y="498" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/&lt;task&gt;/practices-*.json</text>
-<text x="356" y="512" font-size="10.5" fill="#52514e">design · implementation · qa · review</text>
-<text x="356" y="526" font-size="10.5" fill="#52514e">validated before either gate trusts one</text>
-<rect x="346" y="555" width="236" height="46" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
-<text x="356" y="572" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/deferred-debt.jsonl</text>
-<text x="356" y="586" font-size="10.5" fill="#52514e">what a repeat stop left unverified</text>
-<text x="664" y="96" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">SessionStart</text>
-<rect x="664" y="102" width="252" height="58" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
-<text x="676" y="122" font-size="12.5" fill="#0b0b0b" font-weight="600">requirements check</text>
-<text x="676" y="139" font-size="11" fill="#52514e">design MCP · official skill · docs MCP:</text>
-<text x="676" y="154" font-size="11" fill="#52514e">reads what is declared — never blocks</text>
-<text x="664" y="170" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PreToolUse — Appian write tools</text>
-<rect x="664" y="176" width="252" height="76" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
-<text x="676" y="196" font-size="12.5" fill="#0b0b0b" font-weight="600">scope gate + destructive guard</text>
-<text x="676" y="213" font-size="11" fill="#52514e">contract checks, all reasons at once;</text>
-<text x="676" y="228" font-size="11" fill="#52514e">strongest answer is ask — never deny;</text>
-<text x="676" y="243" font-size="11" fill="#52514e">a delete always asks</text>
-<text x="664" y="262" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUse — Appian write tools</text>
-<rect x="664" y="268" width="252" height="44" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
-<text x="676" y="288" font-size="12.5" fill="#0b0b0b" font-weight="600">write log</text>
-<text x="676" y="305" font-size="11" fill="#52514e">appends what was written</text>
-<text x="664" y="330" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUse — Write / Edit tools</text>
-<rect x="664" y="336" width="252" height="44" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
-<text x="676" y="356" font-size="12.5" fill="#0b0b0b" font-weight="600">evidence-write log</text>
-<text x="676" y="373" font-size="11" fill="#52514e">logs edits to gate inputs — never gates</text>
-<text x="664" y="398" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUseFailure — Appian writes</text>
-<rect x="664" y="404" width="252" height="44" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
-<text x="676" y="424" font-size="12.5" fill="#0b0b0b" font-weight="600">failure notice</text>
-<text x="676" y="441" font-size="11" fill="#52514e">read back what persisted; no blind retry</text>
-<text x="664" y="466" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">Stop</text>
-<rect x="664" y="472" width="252" height="88" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
-<text x="676" y="492" font-size="12.5" fill="#0b0b0b" font-weight="600">closure gate</text>
-<text x="676" y="509" font-size="11" fill="#52514e">verdicts for the task's risk tier,</text>
-<text x="676" y="524" font-size="11" fill="#52514e">none older than its last write;</text>
-<text x="676" y="539" font-size="11" fill="#52514e">blocks once — a repeat stop records</text>
-<text x="676" y="554" font-size="11" fill="#52514e">debt instead of deadlocking</text>
-<polyline points="264,132 306,132 306,202 332,202" fill="none" stroke="#2a78d6" stroke-width="1.4" marker-end="url(#ar-blue)"/>
-<text x="268" y="126" font-size="10.5" fill="#52514e" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">writes</text>
-<polyline points="264,284 290,284 290,222 332,222" fill="none" stroke="#2a78d6" stroke-width="1.4" marker-end="url(#ar-blue)"/>
-<text x="268" y="278" font-size="10.5" fill="#52514e" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">deletes</text>
-<polyline points="264,396 306,396 306,512 332,512" fill="none" stroke="#2a78d6" stroke-width="1.4" marker-end="url(#ar-blue)"/>
-<text x="268" y="390" font-size="10.5" fill="#52514e" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">writes verdicts</text>
-<polyline points="664,211 596,211" fill="none" stroke="#eb6834" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-orange)"/>
-<text x="630" y="204" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">reads</text>
-<polyline points="664,289 596,289" fill="none" stroke="#eb6834" stroke-width="1.4" marker-end="url(#ar-orange)"/>
-<text x="630" y="282" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">appends</text>
-<polyline points="664,357 596,357" fill="none" stroke="#eb6834" stroke-width="1.4" marker-end="url(#ar-orange)"/>
-<text x="630" y="350" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">appends</text>
-<polyline points="664,506 596,506" fill="none" stroke="#eb6834" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-orange)"/>
-<text x="630" y="499" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">reads</text>
-<polyline points="664,540 632,540 632,578 596,578" fill="none" stroke="#eb6834" stroke-width="1.4" marker-end="url(#ar-orange)"/>
-<text x="613" y="571" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">records debt</text>
-<text x="299" y="652" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">gated at PreToolUse · logged at PostToolUse</text>
-<rect x="24" y="660" width="240" height="56" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
-<text x="36" y="680" font-size="11.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">mcp__appian-dev__create…</text>
-<text x="36" y="698" font-size="11" fill="#52514e">every write the skills make</text>
-<rect x="334" y="660" width="260" height="56" rx="6" fill="#f0efec" stroke="#e1e0d9" stroke-width="1.25"/>
-<text x="346" y="680" font-size="12.5" fill="#0b0b0b" font-weight="600">a design MCP</text>
-<text x="346" y="698" font-size="11" fill="#52514e">e.g. appian-dev — the write surface</text>
-<rect x="664" y="660" width="252" height="56" rx="6" fill="#f0efec" stroke="#e1e0d9" stroke-width="1.25"/>
-<text x="676" y="680" font-size="12.5" fill="#0b0b0b" font-weight="600">the Appian environment</text>
-<text x="676" y="698" font-size="11" fill="#52514e">shared — the remote state wins</text>
-<polyline points="264,688 332,688" fill="none" stroke="#52514e" stroke-width="1.4" marker-end="url(#ar-ink)"/>
-<circle cx="299" cy="688" r="4.5" fill="#eb6834"/>
-<polyline points="594,688 662,688" fill="none" stroke="#52514e" stroke-width="1.4" marker-end="url(#ar-ink)"/>
-<text x="628" y="681" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">writes</text>
-<text x="24" y="738" font-size="10.5" fill="#898781">the requirements check also looks for the other two links — the official Appian skill and a documentation MCP — at session start</text>
+<text x="356" y="157" font-size="10.5" fill="#52514e">appianMcpToolPrefixes names both servers</text>
+<rect x="346" y="186" width="236" height="74" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
+<text x="356" y="203" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">tasks/current.json</text>
+<text x="356" y="217" font-size="10.5" fill="#52514e">one scope: micro or task, one of seven</text>
+<text x="356" y="231" font-size="10.5" fill="#52514e">states, and what may be touched</text>
+<text x="356" y="245" font-size="10.5" fill="#52514e">the agent asks; the hook writes the state</text>
+<rect x="346" y="274" width="236" height="46" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
+<text x="356" y="291" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/operations.jsonl</text>
+<text x="356" y="305" font-size="10.5" fill="#52514e">every Appian write, appended</text>
+<rect x="346" y="334" width="236" height="60" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
+<text x="356" y="351" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/…/practices-*.json</text>
+<text x="356" y="365" font-size="10.5" fill="#52514e">design · certify · risk</text>
+<text x="356" y="379" font-size="10.5" fill="#52514e">validated before either gate trusts one</text>
+<rect x="346" y="408" width="236" height="74" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
+<text x="356" y="425" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/checks.jsonl</text>
+<text x="356" y="440" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">…/appian-skill-loaded.json</text>
+<text x="356" y="455" font-size="10.5" fill="#52514e">the read observation writes both from</text>
+<text x="356" y="469" font-size="10.5" fill="#52514e">what it saw — the builder writes neither</text>
+<rect x="346" y="496" width="236" height="88" rx="6" fill="#fcfcfb" stroke="#e1e0d9" stroke-width="1.25"/>
+<text x="356" y="513" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/gate-decisions.jsonl</text>
+<text x="356" y="528" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/deferred-debt.jsonl</text>
+<text x="356" y="543" font-size="11" fill="#0b0b0b" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/sessions.jsonl</text>
+<text x="356" y="558" font-size="10.5" fill="#52514e">rotated per closed scope; the debt has</text>
+<text x="356" y="572" font-size="10.5" fill="#52514e">an owner and the condition that ends it</text>
+<text x="664" y="90" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">SessionStart</text>
+<rect x="664" y="96" width="252" height="60" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
+<text x="676" y="116" font-size="12.5" fill="#0b0b0b" font-weight="600">requirements check</text>
+<text x="676" y="133" font-size="11" fill="#52514e">the three links, and the declared</text>
+<text x="676" y="148" font-size="11" fill="#52514e">perimeter, re-checked every session</text>
+<text x="664" y="172" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PreToolUse — Appian tool calls</text>
+<rect x="664" y="178" width="252" height="76" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
+<text x="676" y="198" font-size="12.5" fill="#0b0b0b" font-weight="600">scope gate + destructive guard</text>
+<text x="676" y="215" font-size="11" fill="#52514e">signed state, contract, minimum size</text>
+<text x="676" y="230" font-size="11" fill="#52514e">and grant coverage — every reason at</text>
+<text x="676" y="245" font-size="11" fill="#52514e">once; the answer is ask, a delete asks</text>
+<text x="664" y="270" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUse — Appian tool calls</text>
+<rect x="664" y="276" width="252" height="46" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
+<text x="676" y="296" font-size="12.5" fill="#0b0b0b" font-weight="600">write log</text>
+<text x="676" y="313" font-size="11" fill="#52514e">appends what was written</text>
+<text x="664" y="338" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUse — file writes</text>
+<rect x="664" y="344" width="252" height="76" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
+<text x="676" y="364" font-size="12.5" fill="#0b0b0b" font-weight="600">state gate</text>
+<text x="676" y="381" font-size="11" fill="#52514e">the single writer of the state: it reads</text>
+<text x="676" y="396" font-size="11" fill="#52514e">what the agent asked, then signs it</text>
+<text x="676" y="411" font-size="11" fill="#52514e">a hand-written state is reverted</text>
+<text x="664" y="436" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolBatch</text>
+<rect x="664" y="442" width="252" height="60" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
+<text x="676" y="462" font-size="12.5" fill="#0b0b0b" font-weight="600">read observation</text>
+<text x="676" y="479" font-size="11" fill="#52514e">one row per check it saw, and the</text>
+<text x="676" y="494" font-size="11" fill="#52514e">official skill's trail — it gates nothing</text>
+<text x="664" y="518" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUseFailure — Appian writes</text>
+<rect x="664" y="524" width="252" height="46" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
+<text x="676" y="544" font-size="12.5" fill="#0b0b0b" font-weight="600">failure notice</text>
+<text x="676" y="561" font-size="11" fill="#52514e">read back what persisted; no blind retry</text>
+<text x="664" y="586" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">Stop</text>
+<rect x="664" y="592" width="252" height="76" rx="6" fill="rgba(235,104,52,0.08)" stroke="#eb6834" stroke-width="1.25"/>
+<text x="676" y="612" font-size="12.5" fill="#0b0b0b" font-weight="600">closure gate</text>
+<text x="676" y="629" font-size="11" fill="#52514e">the terminal transitions — closed, or</text>
+<text x="676" y="644" font-size="11" fill="#52514e">closed-pending-human, closed-with-debt</text>
+<text x="676" y="659" font-size="11" fill="#52514e">or abandoned, each one signed</text>
+<polyline points="264,138 300,138 300,205 332,205" fill="none" stroke="#2a78d6" stroke-width="1.4" marker-end="url(#ar-blue)"/>
+<text x="268" y="132" font-size="10.5" fill="#52514e" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">opens the scope</text>
+<polyline points="264,358 308,358 308,231 332,231" fill="none" stroke="#2a78d6" stroke-width="1.4" marker-end="url(#ar-blue)"/>
+<text x="268" y="352" font-size="10.5" fill="#52514e" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">asks to close</text>
+<polyline points="264,508 300,508 300,364 332,364" fill="none" stroke="#2a78d6" stroke-width="1.4" marker-end="url(#ar-blue)"/>
+<text x="268" y="502" font-size="10.5" fill="#52514e" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">writes verdicts</text>
+<polyline points="664,142 596,142" fill="none" stroke="#eb6834" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-orange)"/>
+<text x="630" y="135" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">reads</text>
+<polyline points="664,216 596,216" fill="none" stroke="#eb6834" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-orange)"/>
+<text x="630" y="209" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">reads</text>
+<polyline points="664,299 596,299" fill="none" stroke="#eb6834" stroke-width="1.4" marker-end="url(#ar-orange)"/>
+<text x="630" y="292" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">appends</text>
+<polyline points="664,382 640,382 640,250 596,250" fill="none" stroke="#eb6834" stroke-width="1.4" marker-end="url(#ar-orange)"/>
+<text x="620" y="244" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">signs</text>
+<polyline points="664,614 628,614 628,370 596,370" fill="none" stroke="#eb6834" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#ar-orange)"/>
+<text x="626" y="364" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">reads</text>
+<polyline points="664,646 612,646 612,540 596,540" fill="none" stroke="#eb6834" stroke-width="1.4" marker-end="url(#ar-orange)"/>
+<text x="628" y="534" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">records debt</text>
+<text x="299" y="688" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">gated at PreToolUse · logged at PostToolUse</text>
+<rect x="24" y="696" width="240" height="60" rx="6" fill="rgba(42,120,214,0.07)" stroke="#2a78d6" stroke-width="1.25"/>
+<text x="36" y="716" font-size="11.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">mcp__appian-dev__…</text>
+<text x="36" y="732" font-size="11.5" fill="#0b0b0b" font-weight="600" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">mcp__appian__…</text>
+<text x="36" y="748" font-size="10.5" fill="#52514e">object writes · process starts</text>
+<rect x="334" y="696" width="260" height="60" rx="6" fill="#f0efec" stroke="#e1e0d9" stroke-width="1.25"/>
+<text x="346" y="716" font-size="12.5" fill="#0b0b0b" font-weight="600">both, or the perimeter has a hole</text>
+<text x="346" y="733" font-size="11" fill="#52514e">appianMcpToolPrefixes names them; naming</text>
+<text x="346" y="748" font-size="11" fill="#52514e">only the design one un-gates the rest</text>
+<rect x="664" y="696" width="252" height="60" rx="6" fill="#f0efec" stroke="#e1e0d9" stroke-width="1.25"/>
+<text x="676" y="716" font-size="12.5" fill="#0b0b0b" font-weight="600">the Appian environment</text>
+<text x="676" y="733" font-size="11" fill="#52514e">shared — the remote state wins</text>
+<polyline points="264,726 332,726" fill="none" stroke="#52514e" stroke-width="1.4" marker-end="url(#ar-ink)"/>
+<circle cx="299" cy="726" r="4.5" fill="#eb6834"/>
+<polyline points="594,726 662,726" fill="none" stroke="#52514e" stroke-width="1.4" marker-end="url(#ar-ink)"/>
+<text x="628" y="719" font-size="10.5" fill="#52514e" text-anchor="middle" paint-order="stroke" stroke="#fcfcfb" stroke-width="4" stroke-linejoin="round">writes</text>
+<text x="28" y="778" font-size="10.5" fill="#898781">Without that list the fallback pattern takes over, session start says so out loud, and the first write of the session asks:</text>
+<text x="28" y="794" font-size="10.5" fill="#52514e">«Los hooks se están ejecutando pero no ven tus herramientas de Appian: el plugin está instalado y no gobierna nada.»</text>
 </svg>
