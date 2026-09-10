@@ -1159,6 +1159,38 @@ about today would fail the build for being accurate.
 Dot-directories and `__pycache__` are tool state rather than authored documents:
 `.pytest_cache` ships a `README.md` nobody wrote.
 
+## `check_readme_claims.py` § user documents
+
+A **third** set, narrower than the claim set and enumerated by hand:
+`README.md`, the six user guides under `docs/`, `evals/README.md` and
+`commands/appian-init.md`. These are the documents somebody reads to learn what
+the plugin does *today*, so a name 0.7 retired appearing in one of them is not a
+stale count — it is an instruction to run something that is gone.
+
+Two documents are deliberately outside it. `CHANGELOG.md` exists to record what
+each release removed, and `docs/design-notes.md` cannot answer "why is the code
+like this" without naming what the code stopped doing. Both would fail forever,
+and a check that has to be suppressed is a check nobody keeps.
+
+The list is written out rather than globbed. A `docs/*.md` sweep would adopt
+every future file silently, including the next design note.
+
+## `check_readme_claims.py` § closed enums
+
+`kind` and `status` are closed enums in the scope schema, and the accepted
+values are read out of `harness_hooks.py` rather than restated here — the same
+argument as the borrowed definition of an eval case, one level down: a value
+retired in the hook must not survive in a list this file keeps privately.
+
+Only two written forms are matched, `` `kind: "micro"` `` and `` `kind` is
+`micro` ``, both of which put the value in code form. A looser pattern reaches
+ordinary English — *the state of the art* names a `state` and a value — and a
+checker with false positives gets switched off.
+
+When the hook declares neither enum the check goes silent instead of reporting
+every value it sees. A test holds the real hook to declaring both, so the
+silence cannot become permanent without something failing.
+
 ## `check_readme_claims.py` § deliberately narrow
 
 It checks claims with a **mechanical referent** and says nothing about whether

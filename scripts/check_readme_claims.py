@@ -41,6 +41,31 @@ NUMBER = r"\b(?i:(%s|\d+))" % "|".join(WORDS)
 # config. Written out, not derived: docs/design-notes.md § check_readme_claims.py · derived keys
 DERIVED_CONFIG_KEYS = ("activeTask", "configPath", "mcpServers", "pluginRoot", "projectRoot")
 
+# The documents a person reads to learn what the plugin does *today*. Narrower
+# than the claim set on purpose: docs/design-notes.md § check_readme_claims.py · user documents
+USER_DOCS = ("README.md", "docs/installing.md", "docs/configuration.md",
+             "docs/workflow.md", "docs/gates.md", "docs/troubleshooting.md",
+             "docs/when-the-harness-is-wrong.md", "evals/README.md",
+             "commands/appian-init.md")
+
+# What 0.7 retired, and where the reader goes instead. The trailing guard stops
+# `appian-verify` from also reporting `appian-verifier` under the wrong reason.
+RETIRED_NAMES = (
+    ("appian-verify", "the skill is gone: `appian-review` certifies"),
+    ("appian-run", "the skill is gone: `appian-build` is the one entry point"),
+    ("appian-verifier", "the judging agent is gone: `appian-practices-auditor` is "
+                        "the single judge"),
+    ("appian-reviewer", "the judging agent is gone: `appian-practices-auditor` is "
+                        "the single judge"),
+)
+RETIRED_RE = {name: re.compile(re.escape(name) + r"(?![A-Za-z0-9-])")
+              for name, _ in RETIRED_NAMES}
+
+# A size or a state written in code form is a value being named, and both are
+# closed enums: docs/design-notes.md § check_readme_claims.py · closed enums
+ENUM_VALUE = (re.compile(r"`(kind|size|status)\s*[:=]\s*\"?([a-z][a-z-]*)\"?`"),
+              re.compile(r"`(kind|size|status)`\s*(?:is|of|reads|becomes)?\s*`([a-z][a-z-]*)`"))
+
 
 def _as_int(token):
     return WORDS.get(token.lower(), None) if not token.isdigit() else int(token)
@@ -244,6 +269,50 @@ def _ran_count(root, directory):
     return int(found.group(1)) if found else None
 
 
+def _scope_vocabulary(source):
+    """(sizes, states) the scope schema accepts, read out of the hook rather
+    than restated here, so retiring a value cannot leave this list behind."""
+    states = set(re.findall(r'(?m)^STATUS_[A-Z_]+ = "([a-z-]+)"', source))
+    found = re.search(r'kind not in \(([^)]*)\)', source)
+    sizes = set(re.findall(r'"([a-z-]+)"', found.group(1))) if found else set()
+    return sizes, states
+
+
+def _retired_vocabulary_problems(root, source):
+    """Retired names and dead enum values in the documents a person reads.
+    docs/design-notes.md § check_readme_claims.py · user documents"""
+    problems = []
+    sizes, states = _scope_vocabulary(source)
+    closed = {"kind": sizes, "size": sizes, "status": states}
+
+    for label in USER_DOCS:
+        path = os.path.join(root, *label.split("/"))
+        if not os.path.isfile(path):
+            # Absence is the concern of the link and count checks, not this one.
+            continue
+        text, problem = _read_text(path, label)
+        if problem:
+            problems.append("%s, so the names in it were not checked" % problem)
+            continue
+
+        for name, instead in RETIRED_NAMES:
+            if RETIRED_RE[name].search(text):
+                problems.append("%s names %r as though it still existed -- %s"
+                                % (label, name, instead))
+
+        for pattern in ENUM_VALUE:
+            for field, value in pattern.findall(text):
+                allowed = closed[field]
+                # An empty set means the hook stopped declaring the enum this
+                # reads; reporting every value then would name the wrong file.
+                if allowed and value not in allowed:
+                    problems.append("%s writes `%s: %s`, which the scope schema does not "
+                                    "accept -- it takes %s"
+                                    % (label, field, value,
+                                       ", ".join(sorted(allowed))))
+    return problems
+
+
 def check(root=".", count_tests=True):
     """`count_tests=False` skips the two suite spawns; only this file's own
     tests pass it, since counting tests in a fixture tree learns nothing.
@@ -367,6 +436,7 @@ def check(root=".", count_tests=True):
         if log not in prose:
             fails.append("the code writes %r and the evidence table omits it" % log)
 
+    fails.extend(_retired_vocabulary_problems(root, source))
     fails.extend(_link_problems(root))
     return fails
 
