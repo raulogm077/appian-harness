@@ -548,8 +548,10 @@ class VocabularyFixture(TreeFixture):
              'X = "some-log.jsonl"\n'
              'STATUS_IN_FLIGHT = "in-flight"\n'
              'STATUS_CLOSED = "closed"\n'
-             'def f(kind):\n'
+             'def f(kind, scope):\n'
              '    if kind not in ("micro", "task"):\n'
+             '        pass\n'
+             '    if scope.get("risk") not in (None, "high"):\n'
              '        pass\n')
 
     def _tree(self, root, readme, counts=None):
@@ -631,15 +633,58 @@ class TestRetiredNamesAreCaught(VocabularyFixture, unittest.TestCase):
             self.assertEqual(check(t, count_tests=False), [])
 
 
+    def test_a_retired_name_in_a_shipped_diagram_is_reported(self):
+        # A diagram makes the same claims in pictures and goes just as stale.
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN)
+            self._write(t, "docs/assets/architecture-light.svg",
+                        "<svg><text>appian-run</text></svg>\n")
+            fails = check(t, count_tests=False)
+            self.assertTrue(any("architecture-light.svg" in f for f in fails), fails)
+
+    def test_a_retired_register_in_the_security_policy_is_reported(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN)
+            self._write(t, "SECURITY.md", "A task closing as `risk: trivial` is logged.\n")
+            fails = check(t, count_tests=False)
+            self.assertTrue(any("trivial" in f for f in fails), fails)
+
+    def test_an_internal_name_in_the_command_is_reported(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN)
+            self._write(t, "commands/appian-init.md", "Report the `instanceId` it wrote.\n")
+            fails = check(t, count_tests=False)
+            self.assertTrue(any("instanceId" in f for f in fails), fails)
+
+    def test_an_internal_name_in_reference_documentation_is_left_alone(self):
+        # `configuration.md` describes the evidence format, and a field of a
+        # log file cannot be documented without being named.
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN)
+            self._write(t, "docs/configuration.md",
+                        "Each row of `checks.jsonl` carries its `guaranteeClass`.\n")
+            self.assertEqual(check(t, count_tests=False), [])
+
+
+class TestTheEvalsReadmeStatesCountsToo(TreeFixture, unittest.TestCase):
+    def test_a_stale_count_in_the_evals_readme_is_reported(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, "declaring one hooks\nsomeKey a-skill some-log.jsonl\n")
+            self._write(t, "evals/README.md", "Four eval cases.\n")
+            fails = check(t, count_tests=False)
+            self.assertTrue(any("evals/README.md" in f for f in fails), fails)
+
+
 class TestTheVocabularyComesFromTheHook(unittest.TestCase):
-    def test_the_real_hook_declares_both_enums(self):
+    def test_the_real_hook_declares_every_enum(self):
         # If this stops holding, the enum check above goes quietly inert.
         with open(os.path.join(REAL_ROOT, "hooks", "harness_hooks.py"),
                   encoding="utf-8") as handle:
-            sizes, states = _scope_vocabulary(handle.read())
+            sizes, states, risks = _scope_vocabulary(handle.read())
         self.assertEqual(sizes, {"micro", "task"})
         self.assertEqual(len(states), 7, sorted(states))
         self.assertIn("in-flight", states)
+        self.assertEqual(risks, {"high"})
 
 
 if __name__ == "__main__":
