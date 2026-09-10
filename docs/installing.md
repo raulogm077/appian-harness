@@ -197,34 +197,33 @@ opens the scope prompt and installs, and `marketplace remove` uninstalls the
 plugin exactly as [Troubleshooting](troubleshooting.md) warns.
 
 The hooks are exercised directly, by feeding `run_hook.sh` a payload the way
-Claude Code does — the command is in [Troubleshooting](troubleshooting.md) — and
-they answer correctly through the whole chain ending in `allow`: allow in an
-unconfigured project; ask with a config present and no active scope; ask for an
-object outside `allowedObjects`; **allow** with a scope open, the object in it
-and a valid passing `practices-design.json`; block on a stop with a scope in
-flight and no verdicts; and approve-with-recorded-debt on the repeat stop. Those
-answers are a test rather than a dated claim:
+Claude Code does — the command is in [Troubleshooting](troubleshooting.md).
+Three of those answers are a test rather than a claim, because
 `hooks/test_documented_probe.py` extracts the published probe and the
-whole-chain recipe from the documentation and runs them, which is how that
-recipe was found to have never produced either answer it promised.
+whole-chain recipe out of the documentation and runs them as pasted: `allow` in
+an unconfigured project, `ask` in an adopted one with no scope open, and the
+whole chain ending in `allow` with a scope open, the object in it and a valid
+passing `practices-design.json`. A recipe that stops answering what the prose
+promises fails the suite rather than going stale quietly.
 
-The closure chain is run the same way, end to end against a scratch project, in
-the order a real scope meets it: block with the scope in flight and nothing
-produced; **approve** once the verdicts the scope's size calls for are present,
-valid and passing — `certify` and, when the scope carries risk, `risk`, plus
-`design` where the size requires it; approve-with-debt on a repeat stop with
-them removed, with the `deferred-debt.jsonl` line read back; and approve once
-the active scope file is gone, which is what closing looks like to the gate. A
-scope opened before 0.7 closes on `implementation`, `review` and `qa` instead:
-those phases stay accepted, and obsolete, precisely so it can.
+The rest of the gates' behaviour is covered by the unit suites under `hooks/`
+and `scripts/` rather than by a transcript: the closure gate blocking a stop
+whose scope is missing a verdict, approving the repeat and writing the omission
+to `deferred-debt.jsonl`, and refusing a set of verdicts that is one audit
+copied under several names. Which verdicts a scope needs depends on its size —
+`certify`, plus `risk` when the scope carries risk, with `design` asked for
+earlier, by the scope gate, and only where the size calls for it. A scope opened
+before 0.7 closes on `implementation`, `review` and `qa` instead: those phases
+stay accepted, and obsolete, precisely so it can.
 
-`validate_verdict.py` is exercised the same way, accepting a citation resolved
-from a real heading and rejecting both a fabricated anchor and a nonexistent
-reference file. `n2_interface_tree.py` and `n3_process_layout.py` are run from
-the command line over sample inputs, each returning findings with exit 1, a
-usage message with exit 2, 0 on a clean input, and **3 on an input neither of
-them understands** — a component tree of unrecognised types for N2, a layout
-naming no nodes for N3.
+The validators under `scripts/` have suites of their own.
+`validate_verdict.py` accepts a citation resolved from a real heading and
+rejects both a fabricated anchor and a nonexistent reference file.
+`n2_interface_tree.py` and `n3_process_layout.py` each return findings with exit
+1, a usage message with exit 2, 0 on a clean input, and **3 on an input neither
+of them understands** — a component tree of unrecognised types for N2, a layout
+naming no nodes for N3. That fourth exit code is the one that matters: an
+instrument that cannot read its input must not be able to report success.
 
 Comparing an installed copy against `git ls-files` is a check worth running
 after any install from a directory source, and [Troubleshooting](troubleshooting.md#the-installed-copy-carries-files-that-are-not-in-git)

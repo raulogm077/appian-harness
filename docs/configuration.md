@@ -59,10 +59,16 @@ at your project root, `.claude/appian-harness.json`:
 }
 ```
 
-Every key is optional and the values above are the defaults. **The file's
-presence is the activation switch:** without it, every hook allows, approves or
-no-ops, so the plugin installed in a project that does not use it stays out of
-the way.
+Every key is optional and the values above are the defaults, with one exception
+worth naming here rather than discovering later: **`appianMcpToolPrefixes` has
+no default.** The list above is what `/appian-init` fills it with on a typical
+project, not what the hooks assume when the key is absent — absent, they fall
+back to guessing from server names, which is the subject of *The perimeter*
+below.
+
+**The file's presence is the activation switch:** without it, every hook allows,
+approves or no-ops, so the plugin installed in a project that does not use it
+stays out of the way.
 
 **Eight keys, and the list is closed.** `evidenceDir`, `activeTaskFile`,
 `maxAllowedObjects`, `officialAppianSkillPath`, `designMcpServer`,

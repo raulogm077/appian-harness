@@ -74,9 +74,18 @@ while continuing to answer.
    tools start processes and invoke rules. Declaring only the design server
    un-gates every process start in silence, which is the same failure wearing
    different clothes.
-3. Take a real write tool name from each server, pass it through the perimeter,
-   and report the result. If a server's tools do not match, say this, in these
-   words:
+3. **Run the probe once per server**, and this is the same probe as step 2 with
+   one substitution: put a **real write tool name from that server** in the
+   payload's `tool_name` — `mcp__lcp__createInterface` if the server is called
+   `lcp` — instead of the example's. Then read the answer:
+
+   | The probe answers | What it means |
+   |---|---|
+   | `"permissionDecision":"ask"`, or an `allow` whose reason is about the scope | The perimeter covers this server |
+   | `"permissionDecisionReason":"not a write tool"` | **Mismatch.** A genuine Appian write tool fell outside the perimeter, which is the whole failure |
+
+   That second answer is the one to watch for, because it is the one that looks
+   healthy. Report it, and say this, in these words:
 
    > **«Los hooks se están ejecutando pero no ven tus herramientas de Appian: el
    > plugin está instalado y no gobierna nada.»**

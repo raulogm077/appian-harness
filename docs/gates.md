@@ -249,11 +249,15 @@ defect in the environment is not a change of scope.
 
 ## The judge, and which findings can stop you
 
-One agent judges, invoked up to three times with a fresh context each time:
-`design` before the first write, `certify` wherever the lane bought a reviewer,
-and `risk` when the work touches security, data or something irreversible. Fresh
+One agent judges, invoked up to three times with a fresh context each time. Fresh
 context each time is the point — a second judgement that inherits the first one's
 framing is not a second judgement.
+
+| Invocation | When it is owed |
+|---|---|
+| `design`, before the first write | Only on a `task`, and only one that **creates** objects or touches **structure, security or a process model**. A `micro` never owes one, and a `task` that merely modifies chooses — with the choice, and its omission, registered |
+| `certify` | Wherever the lane bought a reviewer |
+| `risk` | When the work touches security, data or something irreversible |
 
 **The verdict is a matrix of object against gate**, and each cell is one of three
 kinds, which is what keeps a judge from being asked for an opinion it has no

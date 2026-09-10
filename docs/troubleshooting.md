@@ -429,13 +429,13 @@ reference file that does not exist from an anchor that does not exist in it, and
 it reports every problem at once rather than the first:
 
 ```
-python3 scripts/validate_verdict.py <evidenceDir>/<task>/practices-design.json /path/to/appian-harness
+python3 scripts/validate_verdict.py <evidenceDir>/<scope>/practices-design.json /path/to/appian-harness
 ```
 
 Two adjacent failures look similar and are not: a verdict at the wrong path is
 reported by the gates as *missing*, which reads as evidence to a person and as an
 absence to the gate. The shape under `evidenceDir` is fixed —
-`<evidenceDir>/<task>/practices-<phase>.json` — and only the root is yours.
+`<evidenceDir>/<scope>/practices-<phase>.json` — and only the root is yours.
 
 ### The gate asks too often
 
@@ -455,8 +455,10 @@ first create or update. The reason it prints will name every problem it found,
 and the one people hit first is a missing `phase=design` verdict at
 `<evidenceDir>/<scope>/practices-design.json`. `appian-build` produces it,
 before the first write and nothing else in the lifecycle does. A design verdict
-is something a `task` is asked for; a `micro` scope is not, so this reason
-appearing at all tells you how the work was sized.
+is something a `task` can be asked for and a `micro` scope is not, so this
+reason appearing at all tells you something about how the work was sized. When
+a scope of that size is not asked for one, the omission and its reason go to
+`gate-decisions.jsonl` rather than passing unrecorded.
 
 ### The closure gate blocked my stop
 

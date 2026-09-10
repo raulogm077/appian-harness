@@ -89,15 +89,12 @@ and the condition that closes it — and the scope finishes as
 staircase, and it is a real ending: the work is done, it is recorded, and one
 named thing is waiting on a person. Nothing about it escalates.
 
-Two things that are not instrument failures and should not be treated as one:
-
-- **A clean empty render is a well-made empty state**, not a measurement that
-  did not happen. An empty tree with no recognised signatures is legitimate as
-  long as the populated half of the same pair measured, and the empty half
-  carries an empty-state message or a non-empty text node. Read it the other way
-  and the better your empty states are, the more ceremony they cost.
-- **A read that failed is not a write that failed.** The register that records
-  writes records writes.
+One thing that is not an instrument failure and should not be treated as one:
+**a clean empty render is a well-made empty state**, not a measurement that did
+not happen. An empty tree with no recognised signatures is legitimate as long as
+the populated half of the same pair measured, and the empty half carries an
+empty-state message or a non-empty text node. Read it the other way and the
+better your empty states are, the more ceremony they cost.
 
 ### The three ways out, and none of them is "give up quietly"
 
