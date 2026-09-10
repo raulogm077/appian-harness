@@ -1068,9 +1068,15 @@ una frase, y se separan porque una prueba a la otra no:
 `check_manifest_agreement.py`, `check_package_integrity.py`, `lint_skills.py` y `lint_agents.py`,
 **todos exit 0**. Los dos manifiestos declaran `0.7.0` y `CHANGELOG.md` lleva su entrada.
 
-**Regresión final, ejecutada una sola vez con el árbol quieto:** **544 tests en `hooks/` y 435 en
-`scripts/`, 979 en total, todos en verde** — sin `APPIAN_HARNESS_SKIP_SLOW`, así que las pruebas del
-lanzador y las que ejecutan las recetas publicadas corrieron de verdad.
+**Regresión final, ejecutada una sola vez sobre el árbol ya comiteado** (`0b2f0b1`, working tree
+limpio): **544 tests en `hooks/` y 435 en `scripts/`, 979 en total, todos en verde** — sin
+`APPIAN_HARNESS_SKIP_SLOW`, así que las pruebas del lanzador corrieron de verdad. Y
+`test_documented_probe` aparte, también completo: las recetas publicadas en `README.md` y en
+`docs/troubleshooting.md` se ejecutan contra un `sh` real y contestan lo que la prosa promete.
+
+Se dice «sobre el árbol ya comiteado» porque importa: una primera pasada corrió mientras dos
+agentes seguían puliendo sus ficheros, y esa cifra habría sido de un árbol distinto del que se
+entrega. Se descartó y se repitió entera.
 
 **Fase 5: DONE.**
 
