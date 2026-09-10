@@ -1016,3 +1016,50 @@ toca la Fase 4.
 
 **Dónde vive.** § 18.1 de la norma, y la tabla de trabajo aplazado de la Fase 4 en
 `implementacion-0.7.md`.
+
+---
+
+## Addendum · 10-sep-2026 — Fase 5 cerrada, freeze intacto
+
+**Qué la motiva.** El cierre de la Fase 5 (onboarding, documentación, manifiestos y evals). Se anota
+aquí porque resuelve dos preguntas que el tracker había dejado abiertas y retira tres casos de eval,
+y ninguna de las tres cosas debe descubrirse leyendo un diff dentro de un año.
+
+**1. `activeRunFile`, `leaseFile` y `risk-downgrades.jsonl`: la norma ya se cumple, y se demostró
+midiendo.** § 15 dice que las dos primeras salen de 0.7 y § 11.2 que el registro desaparece, mientras
+el código los sigue leyendo y escribiendo — la contradicción aparente que la Fase 4 mandó aquí. La
+sonda pasó la misma configuración a `scope_gate` y a `closure_gate` dos veces:
+
+| | alcance v2 (0.7) | sin `schemaVersion` (0.6) |
+|---|---|---|
+| nombra `activeRunFile` | **no** | sí |
+| nombra un lease | **no** | sí |
+| escribe `risk-downgrades.jsonl` | **no** | sí |
+
+`_scope_shared_reasons` solo se alcanza desde la rama legacy de `scope_gate`; `_log_risk_downgrade`
+solo desde el cuerpo legacy de `closure_gate`. **Los tres están fuera de 0.7 desde la Fase 2**, y
+sobreviven únicamente dentro del reglamento 0.6 que § 15 conserva a propósito. **No se toca el hook**,
+y la documentación dice eso.
+
+Una segunda opinión sobre el enfoque sostuvo lo contrario y pedía cirugía sobre `harness_hooks.py`.
+La sonda la contradice; se registra porque el razonamiento por `grep` llevaba a la misma conclusión
+equivocada y la próxima persona que mire estos tres nombres va a repetirlo. **Esa misma revisión
+aportó tres huecos reales** —los cuatro SVG, `SECURITY.md` y que un conteo no sujeta el catálogo de
+evals—, y los tres están cerrados.
+
+**2. Los tres casos de safety anteriores se retiran.** § 17.7 dice que **los de routing se
+conservan** y a continuación **enumera** el conjunto de safety; el contraste es deliberado y los tres
+nombres viejos no están en la enumeración. El catálogo de 0.7 es 3 + 24 = 27, y `check_evals.py` lo
+sujeta por nombre en los dos sentidos, porque un conteo no distingue 27 casos correctos de 27 nombres
+equivocados. Lo que seguía siendo cierto del caso de borrado se absorbe en
+`safety-delete-closes-on-absence`; la retirada queda en el `CHANGELOG`, no en silencio.
+
+**3. Dos defectos de la Fase 4 corregidos bajo la excepción de defecto demostrado.**
+`appian-specify` nombraba un ciclo con fase VERIFY, que no existe; `appian-plan` enseñaba el modelo de
+riesgo de 0.6 completo, incluido `risk: "trivial"`, que `_scope_schema_errors` **rechaza**. Los dos
+son la decisión de § 5.3 llegando a los dos ficheros que no se habían enterado.
+
+**Qué parte del freeze se reabre: ninguna.** No cambia una línea de la norma. Las tres entradas de
+arriba son la norma aplicándose, no discutiéndose.
+
+**Dónde vive.** La sección de Fase 5 de `implementacion-0.7.md`, con su DoD condición a condición.
