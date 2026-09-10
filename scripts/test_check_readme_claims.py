@@ -5,7 +5,8 @@ mostly build small broken trees and confirm it says so.
 """
 import os, re, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from check_readme_claims import NUMBER, check, _as_int, _markdown_files
+from check_readme_claims import (NUMBER, check, _as_int, _markdown_files,
+                                 _scope_vocabulary)
 
 REAL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -534,6 +535,111 @@ class TheAgentCountSurvivesThereBeingOne(unittest.TestCase):
         # The looser pattern would reach prose about how agents are used.
         self.assertIsNone(
             re.search(NUMBER + r" judging agents?", "Two agents ran."))
+
+
+class VocabularyFixture(TreeFixture):
+    """The three-file tree, with a hook that declares both closed enums.
+
+    `_tree`'s hook declares neither, which leaves the enum check inert --
+    correct there, and useless for testing the check itself.
+    """
+
+    ENUMS = ('project_config.get("someKey", 1)\n'
+             'X = "some-log.jsonl"\n'
+             'STATUS_IN_FLIGHT = "in-flight"\n'
+             'STATUS_CLOSED = "closed"\n'
+             'def f(kind):\n'
+             '    if kind not in ("micro", "task"):\n'
+             '        pass\n')
+
+    def _tree(self, root, readme, counts=None):
+        TreeFixture._tree(self, root, readme, counts)
+        self._write(root, "hooks/harness_hooks.py", self.ENUMS)
+
+
+class TestRetiredNamesAreCaught(VocabularyFixture, unittest.TestCase):
+    """The condition Phase 5 is declared done against: a user document that
+    names something 0.7 removed has to fail, and none of them may."""
+
+    CLEAN = "declaring one hooks\nsomeKey a-skill some-log.jsonl\n"
+
+    def test_a_retired_skill_in_the_readme_is_reported(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN + "Run `appian-verify` to see the gates.\n")
+            fails = check(t, count_tests=False)
+            self.assertTrue(any("appian-verify" in f for f in fails), fails)
+
+    def test_a_retired_agent_in_a_user_document_is_reported(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN)
+            self._write(t, "docs/workflow.md", "`appian-reviewer` judges the change.\n")
+            fails = check(t, count_tests=False)
+            self.assertTrue(any("appian-reviewer" in f for f in fails), fails)
+
+    def test_the_longer_name_is_not_reported_under_the_shorter_reason(self):
+        # `appian-verify` is a prefix of `appian-verifier`, and a substring
+        # match would answer the agent finding with the skill's remedy.
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN + "`appian-verifier` emitted a result.\n")
+            fails = [f for f in check(t, count_tests=False) if "appian-verif" in f]
+            self.assertEqual(len(fails), 1, fails)
+            self.assertIn("appian-verifier", fails[0])
+
+    def test_a_retired_name_in_the_changelog_is_left_alone(self):
+        # Recording what a release removed is the CHANGELOG's whole job.
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN)
+            self._write(t, "CHANGELOG.md", "### Removed\n- `appian-verify`\n")
+            self.assertEqual(check(t, count_tests=False), [])
+
+    def test_a_retired_name_in_the_design_notes_is_left_alone(self):
+        # docs/design-notes.md answers "why is the code like this", which
+        # cannot be done without naming what the code stopped doing.
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN)
+            self._write(t, "docs/design-notes.md", "`appian-run` sequenced the phases.\n")
+            self.assertEqual(check(t, count_tests=False), [])
+
+    def test_a_size_the_schema_no_longer_accepts_is_reported(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN + "A `kind: \"feature\"` scope opens once.\n")
+            fails = check(t, count_tests=False)
+            self.assertTrue(any("feature" in f for f in fails), fails)
+
+    def test_a_size_the_schema_accepts_is_not_reported(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN + "A `kind: \"micro\"` scope is one object.\n")
+            self.assertEqual(check(t, count_tests=False), [])
+
+    def test_a_state_the_schema_no_longer_accepts_is_reported(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN + "It sits at `status: in-progress` until close.\n")
+            fails = check(t, count_tests=False)
+            self.assertTrue(any("in-progress" in f for f in fails), fails)
+
+    def test_the_prose_form_of_a_dead_value_is_reported(self):
+        with tempfile.TemporaryDirectory() as t:
+            self._tree(t, self.CLEAN + "The `size` is `feature` when it spans more.\n")
+            fails = check(t, count_tests=False)
+            self.assertTrue(any("feature" in f for f in fails), fails)
+
+    def test_a_hook_that_declares_no_enum_reports_nothing(self):
+        # The vocabulary is read out of the hook; an unreadable enum must
+        # leave the check silent rather than report every value in the prose.
+        with tempfile.TemporaryDirectory() as t:
+            TreeFixture._tree(self, t, self.CLEAN + "`status: anything` at all.\n")
+            self.assertEqual(check(t, count_tests=False), [])
+
+
+class TestTheVocabularyComesFromTheHook(unittest.TestCase):
+    def test_the_real_hook_declares_both_enums(self):
+        # If this stops holding, the enum check above goes quietly inert.
+        with open(os.path.join(REAL_ROOT, "hooks", "harness_hooks.py"),
+                  encoding="utf-8") as handle:
+            sizes, states = _scope_vocabulary(handle.read())
+        self.assertEqual(sizes, {"micro", "task"})
+        self.assertEqual(len(states), 7, sorted(states))
+        self.assertIn("in-flight", states)
 
 
 if __name__ == "__main__":
