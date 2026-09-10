@@ -262,14 +262,14 @@ there.
 | `hooks/` | One `hooks.json` declaring seven hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
 | `scripts/` | Thirteen modules: `validate_verdict.py`, `lint_skills.py`, `lint_agents.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `sail_static_check.py`, `parallel_safety.py`, `measure_evidence.py`, `check_readme_claims.py`, `check_manifest_agreement.py`, `check_package_integrity.py`, `check_evals.py`, and `exit_codes.py`, which holds the one constant six of them used to spell out separately |
 | `commands/` | One command: `/appian-init`, which adopts a project and tells the truth about the installation. Installing the prerequisites is deliberately not its job |
-| `evals/` | 27 eval cases in the layout `claude plugin eval` expects — 3 routing, 24 safety, the set the design names one by one. **Never executed**: the runner is in early access. `evals/README.md` says so first, because a suite of unrun cases is preparation, not coverage |
+| `evals/` | 27 eval cases in the layout `claude plugin eval` expects — 3 routing, 22 safety, and two the design names for what they are rather than by prefix: a remedy case and a migration case. The set the design names one by one. **Never executed**: the runner is in early access. `evals/README.md` says so first, because a suite of unrun cases is preparation, not coverage |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
 | `SECURITY.md` | What this plugin executes on your machine, at which seven hook entries, what it reads and writes — and where to report a vulnerability |
 | `CONTRIBUTING.md` | The eight local checks, in the order CI runs them, and the release procedure that keeps the two manifests from drifting again |
 | `CHANGELOG.md` | What each release changed for a project that upgrades and edits nothing. Read it before upgrading: a gate that *stops* firing announces nothing, so that is the only place it is announced |
 | `.github/workflows/` | The checks, on Linux and Windows × Python 3.9 and 3.13 |
 
-The Python carries its own tests — 413 for `scripts/`, 544 for `hooks/`, standard
+The Python carries its own tests — 435 for `scripts/`, 544 for `hooks/`, standard
 library only:
 
 ```
