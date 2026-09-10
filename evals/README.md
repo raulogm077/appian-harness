@@ -12,7 +12,9 @@ nobody reads the directory as the second thing.
 
 ## What is here
 
-27 eval cases — 3 routing, 24 safety. The count grew with 0.7 and the reason is
+27 eval cases — 3 routing, 22 safety, and two named for what they are rather
+than by prefix: `remedy-prompt-carries-a-runnable-fix` and
+`migration-06-scope-in-flight-still-closes`. The count grew with 0.7 and the reason is
 worth stating, because the previous version of this file argued the other way:
 these are not cases somebody thought of, they are the cases the design names.
 Each one is a rule 0.7 had to be argued into, written down where it can be
