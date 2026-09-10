@@ -1864,6 +1864,33 @@ Skill descriptions are read through `lint_skills.parse_frontmatter` rather than
 a second parser written here. The frontmatter rule has one definition in this
 repository and this file is not going to become its second.
 
+## `check_evals.py` § destinations
+
+Shape was the whole of what this file checked, and shape is not enough: a case
+can have a prompt, a grader, and a criterion a judge could apply, and still
+score a skill that was deleted two releases ago. The suite carried exactly that
+for a release — a routing case aimed at `appian-verify`, green on every run.
+
+Only backticked `appian-…` names count as a destination, and five of them are
+excused by name: `appian` and `appian-dev` and `appian-docs` are MCP servers,
+`appian-harness` is the plugin, `appian-init` is its command. Harvesting every
+`appian-`-prefixed token instead would report the servers as missing skills,
+which is a checker that has to be argued with.
+
+## `check_evals.py` § the catalogue
+
+Norm § 17.7 names every case of 0.7, so the set is checked both ways: a case the
+norm names and the tree lacks, and a case the tree has that the norm does not.
+A count cannot do this — twenty-seven cases under twenty-seven wrong names is
+the right number and the wrong suite.
+
+A tree sharing **not one** case with the catalogue is somebody else's suite or a
+fixture, and is left alone: holding it would report twenty-seven absences about
+a tree that never claimed them. One case in common is taken as the claim. That
+leaves a hole — delete all twenty-seven and the check goes quiet — and the hole
+is closed from the other side, by a test that asserts the shipped tree *is* the
+catalogue, and by the case count in `check_readme_claims.py`.
+
 ## `check_evals.py` § the OK line
 
 Similarity and phrase echoes warn, so claiming in the success line that no

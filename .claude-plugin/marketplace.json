@@ -7,13 +7,19 @@
   "plugins": [
     {
       "name": "appian-harness",
-      "description": "A quality harness for building Appian applications with coding agents: lifecycle skills, quality gates, and a verification pyramid that separates building from certifying.",
-      "version": "0.6.1",
+      "description": "A quality harness for building Appian applications with coding agents: one scope, one permission prompt, a deterministic floor per object type, and a single judge that certifies from the artifact rather than from the builder's conclusion.",
+      "version": "0.7.0",
       "source": "./",
       "author": {
         "name": "Raul Gomez Moya"
       },
-      "keywords": ["appian", "quality-gates", "verification", "low-code", "sail"]
+      "keywords": [
+        "appian",
+        "quality-gates",
+        "verification",
+        "low-code",
+        "sail"
+      ]
     }
   ]
 }

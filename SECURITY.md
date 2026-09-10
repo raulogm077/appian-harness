@@ -26,11 +26,13 @@ that answers on `hooks/harness_hooks.py`. If none answers, the shell script
 emits the hook's fail-closed decision itself and exits 0 — it never falls
 silent, and it never invokes anything else.
 
-`harness_hooks.py` imports `calendar`, `json`, `os`, `re`, `sys` and `time` from
-the standard library, plus `scripts/validate_verdict.py` from this repository,
-which imports `json`, `os`, `re`, `sys` and `time` — the same list without
-`calendar`. **There are no third-party dependencies**, so installing this plugin
-installs no packages.
+`harness_hooks.py` imports `calendar`, `hashlib`, `json`, `os`, `re`, `sys` and
+`time` from the standard library, plus four modules from this repository:
+`scripts/validate_verdict.py`, `scripts/n2_interface_tree.py`,
+`scripts/n3_process_layout.py` and, through the last two,
+`scripts/exit_codes.py`. Between them those four import `hashlib`, `json`, `os`,
+`re`, `sys` and `time` and nothing else. **There are no third-party
+dependencies**, so installing this plugin installs no packages.
 
 ## What runs, and when
 
@@ -44,12 +46,21 @@ installs no packages.
 | `PostToolUseFailure` | Appian MCP write tools | `failure-notice` | 15s | `additionalContext` only |
 | `Stop` | `*` | `closure-gate` | 20s | `approve` or `block` |
 
-The Appian matcher is
-`mcp__[a-zA-Z0-9_-]*[Aa]ppian[a-zA-Z0-9_-]*__(appian_)?(create|update|add|…).*`
-— it requires `appian` in the MCP server name, so tool calls to your other MCP
-servers are not routed to this plugin at all.
+The write matcher is
+`mcp__[a-zA-Z0-9_-]+__(appian_)?(create|update|add|…).*`, and it is **wider than
+Appian on purpose.** Until 0.7 it required the string `appian` in the MCP server
+name, which meant a server you had called something else was not gated at
+all — the plugin installed, answered, and governed nothing, with no symptom.
+The matcher now routes **any** MCP tool whose name carries a write verb, and the
+narrowing to *your* Appian servers happens in Python, against the
+`appianMcpToolPrefixes[]` your project declares.
 
-Three entries are broader than that and worth knowing about. The `state-gate`
+What that costs you: a tool call to an unrelated MCP server whose name matches
+that verb list **does** start this hook. What it does then is read your config,
+find the call outside the declared perimeter, and return `allow` — it inspects
+the tool name, never the arguments, and writes nothing.
+
+Three entries are broader still and worth knowing about. The `state-gate`
 entry fires on **every** `Write`, `Edit`, `MultiEdit` and `NotebookEdit` in the
 session; the `Stop` entry fires on every stop; and `observe-reads` fires on
 **every batch of tool calls**, because `PostToolBatch` accepts no matcher — the
@@ -67,12 +78,11 @@ In a **configured** project, from the project root the hook payload reports as
 - `.claude/appian-harness.json` — the harness config,
 - the active task file (`tasks/current.json` by default, or what the config
   names),
-- under the evidence directory (`evidence/` by default): the per-task verdicts,
-  `dependents.json`, `appian-skill-loaded.json`, and the registers
-  `operations.jsonl`, `deferred-debt.jsonl` and `risk-downgrades.jsonl` (the
-  last two are re-read before appending, to avoid repeating an entry),
-- the lease register and the run-authorization file, when the project configures
-  them,
+- under the evidence directory (`evidence/` by default): the per-scope verdicts,
+  `dependents.json`, `appian-skill-loaded.json`, and the registers listed under
+  *What it writes*, four of which are re-read before appending,
+- the lease register and the run-authorization file — **only on the 0.6
+  rulebook**, and only when the project configures them,
 - `.mcp.json` in the project, and **`~/.claude.json` in your home directory**,
 - the official Appian skill's `SKILL.md` — `~/.claude/skills/appian/SKILL.md`
   unless the config points elsewhere. Its **presence** is tested by default;
@@ -104,17 +114,31 @@ directories and stays comparable with `git ls-files`.
 
 ## What it writes
 
-Five registers, all **append-only** (`open(path, "a")`), all under the
+Nine registers, all **append-only** (`open(path, "a")`), all under the
 project's evidence directory, plus `os.makedirs` for that directory when it does
 not exist:
 
 | File | One line per | Fields |
 |---|---|---|
-| `operations.jsonl` | Appian write call | timestamp, task id, tool name, object identifier, `ok`/`error` |
-| `evidence-writes.jsonl` | edit to a file the gates read | timestamp, task id, tool name, which input, file path, result |
-| `gate-decisions.jsonl` | scope-gate `ask` | timestamp, task id, tool name, `ask`, reason |
-| `deferred-debt.jsonl` | unverified handoff, or a deferred criterion | timestamp, task id, missing phases or criterion, owner, closing condition |
-| `risk-downgrades.jsonl` | task closed as `trivial` | timestamp, task id, declared tier, phases required |
+| `operations.jsonl` | Appian write call | timestamp, scope id, tool name, object identifier, `ok`/`error`, and whether it fell inside the scope |
+| `checks.jsonl` | verification read the hooks observed | timestamp, scope id, the call it came from, its object, the sequence it was taken at, its result, the class of guarantee it buys |
+| `evidence-writes.jsonl` | edit to a file the gates read | timestamp, scope id, tool name, which input, file path, result |
+| `gate-decisions.jsonl` | decision worth answering for later | timestamp, scope id, and the decision: a name bound to a UUID, a state transition, an `ask` and its reason, a judge dispatched, a scope closed |
+| `deferred-debt.jsonl` | unverified handoff, or a deferred criterion | timestamp, scope id, missing phases or criterion, owner, closing condition |
+| `task-closures.jsonl` | close outcome | timestamp, scope id, and which of `closed`, `closed-pending-human` or `closed-with-debt` it was |
+| `sessions.jsonl` | session | its id and the path to its transcript |
+| `manual-estimates.jsonl` | manual estimate, **only when `measure: true`** | timestamp, scope id, the estimate, anchored write-once |
+| `risk-downgrades.jsonl` | **0.6 rulebook only** — a task closing on the reduced verdict set | timestamp, task id, declared tier, phases required |
+
+That last row is not written for any scope opened on 0.7. It survives so a scope
+opened under the 0.6 rules can still close under them, which is the one thing the
+hooks promise a project that upgrades mid-flight. The same is true of the lease
+register and the run-authorization file in the read list above.
+
+Four of the nine are re-read before appending — the deferred-debt, task-closure,
+manual-estimate and risk-downgrade registers — because the gate that writes them
+can fire repeatedly for the same scope, and a register that repeats itself is a
+register nobody reads.
 
 No hook truncates, overwrites or deletes anything, and nothing is written
 outside the configured evidence directory. `operations.jsonl` records the
@@ -153,7 +177,7 @@ Verified in the source, not assumed:
 approve or no-op, and the only thing touched inside your project is the `isfile`
 test on that one path. Home directory, skill and plugin manifest are not read;
 no register is created. What still happens is the process start itself — the
-launcher probing for an interpreter, and Python importing the plugin's own two
+launcher probing for an interpreter, and Python importing the plugin's own
 modules from the install directory. Installing this plugin at user scope therefore does not change what
 happens in your unrelated projects, beyond the cost of starting a process.
 

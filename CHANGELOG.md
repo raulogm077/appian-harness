@@ -8,6 +8,172 @@ genuinely needs a release note.
 Versions follow semver read as `0.x`: the middle number carries new behaviour
 and behaviour changes, because the API is still moving.
 
+## 0.7.0 — 2026-09-10
+
+The release that makes the ceremony fit the work. The failure that started this
+series — five hours and a small fortune for one visual change — was not a
+failure of having governance; it was a failure of governance **badly
+proportioned**. So most of what 0.7 does is **remove**: one taxonomy, three
+thresholds, five artifacts, three causes of asking a person, two gates of the
+judge's matrix and two of its seven blocking effects. What it adds is the four
+cheap things that were missing, and one that was not cheap at all: **a perimeter
+the gates declare instead of guessing.**
+
+### Before you update
+
+**Close or abandon any scope you have in flight first.** A scope opened under
+the 0.6 rules still closes under them — that is deliberate, and the hooks
+enforce it — but you cannot open a 0.7 scope while one is open, and after
+updating the only advice the harness can give you is the one that still works.
+This paragraph is the version of that warning that arrives in time.
+
+**Then run `/appian-init --adopt` in every project you had already adopted.**
+It is the one migration step that is not optional, and the reason is the
+perimeter below: a project that never re-runs it does not acquire
+`appianMcpToolPrefixes[]`, falls back to the old name-matching regex, and lands
+in exactly the failure mode this release exists to close. Until it is run,
+session start says so out loud and **the first write of each session asks**.
+
+### Fixed
+
+**The gates could be installed and govern nothing, silently.** `WRITE_TOOL_RE`
+and `DESTRUCTIVE_TOOL_RE` matched `^mcp__[A-Za-z0-9_-]*[Aa]ppian[A-Za-z0-9_-]*__`,
+so every gate in the plugin depended on the MCP server's name containing the
+string `appian` — a name chosen by whoever ran `claude mcp add`. Call it `lcp`,
+`indra` or `appdev` and the plugin installs, `/appian-init` writes the config,
+the hooks start, session start greets you, and **nothing is gated**. Because the
+hook still answers JSON it is alive, which makes it indistinguishable from a
+gate that works. This repository already paid for that once, in 0.5.2.
+
+The perimeter is now **declared**: `.claude-plugin`-adjacent configuration gains
+`appianMcpToolPrefixes[]`, a **list**, because the perimeter covers two servers —
+the design one and the **runtime** one, whose process starts are what the
+destructive guard exists for. Declaring only the design server would un-gate
+process starts in silence, which is the same defect in different clothes.
+`/appian-init` fills the key from what the session has registered and runs a
+probe against it; session start re-checks it every session; the old regex
+survives only as a fallback, and one that announces itself.
+
+**A failing instrument used to change the size of the work.** An interface whose
+test call returns a serialization 500 escalated from `micro` to `task`, and the
+escalation was unclosable. A failure of an instrument now never changes the size
+of a scope. The harness first checks the failure is not a regression of the
+change itself, then looks for evidence by another route, and if there is none
+the scope closes as `closed-pending-human` — **while still being `micro`**.
+
+### Removed
+
+**`appian-verify` and `appian-run` are gone.** Verification is not a phase a
+person invokes: it is the floor the closure gate enforces, per object type, from
+what the hooks observed. `appian-review` certifies and asks for the close, and
+**the hook does the closing**. `appian-run` sequenced phases that no longer exist
+in that order; `appian-build` is the one entry point.
+
+**`appian-verifier` and `appian-reviewer` are gone, and there is one judge.**
+`appian-practices-auditor` is invoked three times with fresh context and separate
+rubrics. Two agents splitting one judgement meant the second inherited the
+first's framing, and the verdict is now a matrix of object × gate rather than a
+paragraph.
+
+**Five artifacts stop being written**, four of them because nothing read them:
+`build.md` (no consumer, and the judge is forbidden a dump by two separate
+rules), `context-floor.json` and a mandatory `manualEstimateMinutes` (both now
+behind `measure`, off by default — one file and one prompt fewer per scope, for
+every user, forever), and `risk-downgrades.jsonl`, which had neither a defined
+writer nor a defined reader once `risk` became something the hook observes rather
+than something a plan declares.
+
+`appian-skill-loaded.json` still exists, and **who writes it changed**: the hook
+writes it from what it saw, not the builder from what it claims. That is the
+whole difference between a record and an assertion.
+
+**`activeRunFile` and `leaseFile` leave 0.7.** Both are read only by the 0.6
+rulebook now, which the hooks keep on purpose so a scope opened under the old
+rules can still close; on a 0.7 scope neither has any effect, and `/appian-init`
+no longer writes either. `leaseFile` returns in 0.8 with the parallelism recipe
+that would give it a consumer.
+
+**Three thresholds and one taxonomy.** There is no magnitude threshold: a
+redesign of a whole interface is still one object and one intention, and so still
+`micro`. What graduates the ceremony is *what* changes and *how many objects*,
+never how much text the tool replaced — the tool replaces all of it every time,
+so a line count was measuring the instrument.
+
+### Changed
+
+**One permission prompt per scope**, with the full list and what is going to
+happen to each thing, plus at most one extension per remediation cycle. Anchored
+so that editing the scope after the "ok" invalidates the grant entirely.
+
+**Exposure buys a reviewer, not a size.** An object reachable from a published
+site used to force `task`. It now stays `micro` and gets a reviewer, which is
+the thing exposure actually warrants.
+
+**Sizes are `micro` and `task`.** `kind: "feature"` is a 0.6 reading; a 0.6
+scope carrying it is read as `task` with its task list populated, and no
+ceremony changes.
+
+**`risk` is `null` or `high`, and the hook observes it.** The `trivial` /
+`standard` tiers are gone: a tier a plan declares is a tier a plan can
+under-declare, and the fields that actually raise risk — a visibility
+expression, a reordering of views — are visible in the write itself.
+
+**Maintainability and performance no longer block a close.** Gates are CARDINAL,
+RECOMMENDED or CONTEXTUAL, and only the first blocks. A remediation loop spent
+arguing about style is a remediation loop nobody finishes.
+
+**The re-issue cap is enforcement.** At most one re-issued verdict without a new
+finding, at most three in total, and `validate_verdict.py` rejects the third that
+brings nothing new. A cap that only the agent enforces is advice.
+
+### Added
+
+**Seven states for a scope, one writer, and every unsigned state reverted.**
+`in-flight`, `closing`, `closed`, `closed-pending-human`, `closed-with-debt`,
+`suspended`, `abandoned`. The agent *asks* through a request field; the hook
+writes the state and signs it. Writing a state by hand approves nothing.
+
+**Three ways out, and a person sees all three:** close, **abandon** with a
+reason, **desist** and leave it as it stands. The floor of the staircase is a
+scope that closes with its debt named and owned rather than a session that
+cannot end.
+
+**A floor per object type**, plus the cross-reference row that catches a
+reference pointing at nothing, and graph checks for process models. Types no
+tool can write are planned in their place in the dependency graph and close with
+their residue recorded — as `closed`, not as a human's problem.
+
+**Reads are credited from what the hooks observed**, so a check taken before the
+write it would vouch for does not count, and a check whose result nothing could
+have changed is not repeated.
+
+**`/appian-init` tells the truth about the installation.** It runs the hook
+launcher on your machine and reports its **literal** answer — if the hooks are
+not executing here, it says so in those words rather than leaving it invisible —
+and runs the perimeter probe alongside it. It seeds a six-term glossary into the
+project's `CLAUDE.md`, and recommends registering the Appian MCP servers with
+deferred schema loading: three servers, ~168 tools, 40–45 K tokens in *every*
+turn of *every* session whether or not you touch Appian. **Installing the
+prerequisites is not this command's job** and is not pretended to be; that half
+arrives in 0.8.
+
+**Token and waste budgets per object touched**, not per wrapper. The same unit of
+work used to have two prices depending on whether it travelled alone or inside a
+feature, which is an incentive pointing at exactly the behaviour the release
+argues against.
+
+**The eval suite is the catalogue the design names**: twenty-seven cases, three
+routing and twenty-four safety. `check_evals.py` now holds the catalogue by name
+and checks that a case routes to a component that exists — the suite carried a
+routing case aimed at a deleted skill for a release, well-formed and green.
+It still has never been executed, and `evals/README.md` still says so.
+
+**A document naming a component that no longer exists fails the build.**
+`check_readme_claims.py` reads the user documents, `SECURITY.md` and the four
+shipped diagrams, and fails on a retired skill or agent, on a size, state or risk
+the scope schema does not accept, and on the command naming an internal that
+belongs in no text a person reads.
+
 ## 0.6.1 — 2026-08-14
 
 The first time a person other than the author installed this plugin, and the

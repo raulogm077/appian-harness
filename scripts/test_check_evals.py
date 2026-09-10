@@ -167,6 +167,55 @@ class EvalShape(unittest.TestCase):
         code, msgs = C.check(root)
         self.assertEqual(code, 0, "\n".join(msgs))
 
+    def test_a_case_routing_to_a_component_that_is_gone_fails(self):
+        # Shape is not enough. A case can be perfectly formed and score a
+        # skill that was deleted two releases ago.
+        case(self.root, "routing-specify-not-plan",
+             grader="Score 1 only if it reaches `appian-verify` first.\n")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("appian-verify" in m for m in msgs), msgs)
+
+    def test_a_case_routing_to_a_live_component_passes_the_destination_check(self):
+        root = os.path.join(os.path.dirname(__file__), "..")
+        problems = C._destination_problems(
+            "x", "graders/criteria.md",
+            "It reaches `appian-build`, never `appian-dev` the MCP server.\n",
+            C._components(root))
+        self.assertEqual(problems, [])
+
+    def test_a_case_missing_from_the_catalogue_fails(self):
+        # One catalogue case present is enough to say this is our suite, and
+        # then the other twenty-six have to be there too.
+        case(self.root, "routing-specify-not-plan")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("named by norm 17.7" in m for m in msgs), msgs)
+
+    def test_a_case_nobody_asked_for_fails(self):
+        for name in sorted(C.CATALOGUE):
+            case(self.root, name)
+        case(self.root, "safety-something-invented")
+        code, msgs = C.check(self.root)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("safety-something-invented" in m for m in msgs), msgs)
+
+    def test_a_suite_sharing_nothing_with_the_catalogue_is_left_alone(self):
+        # Somebody else's suite, or a fixture. Twenty-seven absences about a
+        # tree that never claimed them is one fact reported 27 times over.
+        case(self.root, "a")
+        self.assertEqual(C._catalogue_problems(["a"]), [])
+        self.assertEqual(C.check(self.root)[0], 0)
+
+    def test_the_shipped_suite_is_the_whole_catalogue(self):
+        # The half `test_the_shipped_suite_is_well_formed` cannot cover: that
+        # the catalogue check is actually engaged on the real tree.
+        root = os.path.join(os.path.dirname(__file__), "..")
+        cases = sorted(e for e in os.listdir(os.path.join(root, "evals"))
+                       if os.path.isdir(os.path.join(root, "evals", e))
+                       and C._is_case_dir(e))
+        self.assertEqual(set(cases), set(C.CATALOGUE))
+
     def test_the_suite_declares_it_has_never_run(self):
         # The honesty requirement. If someone deletes the caveat from
         # evals/README.md, this fails: an unexecuted suite that stops saying so
