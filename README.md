@@ -262,7 +262,7 @@ there.
 | `hooks/` | One `hooks.json` declaring seven hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
 | `scripts/` | Thirteen modules: `validate_verdict.py`, `lint_skills.py`, `lint_agents.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `sail_static_check.py`, `parallel_safety.py`, `measure_evidence.py`, `check_readme_claims.py`, `check_manifest_agreement.py`, `check_package_integrity.py`, `check_evals.py`, and `exit_codes.py`, which holds the one constant six of them used to spell out separately |
 | `commands/` | One command: `/appian-init`, which adopts a project and tells the truth about the installation. Installing the prerequisites is deliberately not its job |
-| `evals/` | Six eval cases in the layout `claude plugin eval` expects — three routing, three safety, the set the design names one by one. **Never executed**: the runner is in early access. `evals/README.md` says so first, because a suite of unrun cases is preparation, not coverage |
+| `evals/` | 27 eval cases in the layout `claude plugin eval` expects — 3 routing, 24 safety, the set the design names one by one. **Never executed**: the runner is in early access. `evals/README.md` says so first, because a suite of unrun cases is preparation, not coverage |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
 | `SECURITY.md` | What this plugin executes on your machine, at which seven hook entries, what it reads and writes — and where to report a vulnerability |
 | `CONTRIBUTING.md` | The eight local checks, in the order CI runs them, and the release procedure that keeps the two manifests from drifting again |
