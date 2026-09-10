@@ -1050,6 +1050,47 @@ Ninguno lo cazaba `lint_skills.py`, y los dos enseñaban al modelo un esquema qu
   `_scope_schema_errors` sin más. Reescrito a lo que un plan sí puede aportar: señalar qué tareas
   espera que acaben en `high`, porque eso las saca de `micro`.
 
+### DoD de Fase 5
+
+El «Hecha cuando» de § 16 Fase 5, releído literal antes de este veredicto. Son **dos** condiciones en
+una frase, y se separan porque una prueba a la otra no:
+
+> «`check_readme_claims.py` **falla si** un documento de usuario nombra una skill eliminada o un
+> tamaño que ya no existe, **y ninguno lo hace**.»
+
+| Condición del DoD | Veredicto | Evidencia |
+|---|---|---|
+| **Falla si** un documento de usuario nombra **una skill eliminada** | **PASS** | Dos pruebas, y la segunda es la que cuenta. (a) Fixtures: `test_a_retired_skill_in_the_readme_is_reported`, `test_a_retired_agent_in_a_user_document_is_reported`, y `test_the_longer_name_is_not_reported_under_the_shorter_reason`, que impide que `appian-verify` conteste por `appian-verifier`. (b) **Contra documentos reales**: el comprobador terminado, ejecutado sobre el árbol de `da4ceb9` —la base de esta rama, antes de tocar un solo documento—, produce **28 hallazgos en 10 documentos**: `README.md` 4 · `docs/workflow.md` 4 · los cuatro SVG 4 cada uno · `docs/{configuration,gates,troubleshooting}.md` y `evals/README.md` 1 cada uno |
+| **Falla si** un documento de usuario nombra **un tamaño que ya no existe** | **PASS** | `test_a_size_the_schema_no_longer_accepts_is_reported` (`kind: "feature"`), `test_the_prose_form_of_a_dead_value_is_reported`, y el contraste positivo `test_a_size_the_schema_accepts_is_not_reported`, que impide que la regla sea «rechaza todo». Los valores aceptados **se leen del hook**, no se restatan aquí: `test_the_real_hook_declares_every_enum` cae si el hook deja de declararlos, que es lo que dejaría el check mudo |
+| **Y ninguno lo hace** | **PASS** | `python scripts/check_readme_claims.py` → `OK README.md and docs/ match the tree`, exit 0, sobre el árbol estable. El barrido cubre `README.md`, los seis manuales de `docs/`, `evals/README.md`, `commands/appian-init.md`, `SECURITY.md` y los cuatro SVG: **0 hallazgos** frente a los 28 de la base |
+
+**Los cinco comprobadores restantes, sobre el mismo árbol estable:** `check_evals.py`,
+`check_manifest_agreement.py`, `check_package_integrity.py`, `lint_skills.py` y `lint_agents.py`,
+**todos exit 0**. Los dos manifiestos declaran `0.7.0` y `CHANGELOG.md` lleva su entrada.
+
+**Regresión final, ejecutada una sola vez con el árbol quieto:** **544 tests en `hooks/` y 435 en
+`scripts/`, 979 en total, todos en verde** — sin `APPIAN_HARNESS_SKIP_SLOW`, así que las pruebas del
+lanzador y las que ejecutan las recetas publicadas corrieron de verdad.
+
+**Fase 5: DONE.**
+
+**Fase 6 implementada por accidente: no.** No se ha ejecutado ninguna puerta de § 17: ni la prueba de
+proporcionalidad de § 17.3, ni la puerta de desperdicio, ni la de tokens, ni la medida del caso ácido
+en vivo, ni la instalación limpia por un tercero. Fase 6 **sigue pendiente**.
+
+**Trabajo de 0.8 detectado y no implementado.** Nada de § 18.1 entró: no hay escáner de literales, no
+hay matcher de `Bash` por rutas, no hay `leaseFile` ni receta de paralelismo, no hay caducidad por
+fila de la matriz, y `/appian-init` **dice explícitamente que instalar no es su trabajo**. Dos sitios
+lo rozaron y se dejaron declarados en vez de implementados: el grader de
+`safety-record-type-never-micro`, que exige `listRecordData` con ≥ 1 fila y **no** que el campo tocado
+esté en la proyección (mitad fuerte, D-40 → 0.8); y `safety-literal-change-skips-reviewer-filter-does-not`,
+cuyo grader puntúa **el motivo** que se da y no el resultado, porque en 0.7 un cambio de literal sigue
+pagando revisor: quien lo eximiría es el escáner de literales, que es de 0.8.
+
+**Design freeze reabierto: no.** Ni una línea de la norma cambia. Las tres cosas que esta fase
+resolvió —los tres nombres legacy, la retirada de tres evals y los dos defectos de la Fase 4— son la
+norma aplicándose, no discutiéndose; quedan anotadas en el addendum del 10-sep de `decision-log.md`.
+
 ---
 
 ## Estado de fases
@@ -1061,7 +1102,7 @@ Ninguno lo cazaba `lint_skills.py`, y los dos enseñaban al modelo un esquema qu
 | **2 · Núcleo** | **DONE — DoD 3/3 PASS** (código 2026-09-02; correcciones de revisión el 2026-09-03, reconciliadas el 2026-09-03; pasada atendida en las tres formas el 2026-09-08, 0 `ask` falsos) |
 | **3 · Suelo y evidencia** | **DONE — DoD 5/5 PASS** (2026-09-09, DoD en su sección; caso ácido reproducido desde formas grabadas) |
 | **4 · Juez, matriz y skills** | **DONE — DoD 4/4 PASS** (2026-09-09, DoD en su sección; caso ácido cerrado entero, con revisor) |
-| 5 · Onboarding y documentación | pendiente |
+| **5 · Onboarding, documentación y manifiestos** | **DONE — DoD 3/3 PASS** (2026-09-10, DoD en su sección; el comprobador da 28 hallazgos sobre el árbol base y 0 sobre el actual) |
 | 6 · Puerta de salida | pendiente |
 
 ---
