@@ -256,32 +256,22 @@ Use those four names literally. The build step looks for exactly them, and a tas
 that describes the same four things in its own words still has to be translated by
 whoever picks it up — which is the point at which one of them quietly goes missing.
 
-### Declare each task's risk, because the gates now read it
+### Note which tasks look high-risk, but do not declare the tier
 
-A fifth field, optional but consequential: `risk`, one of **`trivial`**,
-**`standard`** (the default, and what anything unrecognised means) or
-**`high`**. It belongs here rather than at build time, for the same reason the
-acceptance criterion does — decided in advance by someone who is not about to
-be inconvenienced by it.
+`risk` has **two values, `null` and `high`, and the hook writes it** — from what
+the scope actually touches, not from what the plan says about it. Three classes
+of harm raise it: **security** (object security, a visibility expression, a group
+or user constant, a moved parent folder, reordered record type views), **data**
+(inserting, updating or deleting record data), and **the irreversible** (any
+design delete, and every process start).
 
-| | When | What the closure gate then requires |
-|---|---|---|
-| `trivial` | Cosmetic, local, touches no data, no permissions, no queries, changes no component or structure — the same four conditions `appian-review` uses for exemption | `implementation` only |
-| `standard` | Everything else | `implementation`, `review`, `qa` |
-| `high` | Data model, security, architecture, integrations, anything hard to reverse | Those three **plus `risk`**, an adversarial pass asking *how does this fail* rather than *does this meet the contract* |
-
-Two things about this are deliberate and worth not undoing:
-
-- **`trivial` is cheaper, not free.** One recorded verdict, not none. The
-  alternative people actually take when a text fix costs four verdicts is to
-  stop declaring the task at all, and then there is no record of anything.
-- **Declaring `trivial` is logged.** The gate writes it to
-  `<evidenceDir>/risk-downgrades.jsonl`, so "was that really trivial?" has an
-  answer later. It is not prevented — like everything else here, the cheap
-  route is closed and the deliberate one is made visible.
-
-A typo in this field buys more ceremony, never less: anything the gate does not
-recognise is treated as `standard`.
+So there is nothing to declare here, and that is the point: a tier a plan states
+is a tier a plan can understate, and the fields that actually raise risk are
+visible in the write itself. What a plan can usefully do is **say which tasks it
+expects to land there**, because `risk: high` forces the task to be sized as a
+`task` rather than a `micro` and adds an adversarial pass asking *how does this
+fail* rather than *does this meet the contract*. A task expecting that should be
+scoped knowing it.
 
 ### And mark the tasks a person has to see, if any
 
