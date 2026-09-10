@@ -5,7 +5,7 @@ description: Turns a vague Appian request into a written specification before an
 
 ## Overview
 
-This skill is the **SPECIFY** phase of the lifecycle `SPECIFY → PLAN → BUILD → VERIFY → REVIEW → CLOSE`.
+This skill is the **SPECIFY** phase of the lifecycle `SPECIFY → PLAN → BUILD → REVIEW → CLOSE`.
 Its job is to turn "build me a thing that does X" into a written specification, before a single
 record type, interface, or process model exists. The output is consumed by the `appian-plan` skill,
 which breaks it into buildable, dependency-ordered tasks — so the specification is not a formality,
