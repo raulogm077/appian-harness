@@ -78,42 +78,42 @@
 <text x="356" y="543" font-size="11" fill="#ffffff" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">evidence/sessions.jsonl</text>
 <text x="356" y="558" font-size="10.5" fill="#c3c2b7">rotated per closed scope; the debt has</text>
 <text x="356" y="572" font-size="10.5" fill="#c3c2b7">an owner and the condition that ends it</text>
-<text x="664" y="90" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">SessionStart</text>
-<rect x="664" y="96" width="252" height="60" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
-<text x="676" y="116" font-size="12.5" fill="#ffffff" font-weight="600">requirements check</text>
-<text x="676" y="133" font-size="11" fill="#c3c2b7">the three links, and the declared</text>
-<text x="676" y="148" font-size="11" fill="#c3c2b7">perimeter, re-checked every session</text>
-<text x="664" y="172" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PreToolUse — Appian tool calls</text>
-<rect x="664" y="178" width="252" height="76" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
-<text x="676" y="198" font-size="12.5" fill="#ffffff" font-weight="600">scope gate + destructive guard</text>
-<text x="676" y="215" font-size="11" fill="#c3c2b7">signed state, contract, minimum size</text>
-<text x="676" y="230" font-size="11" fill="#c3c2b7">and grant coverage — every reason at</text>
-<text x="676" y="245" font-size="11" fill="#c3c2b7">once; the answer is ask, a delete asks</text>
-<text x="664" y="270" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUse — Appian tool calls</text>
-<rect x="664" y="276" width="252" height="46" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
-<text x="676" y="296" font-size="12.5" fill="#ffffff" font-weight="600">write log</text>
-<text x="676" y="313" font-size="11" fill="#c3c2b7">appends what was written</text>
-<text x="664" y="338" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUse — file writes</text>
-<rect x="664" y="344" width="252" height="76" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
-<text x="676" y="364" font-size="12.5" fill="#ffffff" font-weight="600">state gate</text>
-<text x="676" y="381" font-size="11" fill="#c3c2b7">the single writer of the state: it reads</text>
-<text x="676" y="396" font-size="11" fill="#c3c2b7">what the agent asked, then signs it</text>
-<text x="676" y="411" font-size="11" fill="#c3c2b7">a hand-written state is reverted</text>
-<text x="664" y="436" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolBatch</text>
-<rect x="664" y="442" width="252" height="60" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
-<text x="676" y="462" font-size="12.5" fill="#ffffff" font-weight="600">read observation</text>
-<text x="676" y="479" font-size="11" fill="#c3c2b7">one row per check it saw, and the</text>
-<text x="676" y="494" font-size="11" fill="#c3c2b7">official skill's trail — it gates nothing</text>
-<text x="664" y="518" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUseFailure — Appian writes</text>
-<rect x="664" y="524" width="252" height="46" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
-<text x="676" y="544" font-size="12.5" fill="#ffffff" font-weight="600">failure notice</text>
-<text x="676" y="561" font-size="11" fill="#c3c2b7">read back what persisted; no blind retry</text>
-<text x="664" y="586" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">Stop</text>
-<rect x="664" y="592" width="252" height="76" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
-<text x="676" y="612" font-size="12.5" fill="#ffffff" font-weight="600">closure gate</text>
-<text x="676" y="629" font-size="11" fill="#c3c2b7">the terminal transitions — closed, or</text>
-<text x="676" y="644" font-size="11" fill="#c3c2b7">closed-pending-human, closed-with-debt</text>
-<text x="676" y="659" font-size="11" fill="#c3c2b7">or abandoned, each one signed</text>
+<text x="664" y="104" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">SessionStart</text>
+<rect x="664" y="110" width="252" height="60" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
+<text x="676" y="130" font-size="12.5" fill="#ffffff" font-weight="600">requirements check</text>
+<text x="676" y="147" font-size="11" fill="#c3c2b7">design MCP · official skill · docs MCP,</text>
+<text x="676" y="162" font-size="11" fill="#c3c2b7">plus the perimeter — every session</text>
+<text x="664" y="182" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PreToolUse — Appian tool calls</text>
+<rect x="664" y="188" width="252" height="76" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
+<text x="676" y="208" font-size="12.5" fill="#ffffff" font-weight="600">scope gate + destructive guard</text>
+<text x="676" y="225" font-size="11" fill="#c3c2b7">signed state, contract, minimum size</text>
+<text x="676" y="240" font-size="11" fill="#c3c2b7">and grant coverage — every reason at</text>
+<text x="676" y="255" font-size="11" fill="#c3c2b7">once; the answer is ask, a delete asks</text>
+<text x="664" y="276" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUse — Appian tool calls</text>
+<rect x="664" y="282" width="252" height="46" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
+<text x="676" y="302" font-size="12.5" fill="#ffffff" font-weight="600">write log</text>
+<text x="676" y="319" font-size="11" fill="#c3c2b7">appends what was written</text>
+<text x="664" y="340" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUse — file writes</text>
+<rect x="664" y="346" width="252" height="76" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
+<text x="676" y="366" font-size="12.5" fill="#ffffff" font-weight="600">state gate</text>
+<text x="676" y="383" font-size="11" fill="#c3c2b7">the single writer of the state: it reads</text>
+<text x="676" y="398" font-size="11" fill="#c3c2b7">what the agent asked, then signs it</text>
+<text x="676" y="413" font-size="11" fill="#c3c2b7">a hand-written state is reverted</text>
+<text x="664" y="434" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolBatch</text>
+<rect x="664" y="440" width="252" height="60" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
+<text x="676" y="460" font-size="12.5" fill="#ffffff" font-weight="600">read observation</text>
+<text x="676" y="477" font-size="11" fill="#c3c2b7">one row per check it saw, and the</text>
+<text x="676" y="492" font-size="11" fill="#c3c2b7">official skill's trail — it gates nothing</text>
+<text x="664" y="512" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">PostToolUseFailure — Appian writes</text>
+<rect x="664" y="518" width="252" height="46" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
+<text x="676" y="538" font-size="12.5" fill="#ffffff" font-weight="600">failure notice</text>
+<text x="676" y="555" font-size="11" fill="#c3c2b7">read back what persisted; no blind retry</text>
+<text x="664" y="576" font-size="10.5" fill="#898781" font-family="ui-monospace,Consolas,'Cascadia Mono',monospace">Stop</text>
+<rect x="664" y="582" width="252" height="76" rx="6" fill="rgba(217,89,38,0.13)" stroke="#d95926" stroke-width="1.25"/>
+<text x="676" y="602" font-size="12.5" fill="#ffffff" font-weight="600">closure gate</text>
+<text x="676" y="619" font-size="11" fill="#c3c2b7">the terminal transitions — closed, or</text>
+<text x="676" y="634" font-size="11" fill="#c3c2b7">closed-pending-human, closed-with-debt</text>
+<text x="676" y="649" font-size="11" fill="#c3c2b7">or abandoned, each one signed</text>
 <polyline points="264,138 300,138 300,205 332,205" fill="none" stroke="#3987e5" stroke-width="1.4" marker-end="url(#ar-blue)"/>
 <text x="268" y="132" font-size="10.5" fill="#c3c2b7" paint-order="stroke" stroke="#1a1a19" stroke-width="4" stroke-linejoin="round">opens the scope</text>
 <polyline points="264,358 308,358 308,231 332,231" fill="none" stroke="#3987e5" stroke-width="1.4" marker-end="url(#ar-blue)"/>

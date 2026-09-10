@@ -162,8 +162,9 @@ work used to have two prices depending on whether it travelled alone or inside a
 feature, which is an incentive pointing at exactly the behaviour the release
 argues against.
 
-**The eval suite is the catalogue the design names**: twenty-seven cases, three
-routing and twenty-four safety. `check_evals.py` now holds the catalogue by name
+**The eval suite is the catalogue the design names**: 27 cases — 3 routing, 22
+under the `safety-` prefix, and two named for what they are rather than by
+prefix, a remedy case and a migration case. `check_evals.py` now holds the catalogue by name
 and checks that a case routes to a component that exists — the suite carried a
 routing case aimed at a deleted skill for a release, well-formed and green.
 It still has never been executed, and `evals/README.md` still says so.

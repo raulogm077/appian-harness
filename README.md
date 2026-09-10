@@ -87,7 +87,7 @@ appian-harness  ──requires──▶  a design MCP (e.g. appian-dev)
 
 | Requirement | What it contributes | What happens without it |
 |---|---|---|
-| **A design MCP** (`appian-dev` or equivalent) | The write surface, and the only thing the write hooks fire on (the closure gate fires on `Stop`, with no MCP involved) | The plugin installs, its tests pass, it looks healthy — and **it gates nothing**, because there is no tool for the matcher to catch |
+| **A design MCP** (`appian-dev` or equivalent) | The write surface. The write hooks fire on any MCP tool whose name carries a write verb, and then narrow to the servers your config declares (the closure gate fires on `Stop`, with no MCP involved) | The plugin installs, its tests pass, it looks healthy — and **it gates nothing**, because no Appian tool is ever called for the perimeter to catch |
 | **The official Appian skill**<br/>[`appian/dev-mcp-skills`](https://github.com/appian/dev-mcp-skills/) | Naming conventions, both sides of a relationship, the order objects must be created in, real UUIDs versus invented ones — everything the tool schemas describe parameters for but not correct use of | Objects get written with invented names and UUIDs, one-sided relationships, and wrong creation order. **No gate here catches that**: they check the contract, atomicity and the presence of a verdict |
 | **A documentation MCP** (`appian-docs` or equivalent) | The official skill's function-availability checks run against it | Those checks return empty, and **empty is indistinguishable from "the function does not exist"** — the vacuous pass this plugin argues against everywhere else |
 
@@ -336,7 +336,7 @@ work and no judgement inherits the framing of the one before it.
 
 | Invocation | What it judges | When |
 |---|---|---|
-| `design` | Whether this is a good way to build the thing, before the first write | When the scope's shape calls for it |
+| `design` | Whether this is a good way to build the thing, before the first write | Only on a `task`, and only when it creates objects or touches structure, security or a process model. A `micro` never owes one |
 | `certify` | Whether the change holds up against its contract, from the artifact alone | Whenever the lane bought a reviewer |
 | `risk` | *How does this fail* rather than *does this meet the contract* | When the work touches security, data, or something irreversible |
 

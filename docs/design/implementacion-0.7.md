@@ -956,7 +956,7 @@ compraría nada.
 
 **Fecha:** 2026-09-10 · **Rama:** `phase-5-onboarding-docs-manifests` · **Base:** `da4ceb9`
 
-Estado: **DONE — DoD 2/2 PASS** (DoD al final de esta sección). No depende de ninguna fase para
+Estado: **DONE — DoD 3/3 PASS** (DoD al final de esta sección). No depende de ninguna fase para
 poder escribirse, y depende de **todas** para poder ser cierta: es la fase que hace que lo que un
 tercero lee coincida con lo que las Fases 0-4 construyeron.
 
@@ -972,7 +972,7 @@ argumento que este plugin dedica un README a rechazar.
 
 | # | Trabajo (§ 16 Fase 5) | Qué quedó | Test propio |
 |---|---|---|---|
-| U1 | El comprobador de nombres retirados | `RETIRED_NAMES` + `ENUM_VALUE` + `_scope_vocabulary` en `check_readme_claims.py`, sobre un conjunto **enumerado** de documentos de usuario. Los tamaños, los estados y los riesgos aceptados se leen del hook, no se restatan | `TestRetiredNamesAreCaught` (12), `TestTheVocabularyComesFromTheHook` |
+| U1 | El comprobador de nombres retirados | `RETIRED_NAMES` + `ENUM_VALUE` + `_scope_vocabulary` en `check_readme_claims.py`, sobre un conjunto **enumerado** de documentos de usuario. Los tamaños, los estados y los riesgos aceptados se leen del hook, no se restatan | `TestRetiredNamesAreCaught` (14), `TestTheVocabularyComesFromTheHook` |
 | U2 | Los SVG, `SECURITY.md` y los internals dentro del barrido | los cuatro diagramas y la política de seguridad entran en el conjunto; `commands/appian-init.md` no puede nombrar `instanceId`, `writeSeq`, `expressionHash` ni `guaranteeClass` (§ 13) | `TestTheEvalsReadmeStatesCountsToo`, y cuatro casos de `TestRetiredNamesAreCaught` |
 | U3 | Destino y catálogo en `check_evals.py` | `_destination_problems` (un caso no puede rutear a una skill que no existe) y `_catalogue_problems` (el catálogo de § 17.7 por nombre, en los dos sentidos) | 6 casos nuevos en `test_check_evals.py` |
 | U4 | `/appian-init`, la mitad que adopta | `commands/appian-init.md` reescrito a § 14: tres eslabones, sonda de `run_hook.sh`, sonda de perímetro, configuración completa, glosario de § 20, carga diferida, `--adopt` | `check_readme_claims.py` |
