@@ -1175,6 +1175,26 @@ and a check that has to be suppressed is a check nobody keeps.
 The list is written out rather than globbed. A `docs/*.md` sweep would adopt
 every future file silently, including the next design note.
 
+`SECURITY.md` is in the set and the four shipped SVGs are scanned alongside it:
+a diagram makes the same claims in pictures and goes stale the same way, and all
+four named a skill that no longer exists while every markdown check was green.
+
+`evals/README.md` is in the **claim** set as well, because it states the case
+counts. Held only by the retired-name scan, a wrong number there would survive
+every count check in this file.
+
+## `check_readme_claims.py` § internals in a text a person reads
+
+Norm § 13 keeps `instanceId`, `writeSeq`, `expressionHash` and `guaranteeClass`
+out of anything a person reads, and this holds that for `commands/appian-init.md`
+only.
+
+The narrowness is the point. `docs/configuration.md` documents the shape of
+`checks.jsonl`, and a field of a log file cannot be documented without being
+named; the command, by contrast, is text read *during use*, which is exactly
+where § 13 aims. A rule wide enough to cover the reference documentation would
+have to be suppressed there, and a check that gets suppressed is not a check.
+
 ## `check_readme_claims.py` § closed enums
 
 `kind` and `status` are closed enums in the scope schema, and the accepted

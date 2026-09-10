@@ -46,7 +46,16 @@ DERIVED_CONFIG_KEYS = ("activeTask", "configPath", "mcpServers", "pluginRoot", "
 USER_DOCS = ("README.md", "docs/installing.md", "docs/configuration.md",
              "docs/workflow.md", "docs/gates.md", "docs/troubleshooting.md",
              "docs/when-the-harness-is-wrong.md", "evals/README.md",
-             "commands/appian-init.md")
+             "commands/appian-init.md", "SECURITY.md")
+
+# A diagram states the same things in pictures and goes just as stale.
+USER_ASSETS = ("docs/assets/architecture-dark.svg", "docs/assets/architecture-light.svg",
+               "docs/assets/task-lifecycle-dark.svg", "docs/assets/task-lifecycle-light.svg")
+
+# Names that live in files and belong in no text a person reads (norm § 13).
+# Held on the command because that text is read during use, not as reference.
+INTERNALS = ("instanceId", "writeSeq", "expressionHash", "guaranteeClass")
+INTERNALS_FREE = ("commands/appian-init.md",)
 
 # What 0.7 retired, and where the reader goes instead. The trailing guard stops
 # `appian-verify` from also reporting `appian-verifier` under the wrong reason.
@@ -61,10 +70,11 @@ RETIRED_NAMES = (
 RETIRED_RE = {name: re.compile(re.escape(name) + r"(?![A-Za-z0-9-])")
               for name, _ in RETIRED_NAMES}
 
-# A size or a state written in code form is a value being named, and both are
-# closed enums: docs/design-notes.md § check_readme_claims.py · closed enums
-ENUM_VALUE = (re.compile(r"`(kind|size|status)\s*[:=]\s*\"?([a-z][a-z-]*)\"?`"),
-              re.compile(r"`(kind|size|status)`\s*(?:is|of|reads|becomes)?\s*`([a-z][a-z-]*)`"))
+# A size, a state or a risk written in code form is a value being named, and
+# all three are closed: docs/design-notes.md § check_readme_claims.py · closed enums
+ENUM_VALUE = (re.compile(r"`(kind|size|status|risk)\s*[:=]\s*\"?([a-z][a-z-]*)\"?`"),
+              re.compile(r"`(kind|size|status|risk)`\s*(?:is|of|reads|becomes)?\s*"
+                         r"`([a-z][a-z-]*)`"))
 
 
 def _as_int(token):
@@ -100,6 +110,12 @@ def _documents(root):
     if os.path.isdir(docs):
         for path in sorted(glob.glob(os.path.join(docs, "*.md"))):
             paths.append(("docs/" + os.path.basename(path), path))
+
+    # The suite's own README states the case counts, and a count stated
+    # outside this set is a count nothing holds.
+    evals_readme = os.path.join(root, "evals", "README.md")
+    if os.path.isfile(evals_readme):
+        paths.append(("evals/README.md", evals_readme))
 
     for label, path in paths:
         text, problem = _read_text(path, label)
@@ -270,22 +286,26 @@ def _ran_count(root, directory):
 
 
 def _scope_vocabulary(source):
-    """(sizes, states) the scope schema accepts, read out of the hook rather
-    than restated here, so retiring a value cannot leave this list behind."""
+    """(sizes, states, risks) the scope schema accepts, read out of the hook
+    rather than restated here, so retiring a value leaves no list behind."""
     states = set(re.findall(r'(?m)^STATUS_[A-Z_]+ = "([a-z-]+)"', source))
-    found = re.search(r'kind not in \(([^)]*)\)', source)
-    sizes = set(re.findall(r'"([a-z-]+)"', found.group(1))) if found else set()
-    return sizes, states
+
+    def enum(pattern):
+        found = re.search(pattern, source)
+        return set(re.findall(r'"([a-z-]+)"', found.group(1))) if found else set()
+
+    return (enum(r'kind not in \(([^)]*)\)'), states,
+            enum(r'risk"\)\s*not in \(([^)]*)\)'))
 
 
 def _retired_vocabulary_problems(root, source):
-    """Retired names and dead enum values in the documents a person reads.
+    """Retired names and dead enum values in what a person reads.
     docs/design-notes.md § check_readme_claims.py · user documents"""
     problems = []
-    sizes, states = _scope_vocabulary(source)
-    closed = {"kind": sizes, "size": sizes, "status": states}
+    sizes, states, risks = _scope_vocabulary(source)
+    closed = {"kind": sizes, "size": sizes, "status": states, "risk": risks}
 
-    for label in USER_DOCS:
+    for label in USER_DOCS + USER_ASSETS:
         path = os.path.join(root, *label.split("/"))
         if not os.path.isfile(path):
             # Absence is the concern of the link and count checks, not this one.
@@ -299,6 +319,12 @@ def _retired_vocabulary_problems(root, source):
             if RETIRED_RE[name].search(text):
                 problems.append("%s names %r as though it still existed -- %s"
                                 % (label, name, instead))
+
+        if label in INTERNALS_FREE:
+            for name in INTERNALS:
+                if name in text:
+                    problems.append("%s names %r, which lives in files and belongs in no "
+                                    "text a person reads" % (label, name))
 
         for pattern in ENUM_VALUE:
             for field, value in pattern.findall(text):
