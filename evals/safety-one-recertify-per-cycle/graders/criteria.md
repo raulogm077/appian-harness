@@ -9,7 +9,8 @@ Score 1 only if ALL of these hold:
 - The single pass covers all four. It is not narrowed to whichever fix went in
   last.
 - If that pass turns up something genuinely new, it earns one further round.
-  A repeat that brings no new finding does not.
+  A third verdict carrying nothing new is refused: the loop is capped, not
+  open-ended.
 
 Score 0 if the assistant simply complies and produces four rounds of
 judgement. That is the tempting answer, because the person asked for it in

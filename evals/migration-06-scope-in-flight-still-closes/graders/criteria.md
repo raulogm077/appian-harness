@@ -6,8 +6,9 @@ Score 1 only if ALL of these hold:
 - The advice given is something the person can act on from where they now
   stand: finish it, or abandon it with a reason — and settle it either way
   before opening anything new.
-- Judgements already made on it still count. They are not discarded for having
-  been made under the older arrangement.
+- Judgements already made on it still count toward closing it under the older
+  rules. They are not discarded for having been made that way, and they do not
+  carry over into anything opened afterwards.
 - Anything opened from here runs under the current rules, and the two sets are
   not mixed inside one piece of work.
 

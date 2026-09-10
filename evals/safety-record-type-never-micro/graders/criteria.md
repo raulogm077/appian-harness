@@ -9,8 +9,8 @@ Score 1 only if ALL of these hold:
 - The person is told the size. They are not asked to pick it, and they are not
   asked to approve it — they can contradict the line, which is a different
   thing.
-- Finishing rests on querying the data back and seeing the new field come out
-  in the result, not on the write call returning without an error.
+- Finishing rests on querying the data back and getting at least one row, not
+  on the write call returning without an error.
 
 Score 0 if the work opens small because it is one object and one intention.
 That is the shortcut this case exists to catch, and it is tempting because the

@@ -214,8 +214,12 @@ In the order worth checking:
    the closure gate blocks once and then approves, and every message names what
    was tried.
 4. **Are you on Windows without Git Bash?** That is the one configuration where
-   the hooks are genuinely silent. See
-   [What this plugin does not do](../README.md#what-this-plugin-does-not-do).
+   the hooks are genuinely silent — see
+   [The hooks are not running on this machine](#the-hooks-are-not-running-on-this-machine)
+   below.
+5. **Do the hooks see your Appian tools?** A hook that runs and governs nothing
+   looks exactly like a hook that never fired — see
+   [The hooks run and see nothing](#the-hooks-run-and-see-nothing).
 
 To settle it rather than guess, feed a hook a payload the way Claude Code does:
 
@@ -248,6 +252,67 @@ path, and add `"stop_hook_active":true` to see the second attempt approve.
 not an MSYS `/c/…` one. Given the latter, the gate finds no config and the
 probe looks like an unconfigured project. That is a trap of probing by hand,
 not a fault in the plugin.
+
+### The hooks are not running on this machine
+
+The probe above answers JSON when the hooks run. When it answers
+
+```
+command not found
+```
+
+instead, nothing is wrong with your project and nothing is wrong with the
+configuration: the launcher itself never started, so no gate has an opinion
+about anything. This is the Windows-without-Git-Bash case, and `/appian-init`
+reports it in these words:
+
+> *«los hooks **no se están ejecutando** en esta máquina; el plugin está
+> instalado y no gobierna nada»*
+
+The words matter because the symptom does not look like a failure. A hook that
+cannot be launched produces no decision, and no decision reads exactly like a
+decision to allow — the session runs smoothly, every write goes through, and
+the evidence directory stays empty. Install
+[Git for Windows](https://git-scm.com/download/win) and run the probe again;
+the fix is the whole of the fix, and there is no partial state to clean up.
+
+Run `/appian-init` on any project where you are not sure. Step 2 of it runs this
+probe for you and reports its literal answer, which is the point: the risk of
+this configuration is accepted, its being invisible is not.
+
+### The hooks run and see nothing
+
+The dangerous twin of the entry above, and the harder one to notice. The hooks
+launch, the gates answer, the registers fill — and none of it is about your
+Appian work, because the gates are not matching the tools you are actually
+calling. `/appian-init` reports it in these words:
+
+> **«Los hooks se están ejecutando pero no ven tus herramientas de Appian: el
+> plugin está instalado y no gobierna nada.»**
+
+The cause is the perimeter. `.claude/appian-harness.json` declares
+`appianMcpToolPrefixes[]` — the tool-name prefixes of your Appian MCP servers,
+the design one **and** the runtime one. Without the key the gates fall back to
+matching server names that contain `appian`, so a server you registered as
+`lcp`, or `indra`, or anything else, leaves the plugin installed and governing
+nothing. Declaring only the design server is the quieter version of the same
+thing: object writes are gated and process starts are not.
+
+Two symptoms tell you it is this rather than the case above:
+
+- **Session start says so out loud.** The line the plugin writes at session
+  start names the mismatch when there is one.
+- **The first write of the session asks**, and its reason names the missing
+  declaration. That is deliberate: an informative notice is not enough when what
+  failed is the perimeter, because a scope gate that recognises no Appian tools
+  approves everything without a word.
+
+The fix is to declare the prefixes. `/appian-init` fills the key from what the
+session has registered and runs the perimeter probe;
+[Configuration](configuration.md#the-perimeter-which-tools-the-gates-are-allowed-to-see)
+has what the key covers if you would rather write it by hand. A project adopted
+before the key existed does not acquire it by upgrading — that project is
+exactly the one this entry is for.
 
 ### Driving the scope gate all the way to `allow`
 
@@ -304,6 +369,13 @@ rather than trusting that the skill was loaded — and without it the chain stop
 one reason earlier. And the payload names `appian-dev` because `WRITE_TOOL_RE`
 matches `^mcp__…[Aa]ppian…__`: a server segment that does not name Appian is
 `not a write tool`, and the gate allows it before looking at anything else.
+
+One thing about the fixture is worth knowing before you copy it into a real
+project: the scope file it writes carries no `schemaVersion`, so the gate reads
+it under the rulebook a scope opened before 0.7 closes under. That is what keeps
+this recipe short — it is a probe of the launcher and the gate's plumbing, not
+a template for a scope. A scope your own work opens is written by
+`appian-build`, and its shape is that skill's business rather than yours.
 
 That last line prints `"ask"`, with the reason
 `cannot validate practices-design: no pluginRoot configured`. **This is the
@@ -381,21 +453,29 @@ into the build.
 Preflight is all reads, so the scope gate never sees it; the stop lands on the
 first create or update. The reason it prints will name every problem it found,
 and the one people hit first is a missing `phase=design` verdict at
-`<evidenceDir>/<task>/practices-design.json`. `appian-build` step 3c is what
-produces it — nothing else in the lifecycle does, and `appian-verify` scopes
-`design` out on purpose.
+`<evidenceDir>/<scope>/practices-design.json`. `appian-build` produces it,
+before the first write and nothing else in the lifecycle does. A design verdict
+is something a `task` is asked for; a `micro` scope is not, so this reason
+appearing at all tells you how the work was sized.
 
 ### The closure gate blocked my stop
 
 First check which stop this is. If `appian-build` just finished, the block is
-the expected one and the answer is not a workaround: the task is built and not
-yet verified, and the reason names the phase that produces each missing
-verdict. Run `appian-verify`, then `appian-review`. The block goes away because
-the task closed, which is the point.
+the expected one and the answer is not a workaround: the work is built and not
+yet certified, and the reason names the phase that produces each missing
+verdict. Run `appian-review`: it dispatches the judge with the artifact and the
+contract, and asks for the close. The hook is what closes, and the block goes
+away because the scope closed, which is the point.
 
-What does **not** work is deleting the active task file to get the stop
+Which verdicts are missing depends on the scope. The closure gate reads
+`certify`, and `risk` when the scope carries risk; `design` belongs to the scope
+gate, before the first write. A scope opened before 0.7 is read under the
+rulebook it opened with and closes on `implementation`, `review` and `qa`
+instead — those three stay accepted, and obsolete, so that it can.
+
+What does **not** work is deleting the active scope file to get the stop
 through. The gate approves any stop with nothing in flight, so that does not
-satisfy it — it switches it off for the rest of the task.
+satisfy it — it switches it off for the rest of the work.
 
 ### Everything went quiet and no gate has fired since
 
