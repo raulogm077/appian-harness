@@ -952,6 +952,106 @@ compraría nada.
 
 ---
 
+## Fase 5 · Onboarding, documentación y manifiestos
+
+**Fecha:** 2026-09-10 · **Rama:** `phase-5-onboarding-docs-manifests` · **Base:** `da4ceb9`
+
+Estado: **DONE — DoD 2/2 PASS** (DoD al final de esta sección). No depende de ninguna fase para
+poder escribirse, y depende de **todas** para poder ser cierta: es la fase que hace que lo que un
+tercero lee coincida con lo que las Fases 0-4 construyeron.
+
+### El orden, que no es el de la tabla de § 16
+
+La tabla de § 16 lista cuatro trabajos; el orden en que se hicieron es otro, y por una razón: **el
+«Hecha cuando» de esta fase es un comprobador, no un documento.** Se escribió primero, se le vio
+fallar contra el árbol real —29 hallazgos— y solo entonces se tocó documentación. Al revés, la
+única prueba de que el comprobador sirve habría sido que el árbol pasa, que es exactamente el
+argumento que este plugin dedica un README a rechazar.
+
+### Las unidades
+
+| # | Trabajo (§ 16 Fase 5) | Qué quedó | Test propio |
+|---|---|---|---|
+| U1 | El comprobador de nombres retirados | `RETIRED_NAMES` + `ENUM_VALUE` + `_scope_vocabulary` en `check_readme_claims.py`, sobre un conjunto **enumerado** de documentos de usuario. Los tamaños, los estados y los riesgos aceptados se leen del hook, no se restatan | `TestRetiredNamesAreCaught` (12), `TestTheVocabularyComesFromTheHook` |
+| U2 | Los SVG, `SECURITY.md` y los internals dentro del barrido | los cuatro diagramas y la política de seguridad entran en el conjunto; `commands/appian-init.md` no puede nombrar `instanceId`, `writeSeq`, `expressionHash` ni `guaranteeClass` (§ 13) | `TestTheEvalsReadmeStatesCountsToo`, y cuatro casos de `TestRetiredNamesAreCaught` |
+| U3 | Destino y catálogo en `check_evals.py` | `_destination_problems` (un caso no puede rutear a una skill que no existe) y `_catalogue_problems` (el catálogo de § 17.7 por nombre, en los dos sentidos) | 6 casos nuevos en `test_check_evals.py` |
+| U4 | `/appian-init`, la mitad que adopta | `commands/appian-init.md` reescrito a § 14: tres eslabones, sonda de `run_hook.sh`, sonda de perímetro, configuración completa, glosario de § 20, carga diferida, `--adopt` | `check_readme_claims.py` |
+| U5 | Evals: routing y safety (§ 17.7) | 27 casos: 3 routing —con `routing-verify-not-review` → `routing-certify-before-close`— y los 24 de safety que la norma enumera | `check_evals.py` + `test_the_shipped_suite_is_the_whole_catalogue` |
+| U6 | Documentación de usuario realineada | `README.md`, `docs/{configuration,gates,installing,troubleshooting,when-the-harness-is-wrong,workflow}.md`, `evals/README.md` y los cuatro SVG del ciclo de vida y la arquitectura | `check_readme_claims.py`, `test_documented_probe.py` |
+| U7 | CHANGELOG primero, luego los dos manifiestos | entrada `0.7.0` con la nota de migración de § 15; `plugin.json` y `marketplace.json` a `0.7.0`, **y su `description`**, que seguía vendiendo una pirámide de verificación que el diseño 0.7 no tiene | `check_manifest_agreement.py` |
+| U8 | `SECURITY.md` | tres afirmaciones corregidas: el matcher, los nueve registros y los imports | — (no hay checker de contenido; se contrastó contra `hooks.json` y el código) |
+
+### Decisiones de codificación, y por qué
+
+1. **El conjunto de «documentos de usuario» se enumera a mano, no se globea.** `docs/*.md` adoptaría
+   cada fichero futuro en silencio, y dos documentos tienen que quedar **fuera**: `CHANGELOG.md`,
+   cuyo oficio es registrar lo que cada release quitó, y `docs/design-notes.md`, que no puede
+   responder «por qué el código es así» sin nombrar lo que el código dejó de hacer. Un check que hay
+   que suprimir en dos sitios no es un check.
+
+2. **Los enums cerrados se leen del hook.** `STATUS_*`, `kind not in (…)` y `risk not in (…)` se
+   extraen de `harness_hooks.py` por regex. Mantener aquí una lista privada de valores válidos es
+   crear la segunda definición que la Fase 4 ya evitó con `PHASES`. Un test sujeta que el hook siga
+   declarando los tres: si dejara de hacerlo, el check se quedaría mudo sin que nadie lo notara.
+
+3. **La prohibición de internals de § 13 se aplica solo a `commands/appian-init.md`.** § 13 los
+   quiere fuera de «ningún texto que lea una persona», y la lectura literal alcanzaría a
+   `docs/configuration.md`, que documenta el formato de `checks.jsonl` y no puede describir un campo
+   sin nombrarlo. La regla se aplica donde § 13 apunta: el texto que se lee **durante el uso**.
+
+4. **Los cuatro SVG entran en el barrido.** Los cuatro nombraban una skill eliminada mientras todos
+   los checks de markdown estaban en verde. Un diagrama afirma lo mismo que la prosa y caduca igual.
+
+5. **El catálogo de evals se sujeta por nombre, y en los dos sentidos.** Un conteo no puede: 27 casos
+   bajo 27 nombres equivocados es el número correcto y la suite equivocada. Un árbol que no comparte
+   **ni un** caso con el catálogo se deja en paz —sería una suite ajena o un fixture—, y el agujero
+   que eso deja se cierra desde el otro lado, con un test que afirma que el árbol enviado **es** el
+   catálogo.
+
+6. **Los tres casos de safety que había se retiran.** § 17.7 dice que **los de routing se conservan**
+   y a continuación enumera el conjunto de safety; el contraste es deliberado, y los tres nombres
+   anteriores no están en la enumeración. Lo que seguía siendo cierto de ellos se absorbe en el caso
+   del catálogo que lo cubre —la cautela ante un borrado, en `safety-delete-closes-on-absence`— y la
+   retirada queda anotada en el `CHANGELOG`, no en silencio.
+
+### `activeRunFile`, `leaseFile` y `risk-downgrades.jsonl`: medidos, no razonados
+
+El tracker de la Fase 4 mandó los tres aquí, y § 15 y § 11.2 los dan por desaparecidos mientras el
+código los sigue leyendo y escribiendo. La pregunta —¿documentar o tocar el hook?— se resolvió
+**ejecutándolo**, no leyéndolo: la misma configuración pasada a `scope_gate` y a `closure_gate` dos
+veces, una con un alcance v2 y otra con un alcance sin `schemaVersion`.
+
+| | alcance v2 (0.7) | sin `schemaVersion` (0.6) |
+|---|---|---|
+| nombra `activeRunFile` | **no** | sí |
+| nombra un lease | **no** | sí |
+| escribe `risk-downgrades.jsonl` | **no** | sí |
+
+`_scope_shared_reasons` solo se alcanza desde la rama legacy de `scope_gate`, y `_log_risk_downgrade`
+solo desde el cuerpo legacy de `closure_gate`, después de que `policy == "v07"` haya salido. **Los
+tres ya están fuera de 0.7**: sobreviven dentro del reglamento 0.6 que § 15 conserva a propósito para
+que un alcance abierto con las reglas viejas pueda cerrarse con ellas. Así que **no se toca el hook**,
+y la documentación dice eso: un proyecto adoptado en 0.7 no los pone, y `/appian-init` no los escribe.
+
+Una segunda opinión sobre el enfoque sostuvo lo contrario —que seguían siendo efectivos y que había
+que quirurgizar `harness_hooks.py`—; la sonda la contradice. Esa misma segunda opinión aportó tres
+huecos que sí eran reales y que están arriba: los cuatro SVG, `SECURITY.md`, y que el catálogo de
+evals no lo sujeta un conteo.
+
+### Dos defectos de la Fase 4, corregidos aquí bajo la excepción
+
+Ninguno lo cazaba `lint_skills.py`, y los dos enseñaban al modelo un esquema que la puerta rechaza:
+
+- `skills/appian-specify/SKILL.md` abría nombrando el ciclo `SPECIFY → PLAN → BUILD → VERIFY →
+  REVIEW → CLOSE`. **No hay fase VERIFY.**
+- `skills/appian-plan/SKILL.md` enseñaba el modelo de riesgo completo de 0.6 —declarar `trivial`,
+  `standard` o `high`, y la tríada `implementation`/`review`/`qa` que el cierre exigiría— cuando § 5.3
+  lo retiró: `risk` tiene dos valores, **lo escribe el hook**, y `risk: "trivial"` lo rechaza
+  `_scope_schema_errors` sin más. Reescrito a lo que un plan sí puede aportar: señalar qué tareas
+  espera que acaben en `high`, porque eso las saca de `micro`.
+
+---
+
 ## Estado de fases
 
 | Fase | Estado |

@@ -29,27 +29,50 @@ agreement.
 
 Three consequences run through everything here:
 
-1. **One task per invocation, then stop.** Not one phase. A task is the unit a
-   reviewer can reject on its own.
+1. **One scope per invocation, then stop.** A scope is the unit a reviewer can
+   reject on its own.
 2. **Three outcomes, not two.** `PASS`, `FAIL`, and `NOT MEASURED`. The third is
    not a pass, and it is the one that gets silently skipped.
 3. **The remote state wins.** Your artifact lives on a server you do not own
-   alone. There is no clean working tree to rely on, so every task begins with a
+   alone. There is no clean working tree to rely on, so every scope begins with a
    preflight against the real environment.
+
+And a fourth that decides how much of the rest you pay for:
+
+> **The ceremony fits the work, and the harness decides the fit — not you, and
+> not by how much text changed.**
 
 ## The cycle
 
 ```
-SPECIFY → PLAN → [ BUILD → VERIFY → REVIEW ] → CLOSE
-                    └───── per TASK, not per phase ─────┘
+                 ┌──────────────── one scope ────────────────┐
+[specify]  →  [plan]  →  BUILD  →  [review]  →  the hook closes it
+     when             always,        when the lane
+  requirements       the only        bought a reviewer
+   are missing      entry point
 ```
 
-A human orchestrates between phases. An agent that chains specify → plan → build
-→ review in one run loses exactly the checkpoints that catch work heading in the
-wrong direction.
+**`appian-build` is the only entry point.** It decides the size, announces it
+in one line you can contradict, and opens the scope. Specify runs only when the
+sentence names a business entity that does not exist yet; plan runs only when
+splitting the work buys something.
 
-**CLOSE is not a skill.** The first five phases each have one; CLOSE is what the
-`Stop` hook does. There is no `appian-close` to look for.
+**Two sizes, and no third.** `micro` is one object and one intention. `task` is
+everything else. There is **no magnitude threshold**: redesigning a whole
+1,700-line interface is still one object and one intention, and still `micro`.
+What graduates the ceremony is *what* changes and *how many objects* — never how
+much text was replaced, because the tool replaces all of it every time.
+
+**Exposure buys a reviewer, not a size.** A screen reachable from a published
+site stays `micro` and gets certified before it closes.
+
+**One permission prompt per scope**, with the full list and what is going to
+happen to each thing — not one per object, and not one per write.
+
+**Closing is not a skill.** `appian-review` certifies and *asks*; the `Stop`
+hook decides, and it is the only thing that writes the outcome. The other two
+ways out are **abandoning** with a reason and **desisting**, leaving it as it
+stands.
 
 ## Requirements
 
@@ -68,23 +91,23 @@ appian-harness  ──requires──▶  a design MCP (e.g. appian-dev)
 | **The official Appian skill**<br/>[`appian/dev-mcp-skills`](https://github.com/appian/dev-mcp-skills/) | Naming conventions, both sides of a relationship, the order objects must be created in, real UUIDs versus invented ones — everything the tool schemas describe parameters for but not correct use of | Objects get written with invented names and UUIDs, one-sided relationships, and wrong creation order. **No gate here catches that**: they check the contract, atomicity and the presence of a verdict |
 | **A documentation MCP** (`appian-docs` or equivalent) | The official skill's function-availability checks run against it | Those checks return empty, and **empty is indistinguishable from "the function does not exist"** — the vacuous pass this plugin argues against everywhere else |
 
-**This is enforced, not just documented.** `appian-build` loads the official
-skill before the design audit and before the first write, and records the load
-at `<evidenceDir>/<task>/appian-skill-loaded.json`. The scope gate opens that
-file the same way it opens the design verdict: no record, or a record naming
-another task, omitting `docsMcp`, or claiming a version the installed skill
-does not declare, and the write asks instead of going through.
+**This is enforced, not just documented, and 0.7 changed who does the
+enforcing.** The load record at `<evidenceDir>/<scope>/appian-skill-loaded.json`
+is **written by the hook from what it observed** — the skill's invocation and
+the reads under its root — rather than by the builder from what it claims. That
+is the whole difference between a record and an assertion. A copy written by
+hand, without the marker saying a hook saw it, credits nothing.
 
 Be clear about what that is worth, on the same terms as the rest of this
-plugin: **it does not prove the skill was loaded.** A hook cannot see an
-agent's context — the same limit stated in
+plugin: **it does not prove the skill was in context.** A hook can see that the
+skill was invoked and that files under it were read; it cannot see what an agent
+did with them — the same limit stated in
 [How the best-practices guarantee actually works](docs/gates.md). What it
-removes is the silent case: writing to a shared
-environment having never opened the domain knowledge, with nothing anywhere
-recording it. One check is stronger than that, and it is the reason
-`appianVersion` is in the record at all: point `officialAppianSkillPath` at the
-installed skill and the version claim gets compared against the file on disk
-instead of taken on trust.
+removes is the silent case: writing to a shared environment having never opened
+the domain knowledge, with nothing anywhere recording it. One check is stronger
+still, and it is the reason `appianVersion` is in the record at all: point
+`officialAppianSkillPath` at the installed skill and the version claim gets
+compared against the file on disk instead of taken on trust.
 
 ```json
 {
@@ -161,37 +184,39 @@ is never nagged. If advice was all you wanted, you are finished here.
 ### 2 — One small change, judged small rather than assumed small
 
 ```
-/appian-init          # adopt the harness into this project
-/appian-build         # build exactly one task, then stop
-/appian-verify        # run the gates, record the evidence
-/appian-review        # certify from outside — or record the exemption
+/appian-init          # adopt the harness into this project, once
+appian-build          # it sizes the work, says so, asks once, and builds
 ```
 
-SPECIFY and PLAN are skipped. REVIEW is not, because deciding a change is too
-small to review **is** review's work: it is weighed against four exemption
-conditions by someone who did not build it, and who made the call is written
-into the task's evidence. A task nobody routed here has not been found exempt —
-it has been left unexamined.
+That is the whole path. There is no verify step to remember and no close
+command: the floor the change has to clear is decided by **what kind of object
+was touched**, the hooks credit the checks from what they observe, and the
+`Stop` hook does the closing.
 
-One consequence catches everybody once. The closure gate cannot see an
-exemption; it looks for a passing `practices-review.json` and nothing else. So
-delete the active task file as soon as the exemption is recorded, or the next
-stop blocks and records debt that is accurate about the absence and misleading
-about the reason.
+What the build announces before it opens anything is one line — the size, the
+objects, and whether this lane buys a reviewer. **Contradict it there** if it is
+wrong; that line is the cheapest place in the whole cycle to disagree.
+
+A reviewer is bought by *what* changes, not by how much. Swapping a label does
+not buy one. Changing a filter, a `showWhen`, or anything that alters what data
+is shown or who can see it does — and so does touching a screen that is reachable
+from a published site, without the work getting any bigger for it.
 
 ### 3 — A whole application
 
 ```
-/appian-init          # adopt the harness into this project
-/appian-specify       # turn the request into a written specification
-/appian-plan          # break it into tasks, ordered by dependency
-/appian-build         # build exactly one task, then stop
+/appian-init          # adopt the harness into this project, once
+appian-build          # still the entry point; it routes from here
 ```
 
-`appian-build` stops on purpose. What follows is `appian-verify`, then
-`appian-review`, then the next task — and the `Stop` hook will not let a session
-end mid-task without either the verdicts or a recorded reason. The full
-walkthrough, with what each phase writes and what the gates read, is in
+`appian-build` sends the work to the specification phase when the sentence names
+a business entity that does not exist yet, and asks for a plan when there are
+several features or real dependencies between them. You do not have to know
+which — that is the routing it publishes.
+
+It then builds **one scope and stops**, and the `Stop` hook will not let a
+session end with work open unless the checks are met or a reason is recorded.
+The full walkthrough, with what each phase writes and what the gates read, is in
 **[docs/workflow.md](docs/workflow.md)**.
 
 ### Before you trust a gate, check that it is alive
@@ -233,11 +258,11 @@ there.
 |---|---|
 | `skills/` | Five skills: four lifecycle phases and the cross-cutting doctrine they all cite |
 | `skills/appian-best-practices/references/` | Twelve domain references, numbered `01`–`12`. Every verdict cites into these |
-| `agents/` | One judging agent: `appian-practices-auditor`, invoked three times with a fresh context each — `design`, `certify`, `risk` |
+| `agents/` | One judging agent: `appian-practices-auditor`, invoked up to three times with a fresh context each — `design`, `certify`, `risk` |
 | `hooks/` | One `hooks.json` declaring seven hooks, a POSIX launcher (`run_hook.sh`) and their Python implementation |
 | `scripts/` | Thirteen modules: `validate_verdict.py`, `lint_skills.py`, `lint_agents.py`, `n2_interface_tree.py`, `n3_process_layout.py`, `sail_static_check.py`, `parallel_safety.py`, `measure_evidence.py`, `check_readme_claims.py`, `check_manifest_agreement.py`, `check_package_integrity.py`, `check_evals.py`, and `exit_codes.py`, which holds the one constant six of them used to spell out separately |
-| `commands/` | One command: `/appian-init`, which adopts the harness into a project |
-| `evals/` | Six eval cases in the layout `claude plugin eval` expects — three routing, three safety. **Never executed**: the runner is in early access. `evals/README.md` says so first, because a suite of unrun cases is preparation, not coverage |
+| `commands/` | One command: `/appian-init`, which adopts a project and tells the truth about the installation. Installing the prerequisites is deliberately not its job |
+| `evals/` | Six eval cases in the layout `claude plugin eval` expects — three routing, three safety, the set the design names one by one. **Never executed**: the runner is in early access. `evals/README.md` says so first, because a suite of unrun cases is preparation, not coverage |
 | `.claude-plugin/` | `plugin.json`, and a `marketplace.json` that makes this checkout its own marketplace |
 | `SECURITY.md` | What this plugin executes on your machine, at which seven hook entries, what it reads and writes — and where to report a vulnerability |
 | `CONTRIBUTING.md` | The eight local checks, in the order CI runs them, and the release procedure that keeps the two manifests from drifting again |
@@ -281,13 +306,11 @@ the fast path is an opt-out you have to type, and CI never sets it.
 
 | Skill | Phase | What it does |
 |---|---|---|
-| `appian-specify` | SPECIFY | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. |
-| `appian-plan` | PLAN | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria. |
-| `appian-build` | BUILD | Implements exactly one approved task and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. Invoked by name, or by `appian-run` inside an authorized run. |
-| `appian-verify` | VERIFY | Produces the per-gate report with evidence, in its own context. |
-| `appian-review` | REVIEW | Independent review from a clean context, graduated by risk. |
-| `appian-run` | orchestration | Builds a plan's pending tasks end to end without a keystroke per task. Authorization is granted once per run and checked by the gate; eight closed conditions stop it. Invoked by name — granting a run is the user's act. |
-| `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done. Loaded before any write and before declaring an object finished. |
+| `appian-specify` | when requirements are missing | Turns a vague request into a written specification: actors, entities and relationships, states and transitions, an authorization matrix, volume, and an explicit **out of scope**. One question at a time. |
+| `appian-plan` | when splitting buys something | Breaks the specification into **vertical Appian slices** (record type → query rule → interface → test case), ordered by the dependencies the platform actually imposes, each with its own acceptance criteria, and the types no tool can write placed in the graph anyway. |
+| `appian-build` | always — the only entry point | Routes, sizes the work and announces the size before opening anything, then implements one scope and stops. Preflight before any write, asymmetric treatment of irreversible actions, no blind retries. |
+| `appian-review` | when the lane bought a reviewer | Certifies from outside the context that built the work — the judge gets the artifact and the contract, **never the builder's conclusion** — drives a bounded remediation loop, and then *asks* for the close. The hook does the closing. |
+| `appian-best-practices` | cross-cutting | Official Appian best practices routed by domain, plus the quality gates that define done and which of them can block. Referenced, never loaded whole. |
 
 `appian-best-practices` carries twelve domain references — data model and record
 types, SAIL interfaces, process models, expression rules, performance, security,
@@ -295,7 +318,7 @@ integrations, ALM and testing, sites and navigation, quality gates, reliability
 and operations. The `SKILL.md` is the index: only the reference the change
 touches gets opened.
 
-**Description phrasing.** The seven `SKILL.md` files here write their trigger
+**Description phrasing.** The `SKILL.md` files here write their trigger
 clause in the imperative ("Use when...", "Use after..."), not the third person
 `plugin-dev:skill-development` recommends ("This skill should be used
 when..."). That is a deliberate house style, kept consistent across every
@@ -307,14 +330,26 @@ guidance is not rejected for it.
 
 ## Agents
 
-The skills orchestrate; three agents do the judging, each in its own context so
-that no judgement is formed by whoever produced the work.
+The skills orchestrate; **one agent judges**, invoked up to three times with a
+fresh context each time, so that no judgement is formed by whoever produced the
+work and no judgement inherits the framing of the one before it.
 
-| Agent | What it judges |
-|---|---|
-| `appian-practices-auditor` | One phase — `design`, `implementation`, `review` or `qa` — against the domain references, writing a verdict that cites the sections it applied. |
-| `appian-verifier` | Whether the evidence on hand covers each gate the task's contract requires, naming the evidence behind every `PASS`. |
-| `appian-reviewer` | Whether the change holds up against its contract, from the artifact alone — it is never handed the builder's conclusion. |
+| Invocation | What it judges | When |
+|---|---|---|
+| `design` | Whether this is a good way to build the thing, before the first write | When the scope's shape calls for it |
+| `certify` | Whether the change holds up against its contract, from the artifact alone | Whenever the lane bought a reviewer |
+| `risk` | *How does this fail* rather than *does this meet the contract* | When the work touches security, data, or something irreversible |
+
+`agents/appian-practices-auditor.md` is the whole of it. Each invocation writes a
+verdict shaped as a **matrix of object against gate**, citing the reference
+sections it applied — and it is never handed a dump: a cell that imports a check
+names the row it came from, never the row's contents.
+
+**Not every finding blocks.** Gates are cardinal, recommended or contextual, and
+only the cardinal ones stop a close. Maintainability and performance are worth
+knowing and are not worth a remediation loop nobody finishes. Re-issuing a
+verdict is capped at three, and a third that brings no new finding is rejected by
+the validator rather than accepted as diligence.
 
 ## Documentation
 
@@ -326,8 +361,8 @@ until it grew past the point where anyone could find anything in it.
 |---|---|
 | **[Installing](docs/installing.md)** | Installing from a local checkout, a path with spaces in it, or you want to know what the hooks need on `PATH` |
 | **[Configuration](docs/configuration.md)** | Adopting the harness into a project — the one file the hooks read, and every key in it |
-| **[Workflow](docs/workflow.md)** | Working through a real task end to end, running a whole plan without a keystroke per task, or building several at once |
-| **[The gates](docs/gates.md)** | Understanding what each gate actually checks, what the best-practices guarantee is worth, and what each level of the verification pyramid does and does not prove |
+| **[Workflow](docs/workflow.md)** | Working through a real change end to end — how the size is decided, what the one permission prompt covers, and the three ways out |
+| **[The gates](docs/gates.md)** | Understanding the floor each kind of object has to clear, which gates can block a close and which cannot, and what each level of the verification pyramid does and does not prove |
 | **[Troubleshooting](docs/troubleshooting.md)** | A gate fired and you disagree, the hooks do nothing, the installed copy is behind the repository, or the closure gate will not let you stop |
 | **[When the harness is wrong](docs/when-the-harness-is-wrong.md)** | The plugin itself is the problem — including why you are never blocked, and what to record while you wait for a fix |
 
@@ -359,24 +394,29 @@ harness:
   so testing there produces a false positive. That check requires a real user
   per role.
 - **It does not run the N2 and N3 checkers for you.** They exist, they are
-  tested, and they have command-line entry points that `appian-verify` names —
-  but no hook invokes them, so a task where nobody ran them has no N2 or N3
-  result, not a passing one. See the note under the pyramid in
-  [docs/gates.md](docs/gates.md).
+  tested, and they have command-line entry points — but no hook invokes them, so
+  a scope where nobody ran them has no N2 or N3 result, not a passing one. See
+  the note under the pyramid in [docs/gates.md](docs/gates.md).
 - **It does not run your regression suite.** The command is something a project
   records so the person following the process can find it; no code here reads
   it or executes it.
 - **It gates nothing at all without a design MCP configured.** The write and
-  closure gates hang off Appian `mcp__*` write tools; with no such server in the
-  session there is no tool to match, so the plugin installs, passes its tests, looks healthy and
-  watches nothing. See *Requirements*. This is the second failure mode, after
-  Windows without Git Bash, where the thing that would fail closed never runs.
-- **It cannot prove the official Appian skill was loaded.** It checks that a
-  load was recorded for the task, that the record is about that task, that it
-  names a documentation MCP, and — when `officialAppianSkillPath` is set — that
-  the version it claims matches the installed skill. An agent that writes that
-  record without loading anything still gets through. Same limit, same reason,
-  as the plugin's own doctrine.
+  closure gates hang off Appian write tools; with no such server in the session
+  there is no tool to match, so the plugin installs, passes its tests, looks
+  healthy and watches nothing. See *Requirements*. This is the second failure
+  mode, after Windows without Git Bash, where the thing that would fail closed
+  never runs. **The third was worse and is now closed**: until 0.7 the gates
+  found Appian by looking for the string `appian` in the MCP server's name, so a
+  server called anything else left every gate silent while the hooks went on
+  answering. The perimeter is declared in the config now, `/appian-init` fills
+  it from what is registered, and session start says so out loud when it is
+  missing.
+- **It cannot prove the official Appian skill was in context.** The hook records
+  the invocation and the reads it observed, checks the record is about this
+  scope, that it names a documentation MCP, and — when
+  `officialAppianSkillPath` is set — that the version it claims matches the
+  installed skill. What no hook can see is what the agent did with any of it.
+  Same limit, same reason, as the plugin's own doctrine.
 
 - **It cannot make forgery impossible.** Every input the gates read — the
   evidence tree, the harness config, the active task file — is a plain file in
@@ -393,8 +433,8 @@ harness:
 
 Three things about the plugin itself, on the same terms:
 
-- **Nobody has watched `skills:` preload.** The three agents declare
-  `skills: [appian-best-practices]` in their frontmatter, and the field is
+- **Nobody has watched `skills:` preload.** The judging agent declares
+  `skills: [appian-best-practices]` in its frontmatter, and the field is
   documented — but this plugin was never installed in the session that built
   it, so no one here has observed an agent start with the doctrine already in
   context. The frontmatter is written on the documented contract, not on an
@@ -408,18 +448,13 @@ Three things about the plugin itself, on the same terms:
   installing [Git for Windows](https://git-scm.com/download/win). This is the
   one failure mode the fail-closed design cannot cover, because the code that
   would fail closed never starts.
-- **The closure gate checks nothing once a task is closed.** Its reach is
-  exactly the window in which a task is in flight — from `appian-build` taking
-  it to `appian-review` deleting the active task file. Stops outside that
-  window approve without opening a verdict, by design, and a task whose file was
-  cleared early is indistinguishable from one that closed properly. See the note
-  at the end of the walkthrough in [docs/workflow.md](docs/workflow.md).
-- **The gate cannot see a review exemption.** `appian-review` is graduated by
-  risk and some changes legitimately do not enter it, but the gate asks for a
-  valid `practices-review.json` and knows nothing about exemptions. Closing an
-  exempt task is therefore recording the exemption and deleting the active task
-  file; stopping before that blocks, and a repeat stop writes debt naming
-  `practices-review` — accurate that it is absent, misleading about why.
+- **The closure gate checks nothing once a scope has finished.** Its reach is
+  exactly the window in which a scope is open. Stops outside that window approve
+  without opening a verdict, by design. What 0.7 added is that leaving the window
+  is no longer something the agent can do by deleting a file: the hook is the
+  only writer of the outcome, it signs what it writes, and any state that turns
+  up unsigned is reverted. See the note at the end of the walkthrough in
+  [docs/workflow.md](docs/workflow.md).
 
 A criterion the harness cannot measure is reported as `NOT MEASURED`, with an
 owner and a closing condition. It is never quietly upgraded to `PASS`.
